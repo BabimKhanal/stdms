@@ -8,7 +8,9 @@ import { env } from "../env";
  * - short-lived caches (permissions, dashboards)
  */
 export const redis = new Redis(env.REDIS_URL, {
-  maxRetriesPerRequest: null,
+  maxRetriesPerRequest: 2,
+  enableOfflineQueue: false,
+  connectTimeout: 10_000,
   lazyConnect: false,
 });
 
