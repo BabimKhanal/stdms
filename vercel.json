@@ -1,5 +1,6 @@
 {
   "framework": "nextjs",
   "installCommand": "npm install --include=optional",
-  "buildCommand": "npm run build -w @edu/shared && npm run build -w @edu/web"
+  "buildCommand": "npm run build -w @edu/shared && npm run build -w @edu/web",
+  "outputDirectory": "apps/web/.next"
 }
