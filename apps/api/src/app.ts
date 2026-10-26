@@ -20,11 +20,15 @@ import type { AppEnv } from "./lib/types";
 
 export const app = new Hono<AppEnv>();
 
+const configuredWebOrigins = env.WEB_ORIGIN.split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 app.use(
   "*",
   cors({
     origin: [
-      env.WEB_ORIGIN,
+      ...configuredWebOrigins,
       "http://localhost:3000",
       "http://localhost:8081",
       "http://127.0.0.1:8081",
