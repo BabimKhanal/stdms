@@ -8,12 +8,16 @@ import * as svc from "./service";
 
 export const userRoutes = new Hono<AppEnv>(); userRoutes.use("*", requireAuth, requireOrg);
 const body = z.record(z.string(), z.unknown()); const id = (v: string) => parse(idSchema, v);
-userRoutes.get("/", requirePermission("user.view"), async (c) => okList(c, await svc.list(c.get("db"), c.get("orgId")!), 0, 1, 1000));
+userRoutes.get("/", requirePermission("user.view"), async (c) => okList(c, await svc.list(c.get("db"), c.get("orgId")!, { search: c.req.query("search"), status: c.req.query("status"), employeeId: c.req.query("employeeId"), roleId: c.req.query("roleId") }), 0, 1, 1000));
 userRoutes.get("/teachers", requirePermission("user.view"), async (c) => okList(c, await svc.listTeacherAccounts(c.get("db"), c.get("orgId")!), 0, 1, 1000));
 userRoutes.get("/employees", requirePermission("user.view"), async (c) => okList(c, await svc.listEmployeeOptions(c.get("db"), c.get("orgId")!), 0, 1, 1000));
 userRoutes.post("/", requirePermission("user.create"), async (c) => ok(c, await svc.save(c.get("db"), c.get("orgId")!, undefined, parse(body, await c.req.json())), 201));
 userRoutes.put("/:id", requirePermission("user.edit"), async (c) => ok(c, await svc.save(c.get("db"), c.get("orgId")!, id(c.req.param("id")), parse(body, await c.req.json()))));
 userRoutes.delete("/:id", requirePermission("user.delete"), async (c) => { await svc.remove(c.get("db"), c.get("orgId")!, id(c.req.param("id"))); return ok(c, { deleted: true }); });
+const bulkStatus = z.object({ ids: z.array(z.string()).min(1).max(500), status: z.enum(["active", "inactive"]) });
+const bulkDelete = z.object({ ids: z.array(z.string()).min(1).max(500) });
+userRoutes.post("/bulk/status", requirePermission("user.edit"), async (c) => ok(c, await svc.bulkStatus(c.get("db"), c.get("orgId")!, parse(bulkStatus, await c.req.json()))));
+userRoutes.post("/bulk/delete", requirePermission("user.delete"), async (c) => ok(c, await svc.bulkRemove(c.get("db"), c.get("orgId")!, parse(bulkDelete, await c.req.json()))));
 export const roleRoutes = new Hono<AppEnv>(); roleRoutes.use("*", requireAuth, requireOrg);
 roleRoutes.get("/", requirePermission("role.view"), async (c) => okList(c, await svc.listRoles(c.get("db"), c.get("orgId")!), 0, 1, 1000));
 roleRoutes.post("/", requirePermission("role.create"), async (c) => ok(c, await svc.saveRole(c.get("db"), c.get("orgId")!, undefined, parse(body, await c.req.json())), 201));
