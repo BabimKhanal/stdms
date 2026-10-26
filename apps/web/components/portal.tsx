@@ -46,13 +46,14 @@ export function Portal() {
     if (!authReady) return;
     if (!user) { router.replace("/login"); return; }
     const api = new EduApiClient(undefined, () => localStorage.getItem("edu_access_token"));
-    Promise.all([api.get<Dashboard>("/dashboard"), api.get<{ data: Student[] }>("/students?page=1&pageSize=8")])
+    const canLoadStudents = canViewNav("students", user);
+    Promise.all([api.get<Dashboard>("/dashboard"), canLoadStudents ? api.get<{ data: Student[] }>("/students?page=1&pageSize=8") : Promise.resolve({ data: [] as Student[] })])
       .then(([stats, list]) => { setDashboard(stats); setStudents(list.data); })
       .catch((error: unknown) => { if (error instanceof Error && error.message === "Authentication required") { localStorage.clear(); router.replace("/login"); } });
   }, [authReady, router, user]);
 
   useEffect(() => {
-    if (!authReady || !user) return;
+    if (!authReady || !user || !user.permissions?.includes("organisation.edit")) return;
     let active = true;
     void new EduApiClient(undefined, () => localStorage.getItem("edu_access_token"))
       .get<OrganisationBranding>("/organisation/branding")
@@ -69,7 +70,7 @@ export function Portal() {
   }, [authReady, user]);
 
    async function logout() { const refreshToken = localStorage.getItem("edu_refresh_token"); if (refreshToken) await new EduApiClient(undefined, () => localStorage.getItem("edu_access_token")).post("/auth/logout", { refreshToken }).catch(() => undefined); ["edu_access_token", "edu_refresh_token", "edu_user"].forEach((key) => localStorage.removeItem(key)); router.replace("/login"); }
-  const visibleNav = nav.filter((item) => item[2] !== "branding" || user?.permissions?.includes("organisation.edit"));
+  const visibleNav = nav.filter((item) => canViewNav(item[2], user));
   const current = visibleNav.find((item) => item[2] === section);
   const Icon = current?.[1] ?? LayoutDashboard;
   const primaryColor = branding?.primaryColor ?? "#2563eb";
@@ -91,3 +92,23 @@ function DashboardView({ dashboard, students, setSection }: { dashboard: Dashboa
 }
 
 function PlaceholderView({ section }: { section: string }) { return <div className="rounded-3xl border border-slate-200 bg-white p-12 text-center"><FileText className="mx-auto text-slate-300" size={30} /><h2 className="mt-4 text-2xl font-semibold capitalize">{section}</h2><p className="mt-2 text-sm text-slate-500">This module is the next implementation slice. The API and tenant security layer are already connected.</p></div>; }
+
+const roleNav: Record<string, string[]> = {
+  dashboard: ["*"],
+  students: ["owner", "principal", "administrator", "teacher", "accountant", "exam_officer"],
+  guardians: ["owner", "principal", "administrator", "accountant"],
+  academics: ["owner", "principal", "administrator", "teacher", "exam_officer"],
+  attendance: ["owner", "principal", "administrator", "teacher", "student", "parent", "guardian"],
+  learning: ["owner", "principal", "administrator", "teacher", "student", "parent", "guardian"],
+  fees: ["owner", "principal", "administrator", "accountant", "student", "parent", "guardian"],
+  exams: ["owner", "principal", "administrator", "teacher", "exam_officer", "student", "parent", "guardian"],
+  users: ["owner", "principal", "administrator"],
+  branding: ["owner", "principal", "administrator"],
+};
+
+function canViewNav(section: string, user: User | null) {
+  if (!user) return false;
+  if (section === "branding" && !user.permissions?.includes("organisation.edit")) return false;
+  const allowedRoles = roleNav[section] ?? [];
+  return allowedRoles.includes("*") || user.roles.some((role) => allowedRoles.includes(role));
+}
