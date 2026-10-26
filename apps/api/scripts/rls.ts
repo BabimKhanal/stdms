@@ -79,9 +79,9 @@ export async function enableRowLevelSecurity(pool: Pool): Promise<void> {
     GRANT USAGE ON SCHEMA public TO edu_app;
     GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO edu_app;
     GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO edu_app;
-    ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public
       GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO edu_app;
-    ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public
       GRANT USAGE, SELECT ON SEQUENCES TO edu_app;
   `);
 }
