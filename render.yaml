@@ -2,7 +2,7 @@ services:
   - type: web
     name: nucleus-api
     runtime: node
-    buildCommand: npm ci --include=dev && npm run build -w @edu/api
+    buildCommand: npm ci --include=dev && npm run build -w @edu/shared && npm run build -w @edu/api
     startCommand: npm run start -w @edu/api
     healthCheckPath: /health
     envVars:
