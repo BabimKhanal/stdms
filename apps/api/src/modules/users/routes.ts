@@ -1,0 +1,23 @@
+import { Hono } from "hono";
+import { z } from "zod";
+import { paginationQuerySchema, idSchema } from "@edu/shared";
+import type { AppEnv } from "../../lib/types";
+import { ok, okList, parse } from "../../lib/http";
+import { requireAuth, requireOrg, requirePermission } from "../../middleware/guards";
+import * as svc from "./service";
+
+export const userRoutes = new Hono<AppEnv>(); userRoutes.use("*", requireAuth, requireOrg);
+const body = z.record(z.string(), z.unknown()); const id = (v: string) => parse(idSchema, v);
+userRoutes.get("/", requirePermission("user.view"), async (c) => okList(c, await svc.list(c.get("db"), c.get("orgId")!), 0, 1, 1000));
+userRoutes.get("/teachers", requirePermission("user.view"), async (c) => okList(c, await svc.listTeacherAccounts(c.get("db"), c.get("orgId")!), 0, 1, 1000));
+userRoutes.get("/employees", requirePermission("user.view"), async (c) => okList(c, await svc.listEmployeeOptions(c.get("db"), c.get("orgId")!), 0, 1, 1000));
+userRoutes.post("/", requirePermission("user.create"), async (c) => ok(c, await svc.save(c.get("db"), c.get("orgId")!, undefined, parse(body, await c.req.json())), 201));
+userRoutes.put("/:id", requirePermission("user.edit"), async (c) => ok(c, await svc.save(c.get("db"), c.get("orgId")!, id(c.req.param("id")), parse(body, await c.req.json()))));
+userRoutes.delete("/:id", requirePermission("user.delete"), async (c) => { await svc.remove(c.get("db"), c.get("orgId")!, id(c.req.param("id"))); return ok(c, { deleted: true }); });
+export const roleRoutes = new Hono<AppEnv>(); roleRoutes.use("*", requireAuth, requireOrg);
+roleRoutes.get("/", requirePermission("role.view"), async (c) => okList(c, await svc.listRoles(c.get("db"), c.get("orgId")!), 0, 1, 1000));
+roleRoutes.post("/", requirePermission("role.create"), async (c) => ok(c, await svc.saveRole(c.get("db"), c.get("orgId")!, undefined, parse(body, await c.req.json())), 201));
+roleRoutes.put("/:id", requirePermission("role.edit"), async (c) => ok(c, await svc.saveRole(c.get("db"), c.get("orgId")!, id(c.req.param("id")), parse(body, await c.req.json()))));
+roleRoutes.delete("/:id", requirePermission("role.delete"), async (c) => { await svc.removeRole(c.get("db"), c.get("orgId")!, id(c.req.param("id"))); return ok(c, { deleted: true }); });
+roleRoutes.get("/permissions", requirePermission("role.view"), async (c) => okList(c, await svc.listPermissions(c.get("db")), 0, 1, 1000));
+void paginationQuerySchema;

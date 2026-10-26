@@ -1,0 +1,24 @@
+{
+  "name": "education-platform",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "npm@11.13.0",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "typecheck": "turbo typecheck",
+    "lint": "turbo lint",
+    "db:generate": "npm run db:generate -w @edu/api",
+    "db:migrate": "npm run db:migrate -w @edu/api",
+    "db:seed": "npm run db:seed -w @edu/api",
+    "db:setup": "npm run db:setup -w @edu/api"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.4",
+    "typescript": "^5.9.3"
+  }
+}

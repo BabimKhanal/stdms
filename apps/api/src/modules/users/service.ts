@@ -1,0 +1,24 @@
+import { and, asc, eq } from "drizzle-orm";
+import type { DB } from "../../lib/types";
+import { employees, permissions, rolePermissions, roles, userRoles, users } from "../../db/schema";
+import { hashPassword } from "../../lib/password";
+import { notFound } from "../../lib/errors";
+
+const safe = { id: users.id, organisationId: users.organisationId, name: users.name, email: users.email, username: users.username, avatarUrl: users.avatarUrl, isPlatformAdmin: users.isPlatformAdmin, status: users.status, locale: users.locale, employeeId: users.employeeId, studentId: users.studentId, guardianId: users.guardianId, lastLoginAt: users.lastLoginAt, createdAt: users.createdAt, updatedAt: users.updatedAt };
+export async function list(db: DB, orgId: string) { const rows = await db.select(safe).from(users).where(eq(users.organisationId, orgId)).orderBy(asc(users.name)); const assignments = await db.select({ userId: userRoles.userId, roleId: userRoles.roleId }).from(userRoles); return rows.map((row) => ({ ...row, roleIds: assignments.filter((assignment) => assignment.userId === row.id).map((assignment) => assignment.roleId) })); }
+export async function listTeacherAccounts(db: DB, orgId: string) { return db.select({ id: users.id, name: users.name, employeeId: users.employeeId, employeeName: employees.fullName }).from(users).innerJoin(employees, eq(users.employeeId, employees.id)).where(and(eq(users.organisationId, orgId), eq(employees.status, "active"))).orderBy(asc(users.name)); }
+export async function listEmployeeOptions(db: DB, orgId: string) { return db.select({ id: employees.id, employeeId: employees.employeeId, name: employees.fullName }).from(employees).where(and(eq(employees.organisationId, orgId), eq(employees.status, "active"))).orderBy(asc(employees.fullName)); }
+export async function get(db: DB, orgId: string, id: string) { const [row] = await db.select(safe).from(users).where(and(eq(users.id, id), eq(users.organisationId, orgId))).limit(1); if (!row) throw notFound("User not found"); return row; }
+export async function save(db: DB, orgId: string, id: string | undefined, input: Record<string, any>) {
+  const { password, roleIds, ...data } = input;
+  const values = { ...data, employeeId: data.employeeId || null, organisationId: orgId, ...(password ? { passwordHash: await hashPassword(password) } : {}) } as typeof users.$inferInsert;
+  const row = id ? (await db.update(users).set(values).where(and(eq(users.id, id), eq(users.organisationId, orgId))).returning())[0] : (await db.insert(users).values({ ...values, passwordHash: values.passwordHash ?? await hashPassword("ChangeMe123!") }).returning())[0];
+  if (!row) throw notFound("User not found");
+  if (roleIds) { await db.delete(userRoles).where(eq(userRoles.userId, row.id)); if (roleIds.length) await db.insert(userRoles).values(roleIds.map((roleId: string) => ({ userId: row.id, roleId }))); }
+  return get(db, orgId, row.id);
+}
+export async function remove(db: DB, orgId: string, id: string) { const rows = await db.delete(users).where(and(eq(users.id, id), eq(users.organisationId, orgId))).returning(); if (!rows.length) throw notFound("User not found"); }
+export async function listRoles(db: DB, orgId: string) { return db.select().from(roles).where(eq(roles.organisationId, orgId)).orderBy(asc(roles.name)); }
+export async function saveRole(db: DB, orgId: string, id: string | undefined, input: Record<string, any>) { const { permissionIds, ...data } = input; const values = { ...data, organisationId: orgId } as typeof roles.$inferInsert; const row = id ? (await db.update(roles).set(data).where(and(eq(roles.id, id), eq(roles.organisationId, orgId), eq(roles.isSystem, false))).returning())[0] : (await db.insert(roles).values(values).returning())[0]; if (!row) throw notFound("Role not found"); if (permissionIds) { await db.delete(rolePermissions).where(eq(rolePermissions.roleId, row.id)); if (permissionIds.length) await db.insert(rolePermissions).values(permissionIds.map((permissionId: string) => ({ roleId: row.id, permissionId }))); } return row; }
+export async function removeRole(db: DB, orgId: string, id: string) { const rows = await db.delete(roles).where(and(eq(roles.id, id), eq(roles.organisationId, orgId), eq(roles.isSystem, false))).returning(); if (!rows.length) throw notFound("Role not found"); }
+export async function listPermissions(db: DB) { return db.select().from(permissions).orderBy(asc(permissions.resource), asc(permissions.action)); }
