@@ -1,65 +1,35 @@
-# Starter Template with React Navigation
+# Nucleus Education Mobile
 
-This is a minimal starter template for React Native apps using Expo and React Navigation.
+Expo/React Native mobile client for the Nucleus Education Platform.
 
-It includes the following:
+## Local development
 
-- Example [Native Stack](https://reactnavigation.org/docs/native-stack-navigator) with a nested [Bottom Tab](https://reactnavigation.org/docs/bottom-tab-navigator)
-- Web support with [React Native for Web](https://necolas.github.io/react-native-web/)
-- TypeScript support and configured for React Navigation
-- Automatic [deep link](https://reactnavigation.org/docs/deep-linking) and [URL handling configuration](https://reactnavigation.org/docs/configuring-links)
-- Theme support [based on system appearance](https://reactnavigation.org/docs/themes/#using-the-operating-system-preferences)
-- Expo [Development Build](https://docs.expo.dev/develop/development-builds/introduction/) with [Continuous Native Generation](https://docs.expo.dev/workflow/continuous-native-generation/)
+Set `EXPO_PUBLIC_API_URL` in `.env` to an API URL reachable from the device. For a physical phone, use the computer's LAN IP during local development. For a released build, use the deployed HTTPS API URL.
 
-## Getting Started
+```sh
+npm install
+npm start
+```
 
-1. Create a new project using this template:
+Run a native development build with `npm run android`, or use the web target with `npm run web`.
 
-   ```sh
-   npx create-expo-app@latest --template react-navigation/template
-   ```
+## Android APK
 
-2. Edit the `app.json` file to configure the `name`, `slug`, `scheme` and bundle identifiers (`ios.bundleIdentifier` and `android.bundleIdentifier`) for your app.
+The `preview` EAS profile produces an installable Android APK. Run these commands from this directory:
 
-3. Edit the `src/App.tsx` file to start working on your app.
+```sh
+bunx eas-cli login
+bunx eas-cli build:configure
+$env:EXPO_PUBLIC_API_URL = "https://api.example.com/api/v1"
+bunx eas-cli build --platform android --profile preview
+```
 
-## Running the app
+The build URL printed by EAS can be opened on an Android device to install the APK. EAS will handle Android signing credentials when prompted.
 
-- Install the dependencies:
+For Google Play, use the production profile, which produces an Android App Bundle by default:
 
-  ```sh
-  npm install
-  ```
+```sh
+bunx eas-cli build --platform android --profile production
+```
 
-- Start the development server:
-
-  ```sh
-  npm start
-  ```
-
-- Build and run iOS and Android development builds:
-
-  ```sh
-  npm run ios
-  # or
-  npm run android
-  ```
-
-- In the terminal running the development server, press `i` to open the iOS simulator, `a` to open the Android device or emulator, or `w` to open the web browser.
-
-## Notes
-
-This project uses a [development build](https://docs.expo.dev/develop/development-builds/introduction/) and cannot be run with [Expo Go](https://expo.dev/go). To run the app with Expo Go, edit the `package.json` file, remove the `expo-dev-client` package and `--dev-client` flag from the `start` script.
-
-We highly recommend using the development builds for normal development and testing.
-
-The `ios` and `android` folder are gitignored in the project by default as they are automatically generated during the build process ([Continuous Native Generation](https://docs.expo.dev/workflow/continuous-native-generation/)). This means that you should not edit these folders directly and use [config plugins](https://docs.expo.dev/config-plugins/) instead. However, if you need to edit these folders, you can remove them from the `.gitignore` file so that they are tracked by git.
-
-## Resources
-
-- [React Navigation documentation](https://reactnavigation.org/)
-- [Expo documentation](https://docs.expo.dev/)
-
----
-
-Demo assets are from [lucide.dev](https://lucide.dev/)
+`EXPO_PUBLIC_API_URL` is embedded at build time. Do not use `localhost` in a device or store build unless the API is running on that same device.

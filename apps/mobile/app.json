@@ -1,22 +1,22 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "Nucleus Education",
+    "slug": "nucleus-education",
     "version": "1.0.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "scheme": "mobile",
+    "scheme": "nucleus-education",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.mobile"
+      "bundleIdentifier": "com.nucleus.education"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.mobile"
+      "package": "com.nucleus.education"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -33,6 +33,12 @@
       "expo-sharing",
       "expo-web-browser",
       "expo-video"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "28fa168d-6fd2-4b1c-bf1c-451ccf3f8302"
+      }
+    },
+    "owner": "federicq"
   }
 }
