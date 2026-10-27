@@ -3,6 +3,7 @@ import { DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { Asset } from 'expo-asset';
 import { createURL } from 'expo-linking';
 import * as SplashScreen from 'expo-splash-screen';
+import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 import { Navigation } from './navigation';
 import { AuthProvider, useAuth } from './auth';
@@ -15,7 +16,7 @@ Asset.loadAsync([
   require('./assets/bell.png'),
 ]);
 
-SplashScreen.preventAutoHideAsync();
+void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 const linking = {
   enabled: 'auto' as const,
@@ -30,6 +31,10 @@ function AuthenticatedApp() {
   const colorScheme = useColorScheme();
   const { user, loading } = useAuth();
 
+  useEffect(() => {
+    void SplashScreen.hideAsync().catch(() => undefined);
+  }, []);
+
   if (loading) return <View style={{ alignItems: 'center', flex: 1, justifyContent: 'center' }}><ActivityIndicator color="#2563eb" size="large" /></View>;
   if (!user) return <Login />;
 
@@ -40,7 +45,7 @@ function AuthenticatedApp() {
       theme={theme}
       linking={linking}
       onReady={() => {
-        SplashScreen.hideAsync();
+        void SplashScreen.hideAsync().catch(() => undefined);
       }}
     />
   );

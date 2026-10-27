@@ -26,6 +26,39 @@ import { API_URL } from "../../config";
 
 type Item = Record<string, unknown>;
 
+// ── Friendlier palette ────────────────────────────────────────────────────
+const palette = {
+  primary: "#7c3aed",
+  primarySoft: "#f5f3ff",
+  primaryBorder: "#ddd6fe",
+  bg: "#faf9ff",
+  ink: "#1e1b4b",
+  inkSoft: "#475569",
+  muted: "#94a3b8",
+  border: "#f1f0f9",
+  success: "#059669",
+  successSoft: "#ecfdf5",
+  warn: "#d97706",
+  warnSoft: "#fffbeb",
+  danger: "#e11d48",
+  dangerSoft: "#fff1f2",
+};
+
+// ── Module theme (icon + accent per module) ───────────────────────────────
+const moduleTheme: Record<
+  string,
+  {
+    icon: keyof typeof MaterialCommunityIcons.glyphMap;
+    tint: string;
+    bg: string;
+  }
+> = {
+  Learning: { icon: "book-open-page-variant", tint: "#7c3aed", bg: "#f5f3ff" },
+  Attendance: { icon: "calendar-check", tint: "#059669", bg: "#ecfdf5" },
+  Fees: { icon: "wallet", tint: "#d97706", bg: "#fffbeb" },
+  Results: { icon: "chart-line", tint: "#2563eb", bg: "#eff6ff" },
+};
+
 function useList(path: string) {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,38 +121,21 @@ function ModuleList({
 }) {
   const { items, loading, error } = useList(path);
   const { user } = useAuth();
-  const icon: keyof typeof MaterialCommunityIcons.glyphMap =
-    title === "Learning"
-      ? "book-open-page-variant-outline"
-      : title === "Attendance"
-        ? "calendar-check-outline"
-        : title === "Fees"
-          ? "cash-multiple"
-          : "chart-box-outline";
+  const theme = moduleTheme[title] ?? moduleTheme.Learning;
+
   return (
     <ScrollView
       contentContainerStyle={styles.container}
       showsVerticalScrollIndicator={false}
     >
-      <View
-        style={{
-          alignItems: "center",
-          flexDirection: "row",
-          gap: 12,
-          marginTop: 4,
-        }}
-      >
-        <View
-          style={{
-            alignItems: "center",
-            backgroundColor: "#dbeafe",
-            borderRadius: 16,
-            height: 50,
-            justifyContent: "center",
-            width: 50,
-          }}
-        >
-          <MaterialCommunityIcons name={icon} color="#2563eb" size={24} />
+      {/* Header */}
+      <View style={styles.headerRow}>
+        <View style={[styles.headerIcon, { backgroundColor: theme.bg }]}>
+          <MaterialCommunityIcons
+            name={theme.icon}
+            color={theme.tint}
+            size={26}
+          />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.eyebrow}>{user?.orgName ?? "Nucleus"}</Text>
@@ -127,96 +143,54 @@ function ModuleList({
         </View>
       </View>
       <Text style={styles.subtitle}>{subtitle}</Text>
+
       {loading ? (
-        <ActivityIndicator color="#2563eb" style={styles.loader} />
+        <ActivityIndicator color={palette.primary} style={styles.loader} />
       ) : error ? (
-        <View
-          style={{
-            alignItems: "center",
-            backgroundColor: "#fff",
-            borderColor: "#e7edf5",
-            borderRadius: 20,
-            borderWidth: 1,
-            flexDirection: "row",
-            marginTop: 28,
-            padding: 20,
-          }}
-        >
-          <MaterialCommunityIcons
-            name="cloud-alert-outline"
-            color="#be123c"
-            size={24}
-          />
-          <Text style={styles.error}>{error}</Text>
+        <View style={styles.errorCard}>
+          <View style={styles.errorIcon}>
+            <MaterialCommunityIcons
+              name="cloud-alert-outline"
+              color={palette.danger}
+              size={22}
+            />
+          </View>
+          <Text style={styles.errorText}>{error}</Text>
         </View>
       ) : items.length ? (
         <View style={styles.list}>
           {items.map((item, index) => (
             <View key={String(item.id ?? index)} style={styles.card}>
-              <View
-                style={{
-                  alignItems: "center",
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                }}
-              >
-                <View
-                  style={{
-                    alignItems: "center",
-                    backgroundColor: "#eff6ff",
-                    borderRadius: 10,
-                    height: 34,
-                    justifyContent: "center",
-                    width: 34,
-                  }}
-                >
+              <View style={styles.cardTop}>
+                <View style={[styles.cardIcon, { backgroundColor: theme.bg }]}>
                   <MaterialCommunityIcons
-                    name={icon}
-                    color="#2563eb"
-                    size={17}
+                    name={theme.icon}
+                    color={theme.tint}
+                    size={18}
                   />
                 </View>
-                <Text
-                  style={{ color: "#cbd5e1", fontSize: 12, fontWeight: "800" }}
-                >
+                <Text style={styles.cardIndex}>
                   {String(index + 1).padStart(2, "0")}
                 </Text>
               </View>
-              <Text style={[styles.cardTitle, { marginTop: 15 }]}>
-                {getTitle(item)}
-              </Text>
+              <Text style={styles.cardTitle}>{getTitle(item)}</Text>
               <Text style={styles.cardMeta}>{getMeta(item)}</Text>
               {renderExtra?.(item)}
             </View>
           ))}
         </View>
       ) : (
-        <View
-          style={{
-            alignItems: "center",
-            backgroundColor: "#fff",
-            borderColor: "#e7edf5",
-            borderRadius: 20,
-            borderWidth: 1,
-            marginTop: 28,
-            padding: 25,
-          }}
-        >
-          <MaterialCommunityIcons
-            name="inbox-outline"
-            color="#94a3b8"
-            size={28}
-          />
-          <Text style={styles.empty}>Nothing to show yet.</Text>
-          <Text
-            style={{
-              color: "#94a3b8",
-              fontSize: 12,
-              marginTop: 5,
-              textAlign: "center",
-            }}
-          >
-            New activity will appear here when it is available.
+        <View style={styles.emptyCard}>
+          <View style={styles.emptyIcon}>
+            <MaterialCommunityIcons
+              name="inbox-outline"
+              color={palette.muted}
+              size={26}
+            />
+          </View>
+          <Text style={styles.emptyTitle}>Nothing here yet</Text>
+          <Text style={styles.emptyText}>
+            New activity will appear here when it's available. Check back soon!
           </Text>
         </View>
       )}
@@ -229,7 +203,7 @@ export function Attendance() {
   return (
     <ModuleList
       title="Attendance"
-      subtitle="Stay current with attendance records."
+      subtitle="See how your attendance is tracking this term."
       path={`/attendance${user?.studentId ? `?studentId=${user.studentId}` : ""}`}
       getTitle={(item) =>
         String(item.studentName ?? item.date ?? "Attendance record")
@@ -244,7 +218,7 @@ export function Learning() {
   return (
     <ModuleList
       title="Learning"
-      subtitle="Homework and assignments from your classes."
+      subtitle="Your homework and assignments in one place."
       path="/homework"
       getTitle={(item) => String(item.title ?? "Homework")}
       getMeta={(item) =>
@@ -258,7 +232,7 @@ export function Fees() {
   return (
     <ModuleList
       title="Fees"
-      subtitle="Review invoices and outstanding balances."
+      subtitle="Your invoices and outstanding balances."
       path="/fees/invoices"
       getTitle={(item) =>
         `${String(item.invoiceNumber ?? "Invoice")} · ${String(item.studentName ?? "")}`
@@ -273,7 +247,7 @@ export function Results() {
   return (
     <ModuleList
       title="Results"
-      subtitle="Examinations and published assessment records."
+      subtitle="Your exams and published assessment records."
       path="/exams"
       getTitle={(item) => String(item.name ?? "Examination")}
       getMeta={(item) =>
@@ -300,6 +274,7 @@ function formatDate(value: unknown) {
         year: "numeric",
       });
 }
+
 function AssignmentDetails({ item }: { item: Item }) {
   const description =
     typeof item.description === "string" ? item.description : "";
@@ -322,23 +297,22 @@ function AssignmentDetails({ item }: { item: Item }) {
   return (
     <View>
       {description ? (
-        <Text
-          style={{
-            color: "#475569",
-            fontSize: 13,
-            lineHeight: 20,
-            marginTop: 12,
-          }}
-        >
-          {description}
-        </Text>
+        <View style={styles.descriptionBox}>
+          <Text style={styles.descriptionLabel}>What to do</Text>
+          <Text style={styles.descriptionText}>{description}</Text>
+        </View>
       ) : null}
       {typeof item.id === "string" ? (
         <FileSubmissionForm homeworkId={item.id} />
       ) : null}
-      {urls.map((url, index) => (
-        <Attachment key={`${url}-${index}`} url={url} />
-      ))}
+      {urls.length ? (
+        <View style={{ marginTop: 12 }}>
+          <Text style={styles.attachmentsLabel}>Attachments</Text>
+          {urls.map((url, index) => (
+            <Attachment key={`${url}-${index}`} url={url} />
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -390,6 +364,7 @@ function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
   const [attachment, setAttachment] = useState<SubmissionFile | null>(null);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState<"upload" | "submit" | null>(null);
+
   useEffect(() => {
     if (!user?.studentId) return;
     let active = true;
@@ -411,8 +386,8 @@ function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
                 setContent(submission.content ?? "");
                 setStatus(
                   submission.marks === null
-                    ? "Submitted"
-                    : `Graded: ${submission.marks}`,
+                    ? "✓ Submitted — waiting for grading"
+                    : `★ Graded: ${submission.marks}`,
                 );
                 if (submission.fileUrl)
                   setAttachment({
@@ -429,7 +404,9 @@ function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
       active = false;
     };
   }, [homeworkId, user?.studentId]);
+
   if (!user?.studentId) return null;
+
   async function chooseFile() {
     setStatus("");
     const result = await DocumentPicker.getDocumentAsync({
@@ -439,7 +416,7 @@ function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
     if (result.canceled) return;
     const asset = result.assets[0];
     if (asset.size && asset.size > 15 * 1024 * 1024) {
-      setStatus("Choose a file smaller than 15 MB.");
+      setStatus("Please choose a file smaller than 15 MB.");
       return;
     }
     setBusy("upload");
@@ -447,7 +424,7 @@ function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
       const token = await mobileToken();
       if (!token) throw new Error("Session expired");
       setAttachment(await uploadSubmissionFile(asset, token));
-      setStatus("File attached");
+      setStatus("✓ File attached");
     } catch (error) {
       setStatus(
         error instanceof Error ? error.message : "Unable to upload file",
@@ -466,50 +443,63 @@ function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
         `/homework/${homeworkId}/submissions`,
         { content: content.trim() || null, fileUrl: attachment?.url ?? null },
       );
-      setStatus("Submission saved");
+      setStatus("✓ Submission saved — nice work!");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Unable to submit");
     } finally {
       setBusy(null);
     }
   }
+
   return (
     <View style={submissionStyles.submissionBox}>
       <View style={submissionStyles.submissionHeading}>
-        <View>
-          <Text style={submissionStyles.submissionLabel}>YOUR RESPONSE</Text>
+        <View style={{ flex: 1 }}>
+          <View style={submissionStyles.submissionTitleRow}>
+            <MaterialCommunityIcons
+              name="pencil-outline"
+              color={palette.primary}
+              size={16}
+            />
+            <Text style={submissionStyles.submissionLabel}>Your answer</Text>
+          </View>
           <Text style={submissionStyles.submissionHint}>
-            Add an answer, image, or PDF.
+            Write a note, or attach an image or PDF.
           </Text>
         </View>
-        <MaterialCommunityIcons
-          name="file-upload-outline"
-          color="#2563eb"
-          size={22}
-        />
       </View>
+
       <TextInput
         multiline
         value={content}
         onChangeText={setContent}
-        placeholder="Write your answer or note..."
-        placeholderTextColor="#94a3b8"
+        placeholder="Type your answer here..."
+        placeholderTextColor={palette.muted}
         style={submissionStyles.responseInput}
       />
+
       <Pressable
         disabled={busy !== null}
         onPress={() => void chooseFile()}
-        style={submissionStyles.attachButton}
+        style={({ pressed }) => [
+          submissionStyles.attachButton,
+          pressed && { backgroundColor: palette.primarySoft },
+        ]}
       >
-        <MaterialCommunityIcons name="paperclip" color="#2563eb" size={18} />
+        <MaterialCommunityIcons
+          name="paperclip"
+          color={palette.primary}
+          size={18}
+        />
         <Text style={submissionStyles.attachText}>
           {busy === "upload"
             ? "Uploading..."
             : attachment
               ? "Replace attachment"
-              : "Attach image or PDF"}
+              : "Add image or PDF"}
         </Text>
       </Pressable>
+
       {attachment && (
         <View style={submissionStyles.attachedFile}>
           <MaterialCommunityIcons
@@ -518,147 +508,47 @@ function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
                 ? "image-outline"
                 : "file-pdf-box"
             }
-            color="#2563eb"
+            color={palette.primary}
             size={20}
           />
           <Text numberOfLines={1} style={submissionStyles.attachedName}>
             {attachment.name}
           </Text>
-          <Pressable onPress={() => setAttachment(null)}>
+          <Pressable onPress={() => setAttachment(null)} hitSlop={8}>
             <MaterialCommunityIcons
               name="close-circle-outline"
-              color="#94a3b8"
+              color={palette.muted}
               size={18}
             />
           </Pressable>
         </View>
       )}
+
       <Pressable
         disabled={busy !== null}
         onPress={() => void submit()}
-        style={submissionStyles.submitButton}
+        style={({ pressed }) => [
+          submissionStyles.submitButton,
+          pressed && { opacity: 0.9 },
+        ]}
       >
+        <MaterialCommunityIcons
+          name={busy === "submit" ? "loading" : "send"}
+          color="#fff"
+          size={17}
+        />
         <Text style={submissionStyles.submitText}>
           {busy === "submit" ? "Saving..." : "Submit assignment"}
         </Text>
-        <MaterialCommunityIcons name="arrow-right" color="#fff" size={17} />
       </Pressable>
+
       {status ? (
         <Text style={submissionStyles.submissionStatus}>{status}</Text>
       ) : null}
     </View>
   );
 }
-function SubmissionForm({ homeworkId }: { homeworkId: string }) {
-  const { user } = useAuth();
-  const [content, setContent] = useState("");
-  const [status, setStatus] = useState("");
-  const [saving, setSaving] = useState(false);
-  useEffect(() => {
-    if (!user?.studentId) return;
-    let active = true;
-    void mobileToken().then((token) =>
-      token
-        ? new EduApiClient(API_URL, () => token)
-            .get<{
-              data: Array<{
-                content: string | null;
-                status: string;
-                feedback: string | null;
-                marks: number | null;
-              }>;
-            }>(`/homework/${homeworkId}/submissions`)
-            .then((result) => {
-              const submission = result.data[0];
-              if (active && submission) {
-                setContent(submission.content ?? "");
-                setStatus(
-                  submission.marks === null
-                    ? "Submitted"
-                    : `Graded: ${submission.marks}`,
-                );
-              }
-            })
-            .catch(() => undefined)
-        : undefined,
-    );
-    return () => {
-      active = false;
-    };
-  }, [homeworkId, user?.studentId]);
-  if (!user?.studentId) return null;
-  async function submit() {
-    setSaving(true);
-    setStatus("");
-    try {
-      const token = await mobileToken();
-      if (!token) throw new Error("Session expired");
-      await new EduApiClient(API_URL, () => token).post(
-        `/homework/${homeworkId}/submissions`,
-        { content: content.trim() || null, fileUrl: null },
-      );
-      setStatus("Submission saved");
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Unable to submit");
-    } finally {
-      setSaving(false);
-    }
-  }
-  return (
-    <View
-      style={{
-        backgroundColor: "#f8fafc",
-        borderColor: "#e2e8f0",
-        borderRadius: 14,
-        borderWidth: 1,
-        marginTop: 14,
-        padding: 13,
-      }}
-    >
-      <Text style={{ color: "#334155", fontSize: 12, fontWeight: "800" }}>
-        Your response
-      </Text>
-      <TextInput
-        multiline
-        value={content}
-        onChangeText={setContent}
-        placeholder="Write your answer or note..."
-        placeholderTextColor="#94a3b8"
-        style={{
-          backgroundColor: "#fff",
-          borderColor: "#dbe4ef",
-          borderRadius: 10,
-          borderWidth: 1,
-          color: "#0f172a",
-          minHeight: 76,
-          marginTop: 9,
-          padding: 10,
-          textAlignVertical: "top",
-        }}
-      />
-      <Pressable
-        disabled={saving}
-        onPress={() => void submit()}
-        style={{
-          alignItems: "center",
-          backgroundColor: "#2563eb",
-          borderRadius: 10,
-          marginTop: 9,
-          padding: 11,
-        }}
-      >
-        <Text style={{ color: "#fff", fontSize: 12, fontWeight: "800" }}>
-          {saving ? "Saving..." : "Submit response"}
-        </Text>
-      </Pressable>
-      {status ? (
-        <Text style={{ color: "#64748b", fontSize: 11, marginTop: 7 }}>
-          {status}
-        </Text>
-      ) : null}
-    </View>
-  );
-}
+
 function MarksheetButton({
   examId,
   examName,
@@ -679,7 +569,7 @@ function MarksheetButton({
       }>(`/exams/results?examId=${encodeURIComponent(examId)}`);
       const row = result.data[0];
       if (!row) {
-        setMessage("Marks are not published yet.");
+        setMessage("Marks aren't published yet — check back soon.");
         return;
       }
       const bytes = await createMarksheetPdf(examName, row);
@@ -706,7 +596,7 @@ function MarksheetButton({
           await Sharing.shareAsync(file.uri, { dialogTitle: "Save marksheet" });
         else await WebBrowser.openBrowserAsync(file.uri);
       }
-      setMessage("Marksheet ready.");
+      setMessage("✓ Marksheet ready!");
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Unable to generate marksheet",
@@ -720,9 +610,16 @@ function MarksheetButton({
       <Pressable
         disabled={busy}
         onPress={() => void generate()}
-        style={styles.marksheetButton}
+        style={({ pressed }) => [
+          styles.marksheetButton,
+          pressed && { backgroundColor: palette.primarySoft },
+        ]}
       >
-        <MaterialCommunityIcons name="file-pdf-box" color="#2563eb" size={17} />
+        <MaterialCommunityIcons
+          name="file-pdf-box"
+          color={palette.primary}
+          size={18}
+        />
         <Text style={styles.marksheetText}>
           {busy ? "Generating..." : "Download marksheet"}
         </Text>
@@ -731,6 +628,7 @@ function MarksheetButton({
     </View>
   );
 }
+
 function Attachment({ url }: { url: string | null }) {
   const [busy, setBusy] = useState<"preview" | "download" | null>(null);
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -745,11 +643,8 @@ function Attachment({ url }: { url: string | null }) {
   const isVideo =
     /\.(mp4|webm|mov|m4v)(\?|$)/i.test(sourceUrl) ||
     sourceUrl.includes("/video/upload/");
-  const label = isVideo
-    ? "Video attachment"
-    : isPdf
-      ? "PDF document"
-      : "Attached document";
+  const label = isVideo ? "Video" : isPdf ? "PDF document" : "Document";
+
   async function preview() {
     setBusy("preview");
     setPreviewVisible(true);
@@ -778,22 +673,26 @@ function Attachment({ url }: { url: string | null }) {
       setBusy(null);
     }
   }
+
   if (legacyPdf)
     return (
-      <View style={[styles.fileRow, styles.warningRow]}>
+      <View style={[styles.fileRow, { backgroundColor: palette.warnSoft }]}>
         <MaterialCommunityIcons
           name="alert-circle-outline"
-          color="#b45309"
+          color={palette.warn}
           size={25}
         />
         <View style={styles.fileCopy}>
-          <Text style={styles.warningText}>Document unavailable</Text>
+          <Text style={[styles.attachmentText, { color: palette.warn }]}>
+            Document unavailable
+          </Text>
           <Text style={styles.fileHint}>
             Ask your teacher to re-upload this PDF.
           </Text>
         </View>
       </View>
     );
+
   return (
     <View style={styles.attachment}>
       {isImage ? (
@@ -810,12 +709,12 @@ function Attachment({ url }: { url: string | null }) {
                   ? "file-pdf-box"
                   : "file-document-outline"
             }
-            color="#2563eb"
-            size={25}
+            color={palette.primary}
+            size={26}
           />
           <View style={styles.fileCopy}>
             <Text style={styles.attachmentText}>{label}</Text>
-            <Text style={styles.fileHint}>Preview or save this file</Text>
+            <Text style={styles.fileHint}>Tap to preview or save</Text>
           </View>
         </View>
       )}
@@ -823,11 +722,14 @@ function Attachment({ url }: { url: string | null }) {
         <Pressable
           disabled={busy !== null}
           onPress={() => void preview()}
-          style={styles.fileButton}
+          style={({ pressed }) => [
+            styles.fileButton,
+            pressed && { backgroundColor: palette.primarySoft },
+          ]}
         >
           <MaterialCommunityIcons
             name="eye-outline"
-            color="#2563eb"
+            color={palette.primary}
             size={16}
           />
           <Text style={styles.fileButtonText}>
@@ -837,15 +739,18 @@ function Attachment({ url }: { url: string | null }) {
         <Pressable
           disabled={busy !== null}
           onPress={() => void download()}
-          style={styles.fileButton}
+          style={({ pressed }) => [
+            styles.fileButton,
+            pressed && { backgroundColor: palette.primarySoft },
+          ]}
         >
           <MaterialCommunityIcons
             name="download-outline"
-            color="#2563eb"
+            color={palette.primary}
             size={16}
           />
           <Text style={styles.fileButtonText}>
-            {busy === "download" ? "Saving..." : "Download"}
+            {busy === "download" ? "Saving..." : "Save"}
           </Text>
         </Pressable>
       </View>
@@ -864,81 +769,106 @@ function Attachment({ url }: { url: string | null }) {
 
 const submissionStyles = StyleSheet.create({
   submissionBox: {
-    backgroundColor: "#f8fafc",
-    borderColor: "#dbe4ef",
-    borderRadius: 16,
+    backgroundColor: palette.primarySoft,
+    borderColor: palette.primaryBorder,
+    borderRadius: 18,
     borderWidth: 1,
     marginTop: 15,
-    padding: 13,
+    padding: 14,
   },
   submissionHeading: {
-    alignItems: "center",
+    alignItems: "flex-start",
     flexDirection: "row",
     justifyContent: "space-between",
   },
-  submissionLabel: {
-    color: "#2563eb",
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 1,
+  submissionTitleRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 6,
   },
-  submissionHint: { color: "#64748b", fontSize: 12, marginTop: 3 },
+  submissionLabel: {
+    color: palette.primary,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  submissionHint: {
+    color: palette.inkSoft,
+    fontSize: 12,
+    marginTop: 4,
+    lineHeight: 17,
+  },
   responseInput: {
     backgroundColor: "#fff",
-    borderColor: "#dbe4ef",
-    borderRadius: 11,
+    borderColor: palette.primaryBorder,
+    borderRadius: 12,
     borderWidth: 1,
-    color: "#0f172a",
-    minHeight: 82,
-    marginTop: 11,
-    padding: 11,
+    color: palette.ink,
+    minHeight: 90,
+    marginTop: 12,
+    padding: 12,
     textAlignVertical: "top",
+    fontSize: 14,
   },
   attachButton: {
     alignItems: "center",
     alignSelf: "stretch",
-    borderColor: "#bfdbfe",
-    borderRadius: 10,
-    borderWidth: 1,
+    backgroundColor: "#fff",
+    borderColor: palette.primaryBorder,
+    borderRadius: 12,
+    borderStyle: "dashed",
+    borderWidth: 1.5,
     flexDirection: "row",
     gap: 7,
     justifyContent: "center",
     marginTop: 10,
-    minHeight: 42,
+    minHeight: 46,
     paddingHorizontal: 12,
   },
   attachText: {
-    color: "#2563eb",
+    color: palette.primary,
     flexShrink: 1,
-    fontSize: 12,
-    fontWeight: "800",
+    fontSize: 13,
+    fontWeight: "700",
   },
   attachedFile: {
     alignItems: "center",
-    backgroundColor: "#eff6ff",
-    borderRadius: 10,
+    backgroundColor: "#fff",
+    borderColor: palette.primaryBorder,
+    borderRadius: 12,
+    borderWidth: 1,
     flexDirection: "row",
     gap: 8,
-    marginTop: 9,
-    padding: 10,
+    marginTop: 10,
+    padding: 11,
   },
-  attachedName: { color: "#334155", flex: 1, fontSize: 12, fontWeight: "700" },
+  attachedName: {
+    color: palette.ink,
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "700",
+  },
   submitButton: {
     alignItems: "center",
-    backgroundColor: "#2563eb",
-    borderRadius: 11,
+    backgroundColor: palette.primary,
+    borderRadius: 12,
     flexDirection: "row",
-    gap: 7,
+    gap: 8,
     justifyContent: "center",
-    marginTop: 11,
-    minHeight: 44,
+    marginTop: 12,
+    minHeight: 48,
     paddingHorizontal: 16,
+    shadowColor: palette.primary,
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { height: 4, width: 0 },
+    elevation: 3,
   },
-  submitText: { color: "#fff", fontSize: 13, fontWeight: "800" },
+  submitText: { color: "#fff", fontSize: 14, fontWeight: "800" },
   submissionStatus: {
-    color: "#64748b",
+    color: palette.inkSoft,
     fontSize: 12,
-    marginTop: 9,
+    fontWeight: "600",
+    marginTop: 10,
     textAlign: "center",
   },
 });
@@ -956,6 +886,7 @@ function VideoPreview({ url }: { url: string }) {
     />
   );
 }
+
 function PreviewModal({
   visible,
   url,
@@ -981,12 +912,16 @@ function PreviewModal({
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={styles.previewScreen}>
         <View style={styles.previewHeader}>
-          <View>
-            <Text style={styles.previewEyebrow}>ATTACHMENT PREVIEW</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.previewEyebrow}>ATTACHMENT</Text>
             <Text style={styles.previewTitle}>{label}</Text>
           </View>
-          <Pressable onPress={onClose} style={styles.closeButton}>
-            <MaterialCommunityIcons name="close" color="#334155" size={22} />
+          <Pressable onPress={onClose} style={styles.closeButton} hitSlop={8}>
+            <MaterialCommunityIcons
+              name="close"
+              color={palette.ink}
+              size={22}
+            />
           </Pressable>
         </View>
         {isImage ? (
@@ -1017,7 +952,7 @@ function PreviewModal({
             color="#fff"
             size={18}
           />
-          <Text style={styles.previewDownloadText}>Download file</Text>
+          <Text style={styles.previewDownloadText}>Save file</Text>
         </Pressable>
       </View>
     </Modal>
@@ -1025,73 +960,255 @@ function PreviewModal({
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 24 },
+  container: { backgroundColor: palette.bg, padding: 20, paddingBottom: 40 },
+
+  // Header
+  headerRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 4,
+  },
+  headerIcon: {
+    alignItems: "center",
+    borderRadius: 16,
+    height: 52,
+    justifyContent: "center",
+    width: 52,
+  },
   eyebrow: {
-    color: "#2563eb",
-    fontSize: 12,
-    fontWeight: "700",
+    color: palette.primary,
+    fontSize: 10,
+    fontWeight: "800",
     letterSpacing: 1.2,
   },
-  title: { color: "#0f172a", fontSize: 30, fontWeight: "700", marginTop: 12 },
-  subtitle: { color: "#64748b", fontSize: 15, lineHeight: 22, marginTop: 8 },
+  title: {
+    color: palette.ink,
+    fontSize: 26,
+    fontWeight: "800",
+    letterSpacing: -0.5,
+    marginTop: 2,
+  },
+  subtitle: {
+    color: palette.inkSoft,
+    fontSize: 14,
+    lineHeight: 21,
+    marginTop: 10,
+    fontWeight: "500",
+  },
+
   loader: { marginTop: 48 },
-  error: { color: "#be123c", marginTop: 32 },
-  empty: { color: "#64748b", marginTop: 40, textAlign: "center" },
-  list: { gap: 12, marginTop: 28 },
-  card: {
-    backgroundColor: "#fff",
-    borderColor: "#e2e8f0",
-    borderRadius: 16,
+
+  // Error
+  errorCard: {
+    alignItems: "center",
+    backgroundColor: palette.dangerSoft,
+    borderColor: "#fecdd3",
+    borderRadius: 18,
     borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 24,
     padding: 16,
   },
-  cardTitle: { color: "#0f172a", fontSize: 16, fontWeight: "600" },
-  cardMeta: { color: "#64748b", fontSize: 13, marginTop: 7 },
+  errorIcon: {
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    height: 38,
+    justifyContent: "center",
+    width: 38,
+  },
+  errorText: {
+    color: palette.danger,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "600",
+    lineHeight: 18,
+  },
+
+  // List
+  list: { gap: 12, marginTop: 24 },
+  card: {
+    backgroundColor: "#fff",
+    borderColor: palette.border,
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 16,
+    shadowColor: palette.primary,
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { height: 4, width: 0 },
+    elevation: 1,
+  },
+  cardTop: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  cardIcon: {
+    alignItems: "center",
+    borderRadius: 11,
+    height: 36,
+    justifyContent: "center",
+    width: 36,
+  },
+  cardIndex: {
+    color: "#e2e8f0",
+    fontSize: 13,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  cardTitle: {
+    color: palette.ink,
+    fontSize: 16,
+    fontWeight: "800",
+    letterSpacing: -0.2,
+    marginTop: 14,
+  },
+  cardMeta: {
+    color: palette.inkSoft,
+    fontSize: 13,
+    fontWeight: "500",
+    lineHeight: 19,
+    marginTop: 6,
+  },
+
+  // Description
+  descriptionBox: {
+    backgroundColor: "#fafafa",
+    borderRadius: 12,
+    marginTop: 12,
+    padding: 12,
+  },
+  descriptionLabel: {
+    color: palette.inkSoft,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  descriptionText: {
+    color: palette.ink,
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 6,
+  },
+  attachmentsLabel: {
+    color: palette.inkSoft,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    marginBottom: 8,
+  },
+
+  // Marksheet
   marksheet: { marginTop: 14 },
   marksheetButton: {
     alignItems: "center",
     alignSelf: "flex-start",
-    borderColor: "#bfdbfe",
-    borderRadius: 9,
+    backgroundColor: palette.primarySoft,
+    borderColor: palette.primaryBorder,
+    borderRadius: 12,
     borderWidth: 1,
     flexDirection: "row",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    gap: 7,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
-  marksheetText: { color: "#2563eb", fontSize: 12, fontWeight: "700" },
-  marksheetMessage: { color: "#64748b", fontSize: 11, marginTop: 6 },
-  attachment: { marginTop: 12 },
-  attachmentImage: { borderRadius: 10, height: 140, width: "100%" },
+  marksheetText: {
+    color: palette.primary,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  marksheetMessage: {
+    color: palette.inkSoft,
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 8,
+  },
+
+  // Attachments
+  attachment: { marginTop: 10 },
+  attachmentImage: {
+    borderRadius: 12,
+    height: 150,
+    width: "100%",
+  },
   fileRow: {
     alignItems: "center",
-    backgroundColor: "#eff6ff",
-    borderRadius: 12,
+    backgroundColor: palette.primarySoft,
+    borderColor: palette.primaryBorder,
+    borderRadius: 14,
+    borderWidth: 1,
     flexDirection: "row",
     padding: 12,
   },
-  warningRow: { backgroundColor: "#fffbeb" },
   fileCopy: { flex: 1, marginLeft: 10 },
-  attachmentText: { color: "#2563eb", fontSize: 13, fontWeight: "700" },
-  warningText: { color: "#b45309", fontSize: 13, fontWeight: "700" },
-  fileHint: { color: "#64748b", fontSize: 11, marginTop: 3 },
+  attachmentText: {
+    color: palette.primary,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  fileHint: { color: palette.inkSoft, fontSize: 11, marginTop: 3 },
   fileActions: { flexDirection: "row", gap: 10, marginTop: 10 },
   fileButton: {
     alignItems: "center",
-    borderColor: "#bfdbfe",
-    borderRadius: 9,
+    backgroundColor: "#fff",
+    borderColor: palette.primaryBorder,
+    borderRadius: 10,
     borderWidth: 1,
     flexDirection: "row",
     gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
   },
-  fileButtonText: { color: "#2563eb", fontSize: 12, fontWeight: "700" },
+  fileButtonText: {
+    color: palette.primary,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+
+  // Empty
+  emptyCard: {
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderColor: palette.border,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginTop: 28,
+    padding: 28,
+  },
+  emptyIcon: {
+    alignItems: "center",
+    backgroundColor: "#f8fafc",
+    borderRadius: 16,
+    height: 56,
+    justifyContent: "center",
+    width: 56,
+    marginBottom: 12,
+  },
+  emptyTitle: {
+    color: palette.ink,
+    fontSize: 15,
+    fontWeight: "800",
+    marginTop: 4,
+  },
+  emptyText: {
+    color: palette.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 6,
+    textAlign: "center",
+  },
+
+  // Preview
   previewScreen: { backgroundColor: "#f8fafc", flex: 1 },
   previewHeader: {
     alignItems: "center",
     backgroundColor: "#fff",
-    borderBottomColor: "#e2e8f0",
+    borderBottomColor: palette.border,
     borderBottomWidth: 1,
     flexDirection: "row",
     justifyContent: "space-between",
@@ -1099,15 +1216,15 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   previewEyebrow: {
-    color: "#2563eb",
+    color: palette.primary,
     fontSize: 10,
-    fontWeight: "700",
+    fontWeight: "800",
     letterSpacing: 1,
   },
   previewTitle: {
-    color: "#0f172a",
+    color: palette.ink,
     fontSize: 17,
-    fontWeight: "700",
+    fontWeight: "800",
     marginTop: 4,
   },
   closeButton: {
@@ -1122,13 +1239,18 @@ const styles = StyleSheet.create({
   previewWebView: { backgroundColor: "#fff", flex: 1 },
   previewDownload: {
     alignItems: "center",
-    backgroundColor: "#2563eb",
+    backgroundColor: palette.primary,
     borderRadius: 14,
     flexDirection: "row",
     gap: 8,
     justifyContent: "center",
     margin: 16,
     padding: 15,
+    shadowColor: palette.primary,
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    shadowOffset: { height: 4, width: 0 },
+    elevation: 4,
   },
-  previewDownloadText: { color: "#fff", fontSize: 14, fontWeight: "700" },
+  previewDownloadText: { color: "#fff", fontSize: 14, fontWeight: "800" },
 });
