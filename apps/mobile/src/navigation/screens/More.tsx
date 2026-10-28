@@ -26,12 +26,12 @@ export function More() {
 
   const canViewFees = Boolean(
     user?.isPlatformAdmin ||
-    user?.permissions?.some(
-      (item) => item === "invoice.view" || item === "fee.view",
-    ),
+      user?.permissions?.includes("invoice.view"),
   );
   const canViewResults = Boolean(
-    user?.isPlatformAdmin || user?.permissions?.includes("result.view"),
+    user?.isPlatformAdmin ||
+      (user?.permissions?.includes("result.view") &&
+        user?.permissions?.includes("exam.view")),
   );
   const canRequestLeave = Boolean(
     user?.studentId &&

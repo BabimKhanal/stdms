@@ -10,7 +10,7 @@ import { Home } from "./screens/Home";
 import { NotFound } from "./screens/NotFound";
 import { Profile } from "./screens/Profile";
 import { Settings } from "./screens/Settings";
-import { Attendance, Fees, Learning, Results } from "./screens/Modules";
+import { Attendance, Fees, Learning, Results, Timetable } from "./screens/Modules";
 import { Leave } from "./screens/Leave";
 import { More } from "./screens/More";
 import { Updates } from "./screens/Updates";
@@ -117,7 +117,14 @@ function HomeTabs() {
           )}
         />
       ) : null}
-      {can("result.view") ? (
+      {can("timetable.view") ? (
+        <Tab.Screen
+          name="Timetable"
+          component={Timetable}
+          options={tabOptions("Timetable", "calendar-clock-outline", "calendar-clock")}
+        />
+      ) : null}
+      {can("result.view", "exam.view") ? (
         <Tab.Screen
           name="Results"
           component={Results}
@@ -180,6 +187,10 @@ const RootStack = createNativeStackNavigator({
     Fees: createNativeStackScreen({
       screen: Fees,
       options: { title: "Fees", headerBackTitle: "Back" },
+    }),
+    Timetable: createNativeStackScreen({
+      screen: Timetable,
+      options: { title: "Timetable", headerBackTitle: "Back" },
     }),
     Leave: createNativeStackScreen({
       screen: Leave,

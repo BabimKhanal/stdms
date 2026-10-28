@@ -265,6 +265,35 @@ export async function updateStudent(db: DB, orgId: string, id: string, input: Pa
   return row;
 }
 
+export async function transitionStudentStatus(
+  db: DB,
+  orgId: string,
+  id: string,
+  status: "active" | "graduated" | "suspended" | "withdrawn" | "transferred" | "alumni",
+) {
+  return db.transaction(async (tx) => {
+    const [student] = await tx
+      .update(students)
+      .set({ status })
+      .where(and(eq(students.id, id), eq(students.organisationId, orgId)))
+      .returning();
+    if (!student) throw notFound("Student not found");
+
+    const [currentYear] = await tx
+      .select({ id: academicYears.id })
+      .from(academicYears)
+      .where(and(eq(academicYears.organisationId, orgId), eq(academicYears.isCurrent, true)))
+      .limit(1);
+    if (currentYear) {
+      await tx
+        .update(enrolments)
+        .set({ promotionStatus: status === "active" ? null : status })
+        .where(and(eq(enrolments.organisationId, orgId), eq(enrolments.studentId, id), eq(enrolments.academicYearId, currentYear.id)));
+    }
+    return student;
+  });
+}
+
 export async function updateStudentProfile(
   db: DB,
   orgId: string,

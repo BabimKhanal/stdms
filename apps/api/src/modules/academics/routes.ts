@@ -8,6 +8,7 @@ import {
   subjectInputSchema,
   termInputSchema,
   timetablePeriodInputSchema,
+  timetableSlotInputSchema,
 } from "@edu/shared";
 import type { AppEnv } from "../../lib/types";
 import { ok, okList, parse } from "../../lib/http";
@@ -184,5 +185,33 @@ academicRoutes.put("/periods/:id", requirePermission("academic.edit"), async (c)
 
 academicRoutes.delete("/periods/:id", requirePermission("academic.delete"), async (c) => {
   await svc.deletePeriod(c.get("db"), c.get("orgId")!, c.req.param("id"));
+  return ok(c, { deleted: true });
+});
+
+/* Weekly timetable slots */
+const timetableQuery = z.object({ sectionId: z.uuid().optional(), day: z.enum(["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]).optional() });
+
+academicRoutes.get("/timetable", requirePermission("timetable.view"), async (c) => {
+  const q = parse(timetableQuery, c.req.query());
+  return okList(c, await svc.listSlots(c.get("db"), c.get("orgId")!, c.get("user")!, q.sectionId, q.day), 0, 1, 1000);
+});
+
+academicRoutes.post("/timetable", requirePermission("academic.create"), async (c) => {
+  const input = parse(timetableSlotInputSchema, await c.req.json());
+  const row = await svc.createSlot(c.get("db"), c.get("orgId")!, c.get("user")!, input);
+  await writeAudit(c, { action: "create", entity: "timetable_slot", entityId: row.id, newValue: input });
+  return ok(c, row, 201);
+});
+
+academicRoutes.put("/timetable/:id", requirePermission("academic.edit"), async (c) => {
+  const input = parse(timetableSlotInputSchema.partial(), await c.req.json());
+  const row = await svc.updateSlot(c.get("db"), c.get("orgId")!, c.get("user")!, c.req.param("id"), input);
+  await writeAudit(c, { action: "update", entity: "timetable_slot", entityId: row.id, newValue: input });
+  return ok(c, row);
+});
+
+academicRoutes.delete("/timetable/:id", requirePermission("academic.delete"), async (c) => {
+  await svc.deleteSlot(c.get("db"), c.get("orgId")!, c.get("user")!, c.req.param("id"));
+  await writeAudit(c, { action: "delete", entity: "timetable_slot", entityId: c.req.param("id") });
   return ok(c, { deleted: true });
 });
