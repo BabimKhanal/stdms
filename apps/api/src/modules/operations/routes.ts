@@ -24,9 +24,9 @@ operationRoutes.post("/homework", requirePermission("homework.create"), async (c
 operationRoutes.put("/homework/:id", requirePermission("homework.edit"), async (c) => ok(c, await svc.updateHomework(db(c), org(c), c.req.param("id"), parse(homeworkUpdateSchema, await c.req.json()), c.get("user")!)));
 operationRoutes.delete("/homework/:id", requirePermission("homework.delete"), async (c) => { await svc.deleteHomework(db(c), org(c), c.req.param("id"), c.get("user")!); return ok(c, { deleted: true }); });
 operationRoutes.get("/homework/:id/submissions", requirePermission("homework.view"), async (c) => okList(c, await svc.listSubmissions(db(c), org(c), c.req.param("id"), c.get("user")!), 0, 1, 1000));
-// Students submit their own work, so this endpoint is guarded by "homework.view"
-// plus a student profile check rather than the staff-only "homework.create".
-operationRoutes.post("/homework/:id/submissions", requirePermission("homework.view"), async (c) => {
+// Submission is a learner action, not staff-owned homework creation. The
+// service also verifies that the learner is enrolled in this assignment.
+operationRoutes.post("/homework/:id/submissions", async (c) => {
   const principal = c.get("user")!;
   if (!principal.studentId) throw forbidden("Only students can submit assignments");
   return ok(c, await svc.saveSubmission(db(c), org(c), c.req.param("id"), principal.studentId, parse(homeworkSubmitInputSchema, await c.req.json())), 201);

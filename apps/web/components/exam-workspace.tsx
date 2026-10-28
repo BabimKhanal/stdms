@@ -33,10 +33,9 @@ function GradingScalePanel({ canManage }: { canManage: boolean }) {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
-
   async function load() { try { const result = await api.get<{ data: GradingScale[] }>("/exams/grading-scales"); setScales(result.data); } catch (err) { setError(err instanceof Error ? err.message : "Unable to load grading scales"); } }
   async function makeDefault(id: string) { setSaving(true); setError(""); try { await api.post(`/exams/grading-scales/${id}/default`, {}); await load(); } catch (err) { setError(err instanceof Error ? err.message : "Unable to set the default scale"); } finally { setSaving(false); } }
+  useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
 
   if (!scales.length && !error) return null;
   return <Card><CardHeader><CardTitle>Grading scale</CardTitle><p className="mt-1 text-sm text-slate-500">Grades, GPA and report cards use the default scale.</p></CardHeader><CardContent className="space-y-3">{error && <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}{scales.map((scale) => <div key={scale.id} className="rounded-2xl border border-slate-100 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><p className="font-medium text-slate-900">{scale.name}</p>{scale.isDefault && <Badge>Default</Badge>}</div>{canManage && !scale.isDefault && <Button size="sm" variant="outline" disabled={saving} onClick={() => void makeDefault(scale.id)}>Use as default</Button>}</div><div className="mt-3 flex flex-wrap gap-1.5">{[...scale.bands].sort((a, b) => Number(b.minPercent) - Number(a.minPercent)).map((band) => <span key={band.id} className="rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600">{band.grade} · {Number(band.minPercent)}–{Number(band.maxPercent)}% · GPA {Number(band.gpa).toFixed(2)}</span>)}</div></div>)}</CardContent></Card>;

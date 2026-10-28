@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { feeCategoryInputSchema, feeStructureInputSchema, invoiceInputSchema, paymentInputSchema } from "@edu/shared";
+import { feeCategoryInputSchema, feeStructureInputSchema, generateInvoicesSchema, invoiceInputSchema, paymentInputSchema } from "@edu/shared";
 import type { AppEnv } from "../../lib/types";
 import { ok, okList, parse } from "../../lib/http";
 import { requireAuth, requireOrg, requirePermission } from "../../middleware/guards";
@@ -17,5 +17,7 @@ feeRoutes.delete("/structures/:id", requirePermission("fee.delete"), async (c) =
 feeRoutes.get("/invoices", requirePermission("invoice.view"), async (c) => { const rows = await svc.listInvoices(db(c), org(c), c.get("user")!); return okList(c, rows, rows.length, 1, 1000); });
 feeRoutes.get("/invoices/:id", requirePermission("invoice.view"), async (c) => ok(c, await svc.getInvoice(db(c), org(c), c.req.param("id"), c.get("user")!)));
 feeRoutes.post("/invoices", requirePermission("invoice.create"), async (c) => ok(c, await svc.createInvoice(db(c), org(c), user(c), parse(invoiceInputSchema, await c.req.json())), 201));
+feeRoutes.post("/invoices/generate", requirePermission("invoice.create"), async (c) => ok(c, await svc.generateInvoices(db(c), org(c), user(c), parse(generateInvoicesSchema, await c.req.json())), 201));
+feeRoutes.get("/invoices/:id/receipt", requirePermission("invoice.view"), async (c) => c.html(svc.buildReceiptHtml(await svc.receiptContext(db(c), org(c), c.req.param("id"), c.get("user")!))));
 feeRoutes.post("/payments", requirePermission("payment.create"), async (c) => ok(c, await svc.addPayment(db(c), org(c), user(c), parse(paymentInputSchema, await c.req.json())), 201));
 feeRoutes.get("/summary", requirePermission("fee.view"), async (c) => ok(c, await svc.feeSummary(db(c), org(c), c.get("user")!)));

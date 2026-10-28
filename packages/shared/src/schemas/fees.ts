@@ -105,6 +105,7 @@ export const generateInvoicesSchema = z.object({
   /** Restrict to one section (optional). */
   sectionId: z.uuid().optional(),
 });
+export type GenerateInvoicesInput = z.infer<typeof generateInvoicesSchema>;
 
 export const paymentSchema = z.object({
   id: idSchema,
