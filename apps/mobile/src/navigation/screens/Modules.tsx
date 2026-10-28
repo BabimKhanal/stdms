@@ -60,6 +60,7 @@ const moduleTheme: Record<
   Attendance: { icon: "calendar-check", tint: "#059669", bg: "#ecfdf5" },
   Fees: { icon: "wallet", tint: "#d97706", bg: "#fffbeb" },
   Results: { icon: "chart-line", tint: "#2563eb", bg: "#eff6ff" },
+  Timetable: { icon: "calendar-clock", tint: "#0891b2", bg: "#ecfeff" },
 };
 
 function useList(path: string) {
@@ -288,10 +289,47 @@ export function Fees() {
       }
       renderBadge={invoiceBadge}
       renderSummary={(items) => <FeesSummary items={items} />}
+      renderExtra={(item) => <PayNowButton invoiceId={String(item.id ?? "")} balance={Number(item.balance ?? 0)} />}
       emptyTitle="No invoices yet"
       emptyText="Invoices will appear here once the school issues them."
     />
   );
+}
+
+export function Timetable() {
+  return (
+    <ModuleList
+      title="Timetable"
+      subtitle="Your weekly classes, rooms, and teachers."
+      path="/academics/timetable"
+      getTitle={(item) => `${String(item.subjectName ?? "Class")} · ${capitalize(String(item.day ?? ""))}`}
+      getMeta={(item) => `${String(item.periodName ?? "Period")} · ${String(item.startTime ?? "")} - ${String(item.endTime ?? "")} · ${String(item.room ?? "Room not set")}`}
+      emptyTitle="No timetable published"
+      emptyText="Your weekly classes will appear here once the school publishes the timetable."
+    />
+  );
+}
+
+function PayNowButton({ invoiceId, balance }: { invoiceId: string; balance: number }) {
+  const { user } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  if (!invoiceId || balance <= 0 || !user?.permissions?.includes("payment.create")) return null;
+  async function startPayment() {
+    setBusy(true);
+    setMessage("");
+    try {
+      const token = await mobileToken();
+      if (!token) throw new Error("Session expired. Please sign in again.");
+      const result = await new EduApiClient(API_URL, () => token).post<{ checkoutUrl: string }>("/fees/payments/esewa", { invoiceId });
+      await WebBrowser.openBrowserAsync(result.checkoutUrl);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to start payment");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return <View style={styles.payNow}><Pressable disabled={busy} onPress={() => void startPayment()} style={styles.payNowButton}><MaterialCommunityIcons name="credit-card-outline" color="#fff" size={16} /><Text style={styles.payNowText}>{busy ? "Opening..." : "Pay with eSewa"}</Text></Pressable>{message ? <Text style={styles.payNowMessage}>{message}</Text> : null}</View>;
 }
 export function Results() {
   return (

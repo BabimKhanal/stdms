@@ -169,7 +169,7 @@ export function Home() {
       bg: "#ecfdf5",
       onPress: () => navigation.navigate("Attendance"),
     },
-    can("result.view") && {
+    can("result.view", "exam.view") && {
       label: "Results",
       icon: "chart-line" as IconName,
       color: "#2563eb",

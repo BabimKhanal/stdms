@@ -16,6 +16,8 @@ export function PaymentSettings() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ label: "Bank transfer", method: "bank", bankName: "", accountName: "", accountNumber: "", branch: "", qrImageUrl: "", instructions: "" });
   async function load() { try { const result = await api.get<{ data: Method[] }>("/fees/payment-methods"); setMethods(result.data); } catch (err) { setError(err instanceof Error ? err.message : "Unable to load payment methods"); } }
+  // Load configured methods once when the settings screen opens.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   async function save(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); setSaving(true); setError(""); try { await api.post("/fees/payment-methods", { ...form, enabled: true, qrImageUrl: form.qrImageUrl || null, instructions: form.instructions || null }); setForm({ ...form, bankName: "", accountName: "", accountNumber: "", branch: "", qrImageUrl: "", instructions: "" }); await load(); } catch (err) { setError(err instanceof Error ? err.message : "Unable to save payment method"); } finally { setSaving(false); } }
   async function toggle(method: Method) { try { await api.put(`/fees/payment-methods/${method.id}`, { enabled: !method.enabled }); await load(); } catch (err) { setError(err instanceof Error ? err.message : "Unable to update payment method"); } }

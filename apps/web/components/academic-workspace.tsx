@@ -40,7 +40,73 @@ export function ClassSubjectAssignmentPanel() {
   return <Card className="border-blue-200"><CardHeader><CardTitle>Class-subject teachers</CardTitle><p className="text-sm text-slate-500">A teacher can own any number of class and subject pairs.</p></CardHeader><CardContent className="space-y-4">{error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}<form onSubmit={create} className="grid gap-3 rounded-2xl bg-slate-50 p-4 md:grid-cols-4"><select name="classId" required className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">Select class</option>{classes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><select name="subjectId" required className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">Select subject</option>{subjects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><select name="teacherId" className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">Unassigned</option>{teachers.map((teacher) => <option key={teacher.employeeId} value={teacher.employeeId}>{teacher.name}</option>)}</select><Button type="submit"><Plus size={15} />Assign</Button></form><div className="divide-y divide-slate-100">{rows.map((row) => <div key={row.id} className="grid gap-3 py-3 md:grid-cols-[1fr_1fr_1fr_auto] md:items-center"><div className="font-medium">{row.className}</div><div className="text-sm text-slate-600">{row.subjectName}</div><select value={row.teacherId ?? ""} onChange={(event) => void reassign(row.id, event.target.value)} className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">Unassigned</option>{teachers.map((teacher) => <option key={teacher.employeeId} value={teacher.employeeId}>{teacher.name}</option>)}</select><Button type="button" size="sm" variant="danger" onClick={() => void remove(row.id)}>Delete</Button></div>)}</div></CardContent></Card>;
 }
 
-export function AcademicWorkspace() { return <div className="space-y-6"><TeacherAssignmentPanel /><ClassSubjectAssignmentPanel /><AcademicWorkspaceContent /></div>; }
+export function AcademicWorkspace() { return <div className="space-y-6"><TeacherAssignmentPanel /><ClassSubjectAssignmentPanel /><TimetablePanel /><AcademicWorkspaceContent /></div>; }
+
+type TimetableRow = { id: string; sectionId: string; sectionName: string; className: string; day: string; periodId: string; periodName: string; startTime: string; endTime: string; subjectId: string; subjectName: string; teacherId?: string | null; teacherName?: string | null; room?: string | null };
+
+function TimetablePanel() {
+  const api = new EduApiClient(undefined, () => localStorage.getItem("edu_access_token"));
+  const [rows, setRows] = useState<TimetableRow[]>([]);
+  const [sections, setSections] = useState<Item[]>([]);
+  const [subjects, setSubjects] = useState<Item[]>([]);
+  const [teachers, setTeachers] = useState<Array<{ employeeId: string; name: string }>>([]);
+  const [periods, setPeriods] = useState<Array<{ id: string; name: string; startTime: string; endTime: string }>>([]);
+  const [filterSection, setFilterSection] = useState("");
+  const [filterDay, setFilterDay] = useState("");
+  const [error, setError] = useState("");
+  const days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+
+  async function load() {
+    try {
+      const query = new URLSearchParams();
+      if (filterSection) query.set("sectionId", filterSection);
+      if (filterDay) query.set("day", filterDay);
+      const [slotResult, sectionResult, subjectResult, periodResult, teacherResult] = await Promise.all([
+        api.get<{ data: TimetableRow[] }>(`/academics/timetable?${query}`),
+        api.get<{ data: Item[] }>("/academics/sections"),
+        api.get<{ data: Item[] }>("/academics/subjects"),
+        api.get<{ data: typeof periods }>("/academics/periods"),
+        api.get<{ data: typeof teachers }>("/users/teachers"),
+      ]);
+      setRows(slotResult.data);
+      setSections(sectionResult.data);
+      setSubjects(subjectResult.data);
+      setPeriods(periodResult.data);
+      setTeachers(teacherResult.data);
+      setError("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load timetable");
+    }
+  }
+
+  useEffect(() => { void load(); }, [filterSection, filterDay]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function create(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    try {
+      await api.post("/academics/timetable", {
+        sectionId: form.get("sectionId"), day: form.get("day"), periodId: form.get("periodId"), subjectId: form.get("subjectId"),
+        teacherId: form.get("teacherId") || null, room: form.get("room") || null,
+      });
+      event.currentTarget.reset();
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to save timetable slot");
+    }
+  }
+
+  async function remove(id: string) {
+    try { await api.delete(`/academics/timetable/${id}`); await load(); }
+    catch (err) { setError(err instanceof Error ? err.message : "Unable to delete timetable slot"); }
+  }
+
+  function exportRecords() {
+    downloadCsv("timetable.csv", ["Class", "Section", "Day", "Period", "Subject", "Teacher", "Room"], rows.map((row) => [row.className, row.sectionName, row.day, `${row.periodName} (${row.startTime}-${row.endTime})`, row.subjectName, row.teacherName ?? "Unassigned", row.room ?? ""]));
+  }
+
+  return <Card className="border-blue-200"><CardHeader><div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle>Weekly timetable</CardTitle><p className="mt-1 text-sm text-slate-500">Schedule classes while preventing section, teacher, and room conflicts.</p></div><Button type="button" variant="outline" onClick={exportRecords} disabled={!rows.length}><Download size={15} />Export CSV</Button></div></CardHeader><CardContent className="space-y-4">{error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}<form onSubmit={create} className="grid gap-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-2 lg:grid-cols-7"><select name="sectionId" required className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">Section</option>{sections.map((item) => <option key={item.id} value={item.id}>{item.className} · {item.name}</option>)}</select><select name="day" required className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">Day</option>{days.map((day) => <option key={day} value={day}>{day[0].toUpperCase() + day.slice(1)}</option>)}</select><select name="periodId" required className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">Period</option>{periods.map((period) => <option key={period.id} value={period.id}>{period.name} · {period.startTime}</option>)}</select><select name="subjectId" required className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">Subject</option>{subjects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><select name="teacherId" className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">Teacher (optional)</option>{teachers.map((teacher) => <option key={teacher.employeeId} value={teacher.employeeId}>{teacher.name}</option>)}</select><Input name="room" placeholder="Room (optional)" /><Button type="submit"><Plus size={15} />Add slot</Button></form><div className="flex flex-wrap gap-3"><select value={filterSection} onChange={(event) => setFilterSection(event.target.value)} className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">All sections</option>{sections.map((item) => <option key={item.id} value={item.id}>{item.className} · {item.name}</option>)}</select><select value={filterDay} onChange={(event) => setFilterDay(event.target.value)} className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">All days</option>{days.map((day) => <option key={day} value={day}>{day[0].toUpperCase() + day.slice(1)}</option>)}</select></div>{rows.length === 0 ? <p className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">No timetable slots match the selected filters.</p> : <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead><tr className="border-b text-xs uppercase tracking-wide text-slate-500"><th className="px-3 py-3">Class / section</th><th className="px-3 py-3">Day</th><th className="px-3 py-3">Period</th><th className="px-3 py-3">Subject</th><th className="px-3 py-3">Teacher</th><th className="px-3 py-3">Room</th><th /></tr></thead><tbody>{rows.map((row) => <tr key={row.id} className="border-b last:border-0"><td className="px-3 py-3 font-medium">{row.className} · {row.sectionName}</td><td className="px-3 py-3 capitalize">{row.day}</td><td className="px-3 py-3">{row.periodName}<br /><span className="text-xs text-slate-500">{row.startTime} - {row.endTime}</span></td><td className="px-3 py-3">{row.subjectName}</td><td className="px-3 py-3">{row.teacherName ?? "Unassigned"}</td><td className="px-3 py-3">{row.room ?? "-"}</td><td className="px-3 py-3 text-right"><Button type="button" size="sm" variant="danger" onClick={() => void remove(row.id)}>Delete</Button></td></tr>)}</tbody></table></div>}</CardContent></Card>;
+}
 
 function AcademicWorkspaceContent() {
   const api = new EduApiClient(undefined, () => localStorage.getItem("edu_access_token"));

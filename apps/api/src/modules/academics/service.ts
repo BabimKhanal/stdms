@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, or, sql } from "drizzle-orm";
 import type { DB } from "../../lib/types";
 import {
   academicYears,
@@ -10,6 +10,7 @@ import {
   subjects,
   terms,
   timetablePeriods,
+  timetableSlots,
 } from "../../db/schema";
 import type {
   AcademicYearInput,
@@ -19,9 +20,10 @@ import type {
   SubjectInput,
   TermInput,
   TimetablePeriodInput,
+  TimetableSlotInput,
 } from "@edu/shared";
 import { conflict, notFound } from "../../lib/errors";
-import { assertTeacherAccount } from "../../lib/teacher-scope";
+import { assertAssigned, assertClassSubjectAssigned, assertTeacherAccount, learnerStudentIds } from "../../lib/teacher-scope";
 import type { AuthUser } from "../../lib/context";
 import { teacherScope } from "../../lib/teacher-scope";
 
@@ -338,6 +340,109 @@ export async function deletePeriod(db: DB, orgId: string, id: string) {
     .where(and(eq(timetablePeriods.id, id), eq(timetablePeriods.organisationId, orgId)))
     .returning();
   if (!rows.length) throw notFound("Period not found");
+}
+
+/* ------------------------------ Timetable slots ------------------------------ */
+
+export async function listSlots(db: DB, orgId: string, principal: AuthUser, sectionId?: string, day?: TimetableSlotInput["day"]) {
+  const conditions = [eq(timetableSlots.organisationId, orgId)];
+  if (sectionId) conditions.push(eq(timetableSlots.sectionId, sectionId));
+  if (day) conditions.push(eq(timetableSlots.day, day));
+  const scope = teacherScope(principal, sql`${sections.classId}`, sql`${timetableSlots.sectionId}`, sql`${timetableSlots.subjectId}`);
+  if (scope) conditions.push(scope as never);
+  const learnerIds = await learnerStudentIds(db, orgId, principal);
+  if (learnerIds) {
+    if (!learnerIds.length) return [];
+    conditions.push(sql`${timetableSlots.sectionId} in (select e.section_id from enrolments e where e.organisation_id = ${orgId} and e.student_id in (${sql.join(learnerIds.map((id) => sql`${id}`), sql`, `)}))`);
+  }
+  return db
+    .select({
+      id: timetableSlots.id,
+      sectionId: timetableSlots.sectionId,
+      day: timetableSlots.day,
+      periodId: timetableSlots.periodId,
+      subjectId: timetableSlots.subjectId,
+      teacherId: timetableSlots.teacherId,
+      room: timetableSlots.room,
+      subjectName: subjects.name,
+      teacherName: employees.fullName,
+      periodName: timetablePeriods.name,
+      startTime: timetablePeriods.startTime,
+      endTime: timetablePeriods.endTime,
+      sectionName: sections.name,
+      className: classes.name,
+    })
+    .from(timetableSlots)
+    .innerJoin(sections, eq(timetableSlots.sectionId, sections.id))
+    .innerJoin(classes, eq(sections.classId, classes.id))
+    .innerJoin(subjects, eq(timetableSlots.subjectId, subjects.id))
+    .innerJoin(timetablePeriods, eq(timetableSlots.periodId, timetablePeriods.id))
+    .leftJoin(employees, eq(timetableSlots.teacherId, employees.id))
+    .where(and(...conditions))
+    .orderBy(asc(timetableSlots.day), asc(timetablePeriods.orderIndex), asc(classes.name), asc(sections.name));
+}
+
+async function assertSlotReferences(db: DB, orgId: string, input: TimetableSlotInput) {
+  const [section] = await db.select({ classId: sections.classId }).from(sections).where(and(eq(sections.id, input.sectionId), eq(sections.organisationId, orgId))).limit(1);
+  if (!section) throw notFound("Section not found");
+  const [period] = await db.select({ id: timetablePeriods.id }).from(timetablePeriods).where(and(eq(timetablePeriods.id, input.periodId), eq(timetablePeriods.organisationId, orgId))).limit(1);
+  if (!period) throw notFound("Timetable period not found");
+  const [allocation] = await db.select({ id: classSubjects.id }).from(classSubjects).where(and(eq(classSubjects.organisationId, orgId), eq(classSubjects.classId, section.classId), eq(classSubjects.subjectId, input.subjectId))).limit(1);
+  if (!allocation) throw conflict("Subject is not assigned to this class");
+  await assertTeacherAccount(db, orgId, input.teacherId);
+  return section.classId;
+}
+
+async function assertSlotConflicts(db: DB, orgId: string, input: TimetableSlotInput, id?: string) {
+  const sameSlot = [
+    eq(timetableSlots.organisationId, orgId),
+    eq(timetableSlots.sectionId, input.sectionId),
+    eq(timetableSlots.day, input.day),
+    eq(timetableSlots.periodId, input.periodId),
+  ];
+  const conflictRows = await db.select({ id: timetableSlots.id, sectionId: timetableSlots.sectionId, teacherId: timetableSlots.teacherId, room: timetableSlots.room }).from(timetableSlots).where(and(...sameSlot, id ? sql`${timetableSlots.id} <> ${id}` : undefined)).limit(1);
+  if (conflictRows.length) throw conflict("This section already has a timetable entry in that period");
+
+  const resources = [];
+  if (input.teacherId) resources.push(eq(timetableSlots.teacherId, input.teacherId));
+  if (input.room) resources.push(eq(timetableSlots.room, input.room));
+  if (!resources.length) return;
+  const resourceConflict = await db.select({ id: timetableSlots.id }).from(timetableSlots).where(and(
+    eq(timetableSlots.organisationId, orgId),
+    eq(timetableSlots.day, input.day),
+    eq(timetableSlots.periodId, input.periodId),
+    or(...resources),
+    id ? sql`${timetableSlots.id} <> ${id}` : undefined,
+  )).limit(1);
+  if (resourceConflict.length) throw conflict(input.teacherId ? "Teacher or room is already booked in that period" : "Room is already booked in that period");
+}
+
+export async function createSlot(db: DB, orgId: string, principal: AuthUser, input: TimetableSlotInput) {
+  const classId = await assertSlotReferences(db, orgId, input);
+  await assertAssigned(db, principal, orgId, classId, input.sectionId);
+  await assertClassSubjectAssigned(db, principal, orgId, classId, input.subjectId);
+  await assertSlotConflicts(db, orgId, input);
+  const [row] = await db.insert(timetableSlots).values({ organisationId: orgId, ...input }).returning();
+  return row;
+}
+
+export async function updateSlot(db: DB, orgId: string, principal: AuthUser, id: string, input: Partial<TimetableSlotInput>) {
+  const [existing] = await db.select().from(timetableSlots).where(and(eq(timetableSlots.id, id), eq(timetableSlots.organisationId, orgId))).limit(1);
+  if (!existing) throw notFound("Timetable slot not found");
+  const next = { ...existing, ...input } as TimetableSlotInput;
+  const classId = await assertSlotReferences(db, orgId, next);
+  await assertAssigned(db, principal, orgId, classId, next.sectionId);
+  await assertClassSubjectAssigned(db, principal, orgId, classId, next.subjectId);
+  await assertSlotConflicts(db, orgId, next, id);
+  const [row] = await db.update(timetableSlots).set(input).where(and(eq(timetableSlots.id, id), eq(timetableSlots.organisationId, orgId))).returning();
+  return row;
+}
+
+export async function deleteSlot(db: DB, orgId: string, principal: AuthUser, id: string) {
+  const [existing] = await db.select().from(timetableSlots).where(and(eq(timetableSlots.id, id), eq(timetableSlots.organisationId, orgId))).limit(1);
+  if (!existing) throw notFound("Timetable slot not found");
+  await assertAssigned(db, principal, orgId, existing.sectionId);
+  await db.delete(timetableSlots).where(and(eq(timetableSlots.id, id), eq(timetableSlots.organisationId, orgId)));
 }
 
 /** Helper reused by several modules: current academic year of the tenant. */

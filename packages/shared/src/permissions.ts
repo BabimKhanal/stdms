@@ -139,7 +139,7 @@ export const DEFAULT_ROLES: Record<string, { name: string; description: string; 
       ...perms("guardian", ["view"]),
       ...perms("fee", FULL),
       ...perms("invoice", FULL),
-       ...perms("payment", FULL),
+      ...perms("payment", FULL),
       ...perms("report", ["view", "export"]),
       ...perms("audit", ["view"]),
     ],
@@ -173,6 +173,7 @@ export const DEFAULT_ROLES: Record<string, { name: string; description: string; 
       ...perms("result", ["view"]),
       ...perms("fee", ["view"]),
       ...perms("invoice", ["view"]),
+      ...perms("payment", ["view", "create"]),
     ],
   },
   parent: {
