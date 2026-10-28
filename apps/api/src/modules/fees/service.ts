@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { DB } from "../../lib/types";
-import { feeCategories, feeStructures, feeStructureItems, invoices, invoiceItems, payments, students, classes, enrolments, sections, organisations } from "../../db/schema";
-import type { FeeStructureInput, PaymentInput, GenerateInvoicesInput } from "@edu/shared";
+import { feeCategories, feeStructures, feeStructureItems, invoices, invoiceItems, payments, paymentMethods, paymentSubmissions, students, classes, enrolments, sections, organisations } from "../../db/schema";
+import type { FeeStructureInput, PaymentInput, GenerateInvoicesInput, ManualPaymentSubmissionInput } from "@edu/shared";
 import { z } from "zod";
 import { feeCategoryInputSchema, invoiceInputSchema } from "@edu/shared";
 type FeeCategoryInput = z.infer<typeof feeCategoryInputSchema>;
@@ -9,6 +9,8 @@ type InvoiceInput = z.infer<typeof invoiceInputSchema>;
 import { conflict, notFound } from "../../lib/errors";
 import type { AuthUser } from "../../lib/context";
 import { learnerStudentIds } from "../../lib/teacher-scope";
+import { deletePaymentIntent, getPaymentIntent, setPaymentIntent } from "../../lib/redis";
+import { createEsewaRequest, env, newTransactionUuid, verifyEsewa } from "./esewa";
 const tenant = (table: { organisationId: any }, orgId: string) => eq(table.organisationId, orgId);
 
 export async function listCategories(db: DB, orgId: string) { return db.select().from(feeCategories).where(tenant(feeCategories, orgId)).orderBy(asc(feeCategories.name)); }
@@ -88,4 +90,78 @@ export function buildReceiptHtml(context: Awaited<ReturnType<typeof receiptConte
   return `<!doctype html><html><head><meta charset="utf-8"><title>Receipt ${escapeHtml(invoice.invoiceNumber)}</title><style>body{font:14px Arial,sans-serif;color:#172033;margin:40px auto;max-width:720px}header{border-bottom:2px solid #2563eb;padding-bottom:18px}h1{margin:0 0 6px;font-size:24px}h2{font-size:16px;margin:28px 0 8px}.meta{color:#64748b;line-height:1.6}table{border-collapse:collapse;width:100%}td{border-bottom:1px solid #e2e8f0;padding:10px 0}.amount{text-align:right;font-weight:600}.total{font-size:18px;font-weight:700}.actions{margin-top:30px}@media print{.actions{display:none}body{margin:0}}</style></head><body><header><h1>${escapeHtml(organisation?.name ?? "Institution")}</h1><div class="meta">${escapeHtml(organisation?.address)} · ${escapeHtml(organisation?.phone)} · ${escapeHtml(organisation?.email)}</div></header><h2>Payment Receipt</h2><div class="meta">Receipt for invoice <strong>${escapeHtml(invoice.invoiceNumber)}</strong><br>Student: ${escapeHtml(student?.fullName)} (${escapeHtml(student?.studentId)}) · ${escapeHtml(student?.className)}<br>Issued: ${escapeHtml(invoice.issueDate)} · Due: ${escapeHtml(invoice.dueDate)}</div><h2>Charges</h2><table>${rows}<tr><td>Discount</td><td class="amount">- Rs ${Number(invoice.discount).toLocaleString()}</td></tr><tr><td>Fine</td><td class="amount">Rs ${Number(invoice.fine).toLocaleString()}</td></tr><tr class="total"><td>Total</td><td class="amount">Rs ${Number(invoice.total).toLocaleString()}</td></tr></table><h2>Payments</h2><table>${paymentsHtml || "<tr><td>No payments recorded</td><td></td></tr>"}<tr class="total"><td>Balance</td><td class="amount">Rs ${Number(invoice.balance).toLocaleString()}</td></tr></table><div class="actions"><button onclick="window.print()">Print receipt</button></div></body></html>`;
 }
 export async function addPayment(db: DB, orgId: string, userId: string, input: PaymentInput) { return db.transaction(async (tx) => { const [invoice] = await tx.select().from(invoices).where(and(eq(invoices.id, input.invoiceId), tenant(invoices, orgId))); if (!invoice) throw notFound("Invoice not found"); const [payment] = await tx.insert(payments).values({ ...input, organisationId: orgId, receivedBy: userId, amount: String(input.amount), paidAt: input.paidAt ? new Date(input.paidAt) : undefined }).returning(); const paid = Number(invoice.paid) + input.amount; await tx.update(invoices).set({ paid: String(paid), status: paid >= Number(invoice.total) ? "paid" : "partial" }).where(and(eq(invoices.id, input.invoiceId), tenant(invoices, orgId))); return payment; }); }
+
+export async function listPaymentMethods(db: DB, orgId: string) { return db.select().from(paymentMethods).where(tenant(paymentMethods, orgId)).orderBy(asc(paymentMethods.sortOrder), asc(paymentMethods.createdAt)); }
+export async function createPaymentMethod(db: DB, orgId: string, input: any) { const [row] = await db.insert(paymentMethods).values({ ...input, organisationId: orgId, enabled: input.enabled ? 1 : 0 }).returning(); return row; }
+export async function updatePaymentMethod(db: DB, orgId: string, id: string, input: any) { const [row] = await db.update(paymentMethods).set({ ...input, enabled: input.enabled === undefined ? undefined : input.enabled ? 1 : 0 }).where(and(eq(paymentMethods.id, id), tenant(paymentMethods, orgId))).returning(); if (!row) throw notFound("Payment method not found"); return row; }
+export async function deletePaymentMethod(db: DB, orgId: string, id: string) { const rows = await db.delete(paymentMethods).where(and(eq(paymentMethods.id, id), tenant(paymentMethods, orgId))).returning({ id: paymentMethods.id }); if (!rows.length) throw notFound("Payment method not found"); }
+
+export async function submitManualPayment(db: DB, orgId: string, principal: AuthUser, input: ManualPaymentSubmissionInput) {
+  const invoice = await getInvoice(db, orgId, input.invoiceId, principal);
+  if (input.amount > Number(invoice.balance)) throw conflict("Payment exceeds the invoice balance");
+  const [method] = await db.select().from(paymentMethods).where(and(eq(paymentMethods.id, input.paymentMethodId), tenant(paymentMethods, orgId), eq(paymentMethods.enabled, 1))).limit(1);
+  if (!method || method.method === "esewa") throw conflict("Payment method is unavailable for manual submissions");
+  const [submission] = await db.insert(paymentSubmissions).values({ ...input, organisationId: orgId, amount: String(input.amount), submittedBy: principal.id }).returning();
+  return submission;
+}
+
+export async function listPaymentSubmissions(db: DB, orgId: string, principal?: AuthUser) {
+  const conditions = [tenant(paymentSubmissions, orgId)];
+  if (principal) {
+    const learnerIds = await learnerStudentIds(db, orgId, principal);
+    if (learnerIds && !learnerIds.length) return [];
+    if (learnerIds) conditions.push(inArray(invoices.studentId, learnerIds));
+  }
+  return db.select({ submission: paymentSubmissions, invoiceNumber: invoices.invoiceNumber, studentName: sql<string>`concat(${students.firstName}, ' ', ${students.lastName})`, methodLabel: paymentMethods.label }).from(paymentSubmissions).innerJoin(invoices, and(eq(paymentSubmissions.invoiceId, invoices.id), tenant(invoices, orgId))).innerJoin(students, eq(invoices.studentId, students.id)).innerJoin(paymentMethods, and(eq(paymentSubmissions.paymentMethodId, paymentMethods.id), tenant(paymentMethods, orgId))).where(and(...conditions)).orderBy(desc(paymentSubmissions.createdAt));
+}
+
+export async function reviewPaymentSubmission(db: DB, orgId: string, reviewerId: string, id: string, input: { status: "approved" | "rejected"; reviewNote?: string | null }) {
+  return db.transaction(async (tx) => {
+    const [submission] = await tx.select().from(paymentSubmissions).where(and(eq(paymentSubmissions.id, id), tenant(paymentSubmissions, orgId))).limit(1);
+    if (!submission) throw notFound("Payment submission not found");
+    if (submission.status !== "pending") throw conflict("Payment submission has already been reviewed");
+    if (input.status === "rejected") {
+      const [updated] = await tx.update(paymentSubmissions).set({ status: "rejected", reviewedBy: reviewerId, reviewedAt: new Date(), reviewNote: input.reviewNote ?? null }).where(and(eq(paymentSubmissions.id, id), tenant(paymentSubmissions, orgId))).returning();
+      return updated;
+    }
+    const [invoice] = await tx.select().from(invoices).where(and(eq(invoices.id, submission.invoiceId), tenant(invoices, orgId))).limit(1);
+    const [method] = await tx.select().from(paymentMethods).where(and(eq(paymentMethods.id, submission.paymentMethodId), tenant(paymentMethods, orgId))).limit(1);
+    if (!invoice || !method) throw notFound("Invoice or payment method not found");
+    if (Number(submission.amount) > Number(invoice.total) - Number(invoice.paid)) throw conflict("Payment exceeds the current invoice balance");
+    await tx.insert(payments).values({ organisationId: orgId, invoiceId: invoice.id, amount: submission.amount, method: method.method, reference: submission.reference, notes: submission.reviewNote, receivedBy: reviewerId, verifiedAt: new Date() });
+    const paid = Number(invoice.paid) + Number(submission.amount);
+    await tx.update(invoices).set({ paid: String(paid), status: paid >= Number(invoice.total) ? "paid" : "partial" }).where(and(eq(invoices.id, invoice.id), tenant(invoices, orgId)));
+    const [updated] = await tx.update(paymentSubmissions).set({ status: "approved", reviewedBy: reviewerId, reviewedAt: new Date(), reviewNote: input.reviewNote ?? null }).where(and(eq(paymentSubmissions.id, id), tenant(paymentSubmissions, orgId))).returning();
+    return updated;
+  });
+}
+
+export async function initiateEsewa(db: DB, orgId: string, principal: AuthUser, invoiceId: string) {
+  if (!env.ESEWA_ENABLED) throw conflict("Online payments are not enabled for this institution");
+  const invoice = await getInvoice(db, orgId, invoiceId, principal);
+  const amount = Number(invoice.balance);
+  if (amount <= 0) throw conflict("Invoice is already paid");
+  const transactionUuid = newTransactionUuid();
+  await setPaymentIntent(transactionUuid, JSON.stringify({ orgId, invoiceId, userId: principal.id, amount }));
+  return { provider: "esewa", action: env.ESEWA_FORM_URL, checkoutUrl: `${env.PAYMENT_CALLBACK_URL}/checkout/${encodeURIComponent(transactionUuid)}` };
+}
+
+export async function completeEsewa(db: DB, orgId: string, transactionUuid: string) {
+  const raw = await getPaymentIntent(transactionUuid);
+  if (!raw) throw notFound("Payment session expired");
+  const intent = JSON.parse(raw) as { orgId: string; invoiceId: string; userId: string; amount: number };
+  if (!(await verifyEsewa({ transactionUuid, totalAmount: intent.amount }))) throw conflict("Payment could not be verified");
+  const result = await db.transaction(async (tx) => {
+    const [invoice] = await tx.select().from(invoices).where(and(eq(invoices.id, intent.invoiceId), tenant(invoices, orgId)));
+    if (!invoice) throw notFound("Invoice not found");
+    const [existing] = await tx.select({ id: payments.id }).from(payments).where(and(eq(payments.gatewayRef, transactionUuid), tenant(payments, orgId))).limit(1);
+    if (existing) return { invoiceId: invoice.id, duplicate: true };
+    const paid = Number(invoice.paid) + intent.amount;
+    await tx.insert(payments).values({ organisationId: orgId, invoiceId: invoice.id, amount: String(intent.amount), method: "esewa", gatewayRef: transactionUuid, reference: transactionUuid, verifiedAt: new Date(), receivedBy: intent.userId });
+    await tx.update(invoices).set({ paid: String(paid), status: paid >= Number(invoice.total) ? "paid" : "partial" }).where(and(eq(invoices.id, invoice.id), tenant(invoices, orgId)));
+    return { invoiceId: invoice.id, duplicate: false };
+  });
+  await deletePaymentIntent(transactionUuid);
+  return result;
+}
 export async function feeSummary(db: DB, orgId: string, principal?: AuthUser) { const learnerIds = principal ? await learnerStudentIds(db, orgId, principal) : null; const conditions = [tenant(invoices, orgId)]; if (learnerIds) conditions.push(learnerIds.length ? inArray(invoices.studentId, learnerIds) : sql`false`); const [row] = await db.select({ total: sql<number>`coalesce(sum(${invoices.total}),0)`, paid: sql<number>`coalesce(sum(${invoices.paid}),0)`, outstanding: sql<number>`coalesce(sum(${invoices.total} - ${invoices.paid}),0)` }).from(invoices).where(and(...conditions)); return row; }

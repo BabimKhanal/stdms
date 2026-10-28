@@ -9,7 +9,7 @@ import { env } from "../../env";
 
 const signInput = z.object({
   resourceType: z.enum(["auto", "image", "video", "raw"]).default("auto"),
-  folder: z.enum(["students", "users", "assignments", "content", "documents", "branding"]).default("documents"),
+  folder: z.enum(["students", "users", "assignments", "content", "documents", "branding", "payments"]).default("documents"),
 });
 
 export const uploadRoutes = new Hono<AppEnv>();

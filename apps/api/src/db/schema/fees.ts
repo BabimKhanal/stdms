@@ -7,6 +7,7 @@ import {
   invoiceStatusEnum,
   orgIdCol,
   paymentMethodEnum,
+  paymentSubmissionStatusEnum,
   updatedAtCol,
 } from "./tenant";
 import { organisations, users } from "./tenant";
@@ -115,12 +116,56 @@ export const payments = pgTable(
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
     method: paymentMethodEnum("method").notNull().default("cash"),
     reference: text("reference"),
+    gatewayRef: text("gateway_ref"),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
     paidAt: timestamp("paid_at", { withTimezone: true }).defaultNow().notNull(),
     receivedBy: uuid("received_by").references(() => users.id, { onDelete: "set null" }),
     notes: text("notes"),
     createdAt: createdAtCol(),
   },
-  (t) => [index("payments_invoice_idx").on(t.invoiceId)],
+  (t) => [index("payments_invoice_idx").on(t.invoiceId), uniqueIndex("payments_gateway_ref_uq").on(t.gatewayRef)],
+);
+
+export const paymentMethods = pgTable(
+  "payment_methods",
+  {
+    id: idCol(),
+    organisationId: orgIdCol(),
+    method: paymentMethodEnum("method").notNull(),
+    label: text("label").notNull(),
+    enabled: integer("enabled").notNull().default(1),
+    instructions: text("instructions"),
+    bankName: text("bank_name"),
+    accountName: text("account_name"),
+    accountNumber: text("account_number"),
+    branch: text("branch"),
+    qrImageUrl: text("qr_image_url"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: createdAtCol(),
+    updatedAt: updatedAtCol(),
+  },
+  (t) => [index("payment_methods_org_idx").on(t.organisationId)],
+);
+
+export const paymentSubmissions = pgTable(
+  "payment_submissions",
+  {
+    id: idCol(),
+    organisationId: orgIdCol(),
+    invoiceId: uuid("invoice_id").notNull().references(() => invoices.id, { onDelete: "cascade" }),
+    paymentMethodId: uuid("payment_method_id").notNull().references(() => paymentMethods.id, { onDelete: "restrict" }),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    reference: text("reference"),
+    proofUrl: text("proof_url"),
+    status: paymentSubmissionStatusEnum("status").notNull().default("pending"),
+    submittedBy: uuid("submitted_by").notNull().references(() => users.id, { onDelete: "restrict" }),
+    reviewedBy: uuid("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    reviewNote: text("review_note"),
+    createdAt: createdAtCol(),
+    updatedAt: updatedAtCol(),
+  },
+  (t) => [index("payment_submissions_org_status_idx").on(t.organisationId, t.status), index("payment_submissions_invoice_idx").on(t.invoiceId)],
 );
 
 /** Discounts / scholarships applied to an invoice (history rows). */

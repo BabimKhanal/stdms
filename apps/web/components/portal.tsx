@@ -42,6 +42,7 @@ import { Badge } from "./ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { formatNpr } from "../lib/utils";
 import { NotificationBell } from "./notification-bell";
+import { PaymentSettings } from "./payment-settings";
 
 type User = { name: string; email?: string | null; orgName?: string | null; roles: string[]; permissions?: string[]; isPlatformAdmin?: boolean; studentId?: string | null };
 type Notice = { id: string; title: string; body?: string | null; priority?: string; publishAt?: string };
@@ -68,6 +69,7 @@ const nav = [
   ["Notices & events", Megaphone, "communication"],
   ["User management", UserCog, "users"],
   ["Branding", Palette, "branding"],
+  ["Payment settings", CreditCard, "payment-settings"],
 ] as const;
 
 export function Portal() {
@@ -258,13 +260,14 @@ export function Portal() {
             : section === "guardians" ? <GuardianWorkspace />
             : section === "academics" ? <AcademicWorkspace />
             : section === "attendance" ? <AttendanceWorkspace />
-            : section === "fees" ? <FeeWorkspace />
+            : section === "fees" ? <FeeWorkspace canManage={Boolean(user?.permissions?.includes("invoice.create"))} />
             : section === "exams" ? <ExamWorkspace canManage={Boolean(user?.isPlatformAdmin || user?.permissions?.includes("exam.create") || user?.permissions?.includes("exam.edit"))} />
             : section === "learning" ? (user?.studentId ? <StudentLearning /> : <LearningWorkspace canManage={Boolean(user?.isPlatformAdmin || user?.permissions?.includes("homework.create"))} />)
             : section === "reports" ? <ReportsWorkspace />
             : section === "communication" ? <CommunicationWorkspace />
             : section === "users" ? <UserManagement />
             : section === "branding" && branding && user?.permissions?.includes("organisation.edit") ? <BrandingSettings branding={branding} onSaved={(updated) => { setBranding(updated); setBrandingError(""); }} />
+            : section === "payment-settings" && user?.permissions?.includes("payment.edit") ? <PaymentSettings />
             : <PlaceholderView section={section} />}
         </main>
       </div>
@@ -516,10 +519,12 @@ const roleNav: Record<string, string[]> = {
   communication: ["*"],
   users: ["owner", "principal", "administrator"],
   branding: ["owner", "principal", "administrator"],
+  "payment-settings": ["owner", "principal", "administrator", "accountant"],
 };
 
 const permissionNav: Record<string, string> = {
   branding: "organisation.edit",
+  "payment-settings": "payment.edit",
   reports: "report.view",
   communication: "notice.view",
 };

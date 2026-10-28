@@ -50,5 +50,20 @@ The seed includes platform admin, owner, principal, administrator, teacher, acco
 6. Add shared input schemas in `packages/shared` and a web screen using `components/ui`.
 7. Run the three typechecks and the web build.
 
+## Tests
+
+Run the fast contract and permission tests with:
+
+```powershell
+npm run test
+```
+
+The cross-tenant integration test is opt-in. Configure a disposable database
+with two seeded owner accounts, then set `RUN_INTEGRATION_TESTS=1`,
+`TEST_TENANT_A_IDENTIFIER`, `TEST_TENANT_A_PASSWORD`,
+`TEST_TENANT_B_IDENTIFIER`, and `TEST_TENANT_B_PASSWORD` before running the
+test command. It verifies that tenant A cannot read tenant B students,
+invoices, or homework.
+
 The same module shape is intentionally used everywhere so students can learn one feature from top to bottom and reuse it.
 # stdms

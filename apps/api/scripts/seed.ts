@@ -489,6 +489,12 @@ async function main() {
         title: "Essay: My Vision for Nepal", description: "500 words, own words, neat handwriting or typed.",
         assignedDate: dates[5], submissionDate: dates[0], maxMarks: 15,
       },
+      {
+        organisationId: org.id, classId: grade7.id, sectionId: sec(grade7.id, "B").id,
+        subjectId: subj("SCI").id, teacherId: sitaUser.id,
+        title: "Science: States of Matter", description: "Explain the three states of matter with one example of each.",
+        assignedDate: dates[5], submissionDate: dates[2], maxMarks: 15,
+      },
     ])
     .returning();
 

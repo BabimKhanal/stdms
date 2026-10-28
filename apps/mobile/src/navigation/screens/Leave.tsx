@@ -100,10 +100,8 @@ export function Leave() {
     try {
       const token = await mobileToken();
       if (!token) throw new Error("Session expired. Please sign in again.");
-      const result = await new EduApiClient(API_URL, () => token).get<{
-        data: LeaveRow[];
-      }>("/leave");
-      setRows(result.data);
+      const result = await new EduApiClient(API_URL, () => token).get<{ data?: LeaveRow[] }>("/leave");
+      setRows(result.data ?? []);
       setError("");
     } catch (err) {
       setError(

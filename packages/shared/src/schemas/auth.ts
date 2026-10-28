@@ -13,6 +13,15 @@ export const changePasswordSchema = z.object({
 });
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 
+export const passwordResetRequestSchema = z.object({
+  identifier: z.string().trim().min(3).max(200),
+});
+
+export const passwordResetSchema = z.object({
+  token: z.string().min(32).max(128),
+  newPassword: z.string().min(8).max(200),
+});
+
 export const sessionUserSchema = z.object({
   id: z.uuid(),
   name: z.string(),
