@@ -57,6 +57,13 @@
       "when": 1791984000000,
       "tag": "0007_payment_refunds",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791985000000,
+      "tag": "0008_family_payment_permissions",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -24,7 +24,7 @@ import { WebView } from "react-native-webview";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { createMarksheetPdf, type MarksheetResult } from "../../lib/marksheet";
 import { EduApiClient } from "@edu/api-client";
-import { mobileToken, useAuth } from "../../auth";
+import { mobileToken, refreshMobileSession, useAuth } from "../../auth";
 import { API_URL } from "../../config";
 
 type Item = Record<string, unknown>;
@@ -314,14 +314,30 @@ function PayNowButton({ invoiceId, balance }: { invoiceId: string; balance: numb
   const { user } = useAuth();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [methods, setMethods] = useState<Array<{ method: string; enabled: number; label: string; bankName?: string | null; accountName?: string | null; accountNumber?: string | null; instructions?: string | null }>>([]);
+  useEffect(() => {
+    if (!user?.permissions?.includes("payment.create")) return;
+    void mobileToken().then((token) => token ? new EduApiClient(API_URL, () => token).get<Array<{ method: string; enabled: number; label: string; bankName?: string | null; accountName?: string | null; accountNumber?: string | null; instructions?: string | null }>>("/fees/payment-methods").then((result) => setMethods(Array.isArray(result) ? result : [])) : undefined).catch(() => undefined);
+  }, [user?.permissions]);
   if (!invoiceId || balance <= 0 || !user?.permissions?.includes("payment.create")) return null;
+  const enabledMethods = methods.filter((method) => Number(method.enabled) === 1);
+  const esewaEnabled = enabledMethods.some((method) => method.method === "esewa");
+  const bankMethods = enabledMethods.filter((method) => method.method !== "esewa");
   async function startPayment() {
     setBusy(true);
     setMessage("");
     try {
-      const token = await mobileToken();
+      let token = await mobileToken();
       if (!token) throw new Error("Session expired. Please sign in again.");
-      const result = await new EduApiClient(API_URL, () => token).post<{ checkoutUrl: string }>("/fees/payments/esewa", { invoiceId });
+      let result: { checkoutUrl: string };
+      try {
+        result = await new EduApiClient(API_URL, () => token).post<{ checkoutUrl: string }>("/fees/payments/esewa", { invoiceId });
+      } catch (error) {
+        if (!(error instanceof Error) || !/unauthori[sz]ed|401|token|session/i.test(error.message)) throw error;
+        token = await refreshMobileSession();
+        if (!token) throw new Error("Session expired. Please sign in again.");
+        result = await new EduApiClient(API_URL, () => token).post<{ checkoutUrl: string }>("/fees/payments/esewa", { invoiceId });
+      }
       await WebBrowser.openBrowserAsync(result.checkoutUrl);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to start payment");
@@ -329,7 +345,7 @@ function PayNowButton({ invoiceId, balance }: { invoiceId: string; balance: numb
       setBusy(false);
     }
   }
-  return <View style={styles.payNow}><Pressable disabled={busy} onPress={() => void startPayment()} style={styles.payNowButton}><MaterialCommunityIcons name="credit-card-outline" color="#fff" size={16} /><Text style={styles.payNowText}>{busy ? "Opening..." : "Pay with eSewa"}</Text></Pressable>{message ? <Text style={styles.payNowMessage}>{message}</Text> : null}</View>;
+  return <View style={styles.payNow}>{esewaEnabled ? <Pressable disabled={busy} onPress={() => void startPayment()} style={styles.payNowButton}><MaterialCommunityIcons name="credit-card-outline" color="#fff" size={16} /><Text style={styles.payNowText}>{busy ? "Opening..." : "Pay with eSewa"}</Text></Pressable> : null}{bankMethods.map((method) => <Text key={method.method} style={styles.payNowInfo}>{method.label}: {[method.bankName, method.accountName, method.accountNumber, method.instructions].filter(Boolean).join(" · ") || "Follow the school payment instructions."}</Text>)}{!enabledMethods.length ? <Text style={styles.payNowInfo}>Online payment is not enabled by your school.</Text> : null}{message ? <Text style={styles.payNowMessage}>{message}</Text> : null}</View>;
 }
 export function Results() {
   return (
@@ -1633,6 +1649,7 @@ const styles = StyleSheet.create({
   payNow: { marginTop: 12 },
   payNowButton: { alignItems: "center", alignSelf: "flex-start", backgroundColor: "#059669", borderRadius: 11, flexDirection: "row", gap: 7, paddingHorizontal: 13, paddingVertical: 10 },
   payNowText: { color: "#fff", fontSize: 12, fontWeight: "800" },
+  payNowInfo: { color: palette.inkSoft, fontSize: 11, lineHeight: 16, marginTop: 6 },
   payNowMessage: { color: palette.danger, fontSize: 11, marginTop: 6 },
   marksheetButton: {
     alignItems: "center",
