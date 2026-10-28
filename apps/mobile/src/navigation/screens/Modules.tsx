@@ -258,7 +258,7 @@ export function Attendance() {
         String(item.studentName ?? item.date ?? "Attendance day")
       }
       getMeta={(item) =>
-        `${capitalize(String(item.status ?? "recorded"))}${item.remarks ? ` · ${String(item.remarks)}` : ""} · ${formatDate(item.date)}`
+        `${capitalize(String(item.status ?? "recorded"))} · ${String(item.subjectName ?? "Whole day")}${item.periodName ? ` · ${String(item.periodName)}` : ""}${item.remarks ? ` · ${String(item.remarks)}` : ""} · ${formatDate(item.date)}`
       }
       renderSummary={isLearner ? () => <AttendanceOverview /> : undefined}
       emptyTitle="No attendance yet"
@@ -337,7 +337,7 @@ function PayNowButton({ invoiceId, balance }: { invoiceId: string; balance: numb
       });
     }).catch(() => undefined);
   }, [user?.permissions]);
-  if (!invoiceId || balance <= 0 || !user?.permissions?.includes("payment.create")) return null;
+  if (!invoiceId || balance <= 0 || !user?.permissions?.includes("payment.create") || user.roles?.includes("student")) return null;
   const enabledMethods = methods.filter((method) => Number(method.enabled) === 1);
   const esewaEnabled = enabledMethods.some((method) => method.method === "esewa");
   const bankMethods = enabledMethods.filter((method) => method.method !== "esewa");

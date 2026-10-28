@@ -46,6 +46,7 @@ import { PaymentSettings } from "./payment-settings";
 import { EmployeeDirectory } from "./employee-directory";
 import { ExamApprovalPanel } from "./exam-approval-panel";
 import { GatewaySettings } from "./gateway-settings";
+import { FeeAccessSettings } from "./fee-access-settings";
 
 type User = { name: string; email?: string | null; orgName?: string | null; roles: string[]; permissions?: string[]; isPlatformAdmin?: boolean; studentId?: string | null };
 type Notice = { id: string; title: string; body?: string | null; priority?: string; publishAt?: string };
@@ -264,7 +265,7 @@ export function Portal() {
             : section === "guardians" ? <GuardianWorkspace />
             : section === "academics" ? <AcademicWorkspace />
             : section === "attendance" ? <AttendanceWorkspace />
-            : section === "fees" ? <FeeWorkspace canManage={Boolean(user?.permissions?.includes("invoice.create"))} />
+            : section === "fees" ? <FeeWorkspace canManage={Boolean(user?.permissions?.includes("invoice.create"))} role={user?.roles?.[0]} />
             : section === "exams" ? <div className="space-y-6"><ExamWorkspace canManage={Boolean(user?.isPlatformAdmin || user?.permissions?.includes("exam.create") || user?.permissions?.includes("exam.edit"))} />{user?.isPlatformAdmin || user?.permissions?.includes("result.approve") ? <ExamApprovalPanel /> : null}</div>
             : section === "learning" ? (user?.studentId ? <StudentLearning /> : <LearningWorkspace canManage={Boolean(user?.isPlatformAdmin || user?.permissions?.includes("homework.create"))} />)
             : section === "reports" ? <ReportsWorkspace />
@@ -272,7 +273,7 @@ export function Portal() {
             : section === "users" ? <UserManagement />
             : section === "employees" ? <EmployeeDirectory />
             : section === "branding" && branding && user?.permissions?.includes("organisation.edit") ? <BrandingSettings branding={branding} onSaved={(updated) => { setBranding(updated); setBrandingError(""); }} />
-            : section === "payment-settings" && user?.permissions?.includes("payment.edit") ? <div className="space-y-6"><PaymentSettings /><GatewaySettings /></div>
+            : section === "payment-settings" && user?.permissions?.includes("payment.edit") ? <div className="space-y-6"><PaymentSettings /><GatewaySettings /><FeeAccessSettings /></div>
             : <PlaceholderView section={section} />}
         </main>
       </div>

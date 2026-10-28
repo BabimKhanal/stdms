@@ -183,6 +183,22 @@ export const paymentGatewaySettings = pgTable(
   (t) => [uniqueIndex("payment_gateway_settings_org_provider_uq").on(t.organisationId, t.provider)],
 );
 
+export const feeAccessSettings = pgTable(
+  "fee_access_settings",
+  {
+    id: idCol(),
+    organisationId: orgIdCol(),
+    studentVisible: integer("student_visible").notNull().default(1),
+    studentOnlinePayment: integer("student_online_payment").notNull().default(0),
+    guardianVisible: integer("guardian_visible").notNull().default(1),
+    showDiscounts: integer("show_discounts").notNull().default(1),
+    dueReminders: integer("due_reminders").notNull().default(1),
+    createdAt: createdAtCol(),
+    updatedAt: updatedAtCol(),
+  },
+  (t) => [uniqueIndex("fee_access_settings_org_uq").on(t.organisationId)],
+);
+
 export const paymentSubmissions = pgTable(
   "payment_submissions",
   {

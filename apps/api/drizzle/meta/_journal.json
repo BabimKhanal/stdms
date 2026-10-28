@@ -71,6 +71,20 @@
       "when": 1791986000000,
       "tag": "0009_tenant_payment_gateways",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791987000000,
+      "tag": "0010_attendance_subject_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791988000000,
+      "tag": "0011_fee_access_settings",
+      "breakpoints": true
     }
   ]
 }
