@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { DB } from "../../lib/types";
-import { discounts, feeCategories, feeStructures, feeStructureItems, invoices, invoiceItems, payments, paymentMethods, paymentSubmissions, refunds, students, classes, enrolments, sections, organisations } from "../../db/schema";
+import { discounts, feeCategories, feeStructures, feeStructureItems, invoices, invoiceItems, payments, paymentGatewaySettings, paymentMethods, paymentSubmissions, refunds, students, classes, enrolments, sections, organisations } from "../../db/schema";
 import type { FeeStructureInput, PaymentInput, GenerateInvoicesInput, ManualPaymentSubmissionInput } from "@edu/shared";
 import { z } from "zod";
 import { feeCategoryInputSchema, invoiceInputSchema } from "@edu/shared";
@@ -122,6 +122,15 @@ export function buildReceiptHtml(context: Awaited<ReturnType<typeof receiptConte
 export async function addPayment(db: DB, orgId: string, userId: string, input: PaymentInput) { return db.transaction(async (tx) => { const [invoice] = await tx.select().from(invoices).where(and(eq(invoices.id, input.invoiceId), tenant(invoices, orgId))); if (!invoice) throw notFound("Invoice not found"); const [payment] = await tx.insert(payments).values({ ...input, organisationId: orgId, receivedBy: userId, amount: String(input.amount), paidAt: input.paidAt ? new Date(input.paidAt) : undefined }).returning(); const paid = Number(invoice.paid) + input.amount; await tx.update(invoices).set({ paid: String(paid), status: paid >= Number(invoice.total) ? "paid" : "partial" }).where(and(eq(invoices.id, input.invoiceId), tenant(invoices, orgId))); return payment; }); }
 
 export async function listPaymentMethods(db: DB, orgId: string) { return db.select().from(paymentMethods).where(tenant(paymentMethods, orgId)).orderBy(asc(paymentMethods.sortOrder), asc(paymentMethods.createdAt)); }
+export async function listGatewaySettings(db: DB, orgId: string) { return db.select({ id: paymentGatewaySettings.id, provider: paymentGatewaySettings.provider, enabled: paymentGatewaySettings.enabled, merchantCode: paymentGatewaySettings.merchantCode, publicKey: paymentGatewaySettings.publicKey, apiUrl: paymentGatewaySettings.apiUrl, successUrl: paymentGatewaySettings.successUrl, failureUrl: paymentGatewaySettings.failureUrl, hasSecret: sql<boolean>`${paymentGatewaySettings.secretKey} is not null and ${paymentGatewaySettings.secretKey} <> ''` }).from(paymentGatewaySettings).where(tenant(paymentGatewaySettings, orgId)).orderBy(asc(paymentGatewaySettings.provider)); }
+export async function saveGatewaySetting(db: DB, orgId: string, provider: string, input: { enabled?: boolean; merchantCode?: string | null; secretKey?: string | null; publicKey?: string | null; apiUrl?: string | null; successUrl?: string | null; failureUrl?: string | null }) {
+  const [existing] = await db.select({ id: paymentGatewaySettings.id }).from(paymentGatewaySettings).where(and(eq(paymentGatewaySettings.organisationId, orgId), eq(paymentGatewaySettings.provider, provider))).limit(1);
+  const values = { organisationId: orgId, provider, enabled: input.enabled ? 1 : 0, merchantCode: input.merchantCode ?? null, ...(input.secretKey ? { secretKey: input.secretKey } : {}), publicKey: input.publicKey ?? null, apiUrl: input.apiUrl ?? null, successUrl: input.successUrl ?? null, failureUrl: input.failureUrl ?? null };
+  if (existing) { const [row] = await db.update(paymentGatewaySettings).set(values).where(and(eq(paymentGatewaySettings.id, existing.id), tenant(paymentGatewaySettings, orgId))).returning({ id: paymentGatewaySettings.id, provider: paymentGatewaySettings.provider, enabled: paymentGatewaySettings.enabled }); return row; }
+  const [row] = await db.insert(paymentGatewaySettings).values(values).returning({ id: paymentGatewaySettings.id, provider: paymentGatewaySettings.provider, enabled: paymentGatewaySettings.enabled });
+  return row;
+}
+export async function getGatewaySetting(db: DB, orgId: string, provider: string) { const [row] = await db.select().from(paymentGatewaySettings).where(and(eq(paymentGatewaySettings.organisationId, orgId), eq(paymentGatewaySettings.provider, provider), eq(paymentGatewaySettings.enabled, 1))).limit(1); return row ?? null; }
 export async function createPaymentMethod(db: DB, orgId: string, input: any) { const [row] = await db.insert(paymentMethods).values({ ...input, organisationId: orgId, enabled: input.enabled ? 1 : 0 }).returning(); return row; }
 export async function updatePaymentMethod(db: DB, orgId: string, id: string, input: any) { const [row] = await db.update(paymentMethods).set({ ...input, enabled: input.enabled === undefined ? undefined : input.enabled ? 1 : 0 }).where(and(eq(paymentMethods.id, id), tenant(paymentMethods, orgId))).returning(); if (!row) throw notFound("Payment method not found"); return row; }
 export async function deletePaymentMethod(db: DB, orgId: string, id: string) { const rows = await db.delete(paymentMethods).where(and(eq(paymentMethods.id, id), tenant(paymentMethods, orgId))).returning({ id: paymentMethods.id }); if (!rows.length) throw notFound("Payment method not found"); }
@@ -167,20 +176,23 @@ export async function reviewPaymentSubmission(db: DB, orgId: string, reviewerId:
 }
 
 export async function initiateEsewa(db: DB, orgId: string, principal: AuthUser, invoiceId: string) {
-  if (!env.ESEWA_ENABLED) throw conflict("Online payments are not enabled for this institution");
+  const gateway = await getGatewaySetting(db, orgId, "esewa");
+  if (!gateway || !gateway.merchantCode || !gateway.secretKey) throw conflict("eSewa is not configured for this institution");
+  const [method] = await db.select({ id: paymentMethods.id }).from(paymentMethods).where(and(eq(paymentMethods.organisationId, orgId), eq(paymentMethods.method, "esewa"), eq(paymentMethods.enabled, 1))).limit(1);
+  if (!method) throw conflict("eSewa is not enabled for this institution");
   const invoice = await getInvoice(db, orgId, invoiceId, principal);
   const amount = Number(invoice.balance);
   if (amount <= 0) throw conflict("Invoice is already paid");
   const transactionUuid = newTransactionUuid();
-  await setPaymentIntent(transactionUuid, JSON.stringify({ orgId, invoiceId, userId: principal.id, amount }));
+  await setPaymentIntent(transactionUuid, JSON.stringify({ orgId, invoiceId, userId: principal.id, amount, gateway: { merchantCode: gateway.merchantCode, secretKey: gateway.secretKey, formUrl: gateway.apiUrl, successUrl: gateway.successUrl, failureUrl: gateway.failureUrl } }));
   return { provider: "esewa", action: env.ESEWA_FORM_URL, checkoutUrl: `${env.PAYMENT_CALLBACK_URL}/checkout/${encodeURIComponent(transactionUuid)}` };
 }
 
 export async function completeEsewa(db: DB, orgId: string, transactionUuid: string) {
   const raw = await getPaymentIntent(transactionUuid);
   if (!raw) throw notFound("Payment session expired");
-  const intent = JSON.parse(raw) as { orgId: string; invoiceId: string; userId: string; amount: number };
-  if (!(await verifyEsewa({ transactionUuid, totalAmount: intent.amount }))) throw conflict("Payment could not be verified");
+   const intent = JSON.parse(raw) as { orgId: string; invoiceId: string; userId: string; amount: number; gateway?: { merchantCode: string; secretKey: string; formUrl?: string | null; successUrl?: string | null; failureUrl?: string | null } };
+   if (!(await verifyEsewa({ transactionUuid, totalAmount: intent.amount, config: intent.gateway }))) throw conflict("Payment could not be verified");
   const result = await db.transaction(async (tx) => {
     const [invoice] = await tx.select().from(invoices).where(and(eq(invoices.id, intent.invoiceId), tenant(invoices, orgId)));
     if (!invoice) throw notFound("Invoice not found");

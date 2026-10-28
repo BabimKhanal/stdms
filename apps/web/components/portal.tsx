@@ -45,6 +45,7 @@ import { NotificationBell } from "./notification-bell";
 import { PaymentSettings } from "./payment-settings";
 import { EmployeeDirectory } from "./employee-directory";
 import { ExamApprovalPanel } from "./exam-approval-panel";
+import { GatewaySettings } from "./gateway-settings";
 
 type User = { name: string; email?: string | null; orgName?: string | null; roles: string[]; permissions?: string[]; isPlatformAdmin?: boolean; studentId?: string | null };
 type Notice = { id: string; title: string; body?: string | null; priority?: string; publishAt?: string };
@@ -271,7 +272,7 @@ export function Portal() {
             : section === "users" ? <UserManagement />
             : section === "employees" ? <EmployeeDirectory />
             : section === "branding" && branding && user?.permissions?.includes("organisation.edit") ? <BrandingSettings branding={branding} onSaved={(updated) => { setBranding(updated); setBrandingError(""); }} />
-            : section === "payment-settings" && user?.permissions?.includes("payment.edit") ? <PaymentSettings />
+            : section === "payment-settings" && user?.permissions?.includes("payment.edit") ? <div className="space-y-6"><PaymentSettings /><GatewaySettings /></div>
             : <PlaceholderView section={section} />}
         </main>
       </div>

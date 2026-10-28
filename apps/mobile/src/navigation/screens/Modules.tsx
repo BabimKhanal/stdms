@@ -74,9 +74,17 @@ function useList(path: string) {
     async (mode: "initial" | "refresh" | "silent" = "initial") => {
       if (mode === "refresh") setRefreshing(true);
       try {
-        const token = await mobileToken();
+        let token = await mobileToken();
         if (!token) throw new Error("Session expired. Please sign in again.");
-        const result = await new EduApiClient(API_URL, () => token).get<Item[] | { data?: Item[] }>(path);
+        let result: Item[] | { data?: Item[] };
+        try {
+          result = await new EduApiClient(API_URL, () => token).get<Item[] | { data?: Item[] }>(path);
+        } catch (error) {
+          if (!(error instanceof Error) || !/unauthori[sz]ed|401|token|session/i.test(error.message)) throw error;
+          token = await refreshMobileSession();
+          if (!token) throw new Error("Session expired. Please sign in again.");
+          result = await new EduApiClient(API_URL, () => token).get<Item[] | { data?: Item[] }>(path);
+        }
         const items = Array.isArray(result) ? result : result && Array.isArray(result.data) ? result.data : [];
         setItems(items);
         setError("");
@@ -314,10 +322,10 @@ function PayNowButton({ invoiceId, balance }: { invoiceId: string; balance: numb
   const { user } = useAuth();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [methods, setMethods] = useState<Array<{ method: string; enabled: number; label: string; bankName?: string | null; accountName?: string | null; accountNumber?: string | null; instructions?: string | null }>>([]);
+  const [methods, setMethods] = useState<Array<{ id: string; method: string; enabled: number; label: string; bankName?: string | null; accountName?: string | null; accountNumber?: string | null; instructions?: string | null; qrImageUrl?: string | null }>>([]);
   useEffect(() => {
     if (!user?.permissions?.includes("payment.create")) return;
-    void mobileToken().then((token) => token ? new EduApiClient(API_URL, () => token).get<Array<{ method: string; enabled: number; label: string; bankName?: string | null; accountName?: string | null; accountNumber?: string | null; instructions?: string | null }>>("/fees/payment-methods").then((result) => setMethods(Array.isArray(result) ? result : [])) : undefined).catch(() => undefined);
+    void mobileToken().then((token) => token ? new EduApiClient(API_URL, () => token).get<Array<{ id: string; method: string; enabled: number; label: string; bankName?: string | null; accountName?: string | null; accountNumber?: string | null; instructions?: string | null; qrImageUrl?: string | null }>>("/fees/payment-methods").then((result) => setMethods(Array.isArray(result) ? result : [])) : undefined).catch(() => undefined);
   }, [user?.permissions]);
   if (!invoiceId || balance <= 0 || !user?.permissions?.includes("payment.create")) return null;
   const enabledMethods = methods.filter((method) => Number(method.enabled) === 1);
@@ -345,7 +353,36 @@ function PayNowButton({ invoiceId, balance }: { invoiceId: string; balance: numb
       setBusy(false);
     }
   }
-  return <View style={styles.payNow}>{esewaEnabled ? <Pressable disabled={busy} onPress={() => void startPayment()} style={styles.payNowButton}><MaterialCommunityIcons name="credit-card-outline" color="#fff" size={16} /><Text style={styles.payNowText}>{busy ? "Opening..." : "Pay with eSewa"}</Text></Pressable> : null}{bankMethods.map((method) => <Text key={method.method} style={styles.payNowInfo}>{method.label}: {[method.bankName, method.accountName, method.accountNumber, method.instructions].filter(Boolean).join(" · ") || "Follow the school payment instructions."}</Text>)}{!enabledMethods.length ? <Text style={styles.payNowInfo}>Online payment is not enabled by your school.</Text> : null}{message ? <Text style={styles.payNowMessage}>{message}</Text> : null}</View>;
+  return <View style={styles.payNow}>{esewaEnabled ? <Pressable disabled={busy} onPress={() => void startPayment()} style={styles.payNowButton}><MaterialCommunityIcons name="credit-card-outline" color="#fff" size={16} /><Text style={styles.payNowText}>{busy ? "Opening..." : "Pay with eSewa"}</Text></Pressable> : null}{bankMethods.map((method) => <ManualPaymentButton key={method.id} invoiceId={invoiceId} balance={balance} method={method} />)}{!enabledMethods.length ? <Text style={styles.payNowInfo}>Online payment is not enabled by your school.</Text> : null}{message ? <Text style={styles.payNowMessage}>{message}</Text> : null}</View>;
+}
+
+function ManualPaymentButton({ invoiceId, balance, method }: { invoiceId: string; balance: number; method: { id: string; method: string; label: string; bankName?: string | null; accountName?: string | null; accountNumber?: string | null; instructions?: string | null; qrImageUrl?: string | null } }) {
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState(String(balance));
+  const [reference, setReference] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  async function submit() {
+    const parsedAmount = Number(amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0 || parsedAmount > balance) { setMessage("Enter an amount up to the outstanding balance."); return; }
+    setBusy(true); setMessage("");
+    try {
+      let token = await mobileToken();
+      if (!token) throw new Error("Session expired. Please sign in again.");
+      const payload = { invoiceId, paymentMethodId: method.id, amount: parsedAmount, reference: reference.trim() || null, proofUrl: null };
+      try { await new EduApiClient(API_URL, () => token).post("/fees/submissions", payload); }
+      catch (error) {
+        if (!(error instanceof Error) || !/unauthori[sz]ed|401|token|session/i.test(error.message)) throw error;
+        token = await refreshMobileSession();
+        if (!token) throw new Error("Session expired. Please sign in again.");
+        await new EduApiClient(API_URL, () => token).post("/fees/submissions", payload);
+      }
+      setMessage("Payment submitted for school approval.");
+      setOpen(false);
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to submit payment"); }
+    finally { setBusy(false); }
+  }
+  return <View>{method.qrImageUrl ? <Image source={{ uri: method.qrImageUrl }} style={styles.paymentQr} resizeMode="contain" /> : null}<Text style={styles.payNowInfo}>{method.label}: {[method.bankName, method.accountName, method.accountNumber, method.instructions].filter(Boolean).join(" · ") || "Follow the school payment instructions."}</Text><Pressable onPress={() => setOpen(true)} style={styles.manualPayButton}><MaterialCommunityIcons name="bank-transfer" color={palette.primary} size={16} /><Text style={styles.manualPayText}>I transferred via {method.label}</Text></Pressable>{message ? <Text style={styles.payNowMessage}>{message}</Text> : null}<Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}><View style={styles.modalBackdrop}><View style={styles.paymentModal}><Text style={styles.modalTitle}>{method.label} payment</Text><Text style={styles.payNowInfo}>Transfer to: {[method.bankName, method.accountName, method.accountNumber].filter(Boolean).join(" · ") || "See school instructions"}</Text><TextInput value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="Amount" style={styles.paymentInput} /><TextInput value={reference} onChangeText={setReference} placeholder="Bank reference / voucher number" style={styles.paymentInput} /><View style={styles.modalActions}><Pressable onPress={() => setOpen(false)} style={styles.modalCancel}><Text>Cancel</Text></Pressable><Pressable disabled={busy} onPress={() => void submit()} style={styles.modalSubmit}><Text style={styles.modalSubmitText}>{busy ? "Submitting..." : "Submit payment"}</Text></Pressable></View></View></View></Modal></View>;
 }
 export function Results() {
   return (
@@ -1650,6 +1687,17 @@ const styles = StyleSheet.create({
   payNowButton: { alignItems: "center", alignSelf: "flex-start", backgroundColor: "#059669", borderRadius: 11, flexDirection: "row", gap: 7, paddingHorizontal: 13, paddingVertical: 10 },
   payNowText: { color: "#fff", fontSize: 12, fontWeight: "800" },
   payNowInfo: { color: palette.inkSoft, fontSize: 11, lineHeight: 16, marginTop: 6 },
+  manualPayButton: { alignItems: "center", alignSelf: "flex-start", borderColor: palette.primaryBorder, borderRadius: 11, borderWidth: 1, flexDirection: "row", gap: 7, marginTop: 8, paddingHorizontal: 12, paddingVertical: 9 },
+  manualPayText: { color: palette.primary, fontSize: 12, fontWeight: "800" },
+  modalBackdrop: { backgroundColor: "rgba(15, 23, 42, 0.45)", flex: 1, justifyContent: "flex-end" },
+  paymentModal: { backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 22 },
+  paymentQr: { alignSelf: "flex-start", borderRadius: 12, height: 150, marginTop: 8, width: 150 },
+  modalTitle: { color: palette.ink, fontSize: 18, fontWeight: "800", marginBottom: 8 },
+  paymentInput: { borderColor: palette.border, borderRadius: 12, borderWidth: 1, color: palette.ink, fontSize: 14, marginTop: 12, paddingHorizontal: 13, paddingVertical: 11 },
+  modalActions: { flexDirection: "row", gap: 10, justifyContent: "flex-end", marginTop: 18 },
+  modalCancel: { alignItems: "center", borderColor: palette.border, borderRadius: 11, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 11 },
+  modalSubmit: { alignItems: "center", backgroundColor: palette.primary, borderRadius: 11, paddingHorizontal: 16, paddingVertical: 11 },
+  modalSubmitText: { color: "#fff", fontWeight: "800" },
   payNowMessage: { color: palette.danger, fontSize: 11, marginTop: 6 },
   marksheetButton: {
     alignItems: "center",

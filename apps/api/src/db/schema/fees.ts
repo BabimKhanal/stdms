@@ -163,6 +163,26 @@ export const paymentMethods = pgTable(
   (t) => [index("payment_methods_org_idx").on(t.organisationId)],
 );
 
+/** Tenant-owned gateway credentials. Secret fields are never returned by API routes. */
+export const paymentGatewaySettings = pgTable(
+  "payment_gateway_settings",
+  {
+    id: idCol(),
+    organisationId: orgIdCol(),
+    provider: text("provider").notNull(),
+    enabled: integer("enabled").notNull().default(0),
+    merchantCode: text("merchant_code"),
+    secretKey: text("secret_key"),
+    publicKey: text("public_key"),
+    apiUrl: text("api_url"),
+    successUrl: text("success_url"),
+    failureUrl: text("failure_url"),
+    createdAt: createdAtCol(),
+    updatedAt: updatedAtCol(),
+  },
+  (t) => [uniqueIndex("payment_gateway_settings_org_provider_uq").on(t.organisationId, t.provider)],
+);
+
 export const paymentSubmissions = pgTable(
   "payment_submissions",
   {
