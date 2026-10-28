@@ -318,19 +318,30 @@ export function Timetable() {
   );
 }
 
+type MobilePaymentMethod = { id: string; method: string; enabled: number; label: string; bankName?: string | null; accountName?: string | null; accountNumber?: string | null; instructions?: string | null; qrImageUrl?: string | null };
+
 function PayNowButton({ invoiceId, balance }: { invoiceId: string; balance: number }) {
   const { user } = useAuth();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [methods, setMethods] = useState<Array<{ id: string; method: string; enabled: number; label: string; bankName?: string | null; accountName?: string | null; accountNumber?: string | null; instructions?: string | null; qrImageUrl?: string | null }>>([]);
+  const [selectedMethod, setSelectedMethod] = useState("");
+  const [methods, setMethods] = useState<MobilePaymentMethod[]>([]);
   useEffect(() => {
     if (!user?.permissions?.includes("payment.create")) return;
-    void mobileToken().then((token) => token ? new EduApiClient(API_URL, () => token).get<Array<{ id: string; method: string; enabled: number; label: string; bankName?: string | null; accountName?: string | null; accountNumber?: string | null; instructions?: string | null; qrImageUrl?: string | null }>>("/fees/payment-methods").then((result) => setMethods(Array.isArray(result) ? result : [])) : undefined).catch(() => undefined);
+    void mobileToken().then((token) => {
+      if (!token) return undefined;
+      return new EduApiClient(API_URL, () => token).get<MobilePaymentMethod[] | { data?: MobilePaymentMethod[] }>("/fees/payment-methods").then((result) => {
+        const next = Array.isArray(result) ? result : result?.data ?? [];
+        setMethods(next);
+        setSelectedMethod((current) => current || next.find((method) => Number(method.enabled) === 1)?.id || "");
+      });
+    }).catch(() => undefined);
   }, [user?.permissions]);
   if (!invoiceId || balance <= 0 || !user?.permissions?.includes("payment.create")) return null;
   const enabledMethods = methods.filter((method) => Number(method.enabled) === 1);
   const esewaEnabled = enabledMethods.some((method) => method.method === "esewa");
   const bankMethods = enabledMethods.filter((method) => method.method !== "esewa");
+  const selectedBankMethod = bankMethods.find((method) => method.id === selectedMethod);
   async function startPayment() {
     setBusy(true);
     setMessage("");
@@ -353,10 +364,10 @@ function PayNowButton({ invoiceId, balance }: { invoiceId: string; balance: numb
       setBusy(false);
     }
   }
-  return <View style={styles.payNow}>{esewaEnabled ? <Pressable disabled={busy} onPress={() => void startPayment()} style={styles.payNowButton}><MaterialCommunityIcons name="credit-card-outline" color="#fff" size={16} /><Text style={styles.payNowText}>{busy ? "Opening..." : "Pay with eSewa"}</Text></Pressable> : null}{bankMethods.map((method) => <ManualPaymentButton key={method.id} invoiceId={invoiceId} balance={balance} method={method} />)}{!enabledMethods.length ? <Text style={styles.payNowInfo}>Online payment is not enabled by your school.</Text> : null}{message ? <Text style={styles.payNowMessage}>{message}</Text> : null}</View>;
+  return <View style={styles.payNow}><View style={styles.paymentOptionsHeader}><MaterialCommunityIcons name="wallet-outline" color={palette.primary} size={18} /><View style={{ flex: 1 }}><Text style={styles.paymentOptionsTitle}>Payment options</Text><Text style={styles.paymentOptionsSubtitle}>Choose one method to pay this invoice.</Text></View></View>{enabledMethods.length > 0 ? <View style={styles.paymentChoices}>{esewaEnabled && <Pressable onPress={() => setSelectedMethod("esewa")} style={[styles.paymentChoice, selectedMethod === "esewa" && styles.paymentChoiceSelected]}><MaterialCommunityIcons name="credit-card-outline" color={selectedMethod === "esewa" ? palette.primary : palette.inkSoft} size={17} /><Text style={styles.paymentChoiceText}>eSewa</Text></Pressable>}{bankMethods.map((method) => <Pressable key={method.id} onPress={() => setSelectedMethod(method.id)} style={[styles.paymentChoice, selectedMethod === method.id && styles.paymentChoiceSelected]}><MaterialCommunityIcons name={method.qrImageUrl ? "qrcode" : "bank-transfer"} color={selectedMethod === method.id ? palette.primary : palette.inkSoft} size={17} /><Text style={styles.paymentChoiceText}>{method.label}</Text></Pressable>)}</View> : null}{selectedMethod === "esewa" && <Pressable disabled={busy} onPress={() => void startPayment()} style={styles.payNowButton}><MaterialCommunityIcons name="credit-card-outline" color="#fff" size={16} /><Text style={styles.payNowText}>{busy ? "Opening..." : "Continue with eSewa"}</Text></Pressable>}{selectedBankMethod && <ManualPaymentButton key={selectedBankMethod.id} invoiceId={invoiceId} balance={balance} method={selectedBankMethod} />}{!enabledMethods.length ? <View style={styles.paymentUnavailable}><MaterialCommunityIcons name="information-outline" color={palette.muted} size={17} /><Text style={styles.payNowInfo}>The school has not enabled a payment method yet.</Text></View> : null}{message ? <Text style={styles.payNowMessage}>{message}</Text> : null}</View>;
 }
 
-function ManualPaymentButton({ invoiceId, balance, method }: { invoiceId: string; balance: number; method: { id: string; method: string; label: string; bankName?: string | null; accountName?: string | null; accountNumber?: string | null; instructions?: string | null; qrImageUrl?: string | null } }) {
+function ManualPaymentButton({ invoiceId, balance, method }: { invoiceId: string; balance: number; method: MobilePaymentMethod }) {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState(String(balance));
   const [reference, setReference] = useState("");
@@ -1684,6 +1695,14 @@ const styles = StyleSheet.create({
   // Marksheet
   marksheet: { marginTop: 14 },
   payNow: { marginTop: 12 },
+  paymentOptionsHeader: { alignItems: "center", backgroundColor: palette.primarySoft, borderRadius: 14, flexDirection: "row", gap: 10, marginBottom: 10, padding: 12 },
+  paymentOptionsTitle: { color: palette.ink, fontSize: 13, fontWeight: "800" },
+  paymentOptionsSubtitle: { color: palette.inkSoft, fontSize: 11, marginTop: 2 },
+  paymentChoices: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 4 },
+  paymentChoice: { alignItems: "center", borderColor: palette.border, borderRadius: 11, borderWidth: 1, flexDirection: "row", gap: 6, maxWidth: "100%", paddingHorizontal: 11, paddingVertical: 9 },
+  paymentChoiceSelected: { backgroundColor: palette.primarySoft, borderColor: palette.primaryBorder },
+  paymentChoiceText: { color: palette.ink, flexShrink: 1, fontSize: 12, fontWeight: "700" },
+  paymentUnavailable: { alignItems: "center", flexDirection: "row", gap: 6, marginTop: 4 },
   payNowButton: { alignItems: "center", alignSelf: "flex-start", backgroundColor: "#059669", borderRadius: 11, flexDirection: "row", gap: 7, paddingHorizontal: 13, paddingVertical: 10 },
   payNowText: { color: "#fff", fontSize: 12, fontWeight: "800" },
   payNowInfo: { color: palette.inkSoft, fontSize: 11, lineHeight: 16, marginTop: 6 },
