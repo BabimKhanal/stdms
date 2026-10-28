@@ -10,6 +10,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EduApiClient } from "@edu/api-client";
 import { mobileToken, useAuth } from "../../auth";
 import { API_URL } from "../../config";
@@ -67,9 +68,17 @@ function formatDate(
 export function Home() {
   const { user } = useAuth();
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
   const isLearner = Boolean(user?.studentId) && !user?.isPlatformAdmin;
+  const isGuardian =
+    !isLearner &&
+    Boolean(
+      user?.roles?.some((role) => role === "parent" || role === "guardian"),
+    );
+  // Guardians get the personal tiles, not the school-wide dashboard.
   const canViewDashboard =
     !isLearner &&
+    !isGuardian &&
     (user?.isPlatformAdmin || user?.permissions.includes("organisation.view"));
   const [dashboard, setDashboard] = useState<Dashboard>({});
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -137,65 +146,64 @@ export function Home() {
       required.some((permission) => permissions.includes(permission)),
     );
 
-  // Student quick actions - bigger, friendlier
-  const studentQuickActions: {
+  // Student quick actions - only routes that actually exist
+  type QuickTile = {
     label: string;
     icon: IconName;
     color: string;
     bg: string;
-    screen: string;
-  }[] = [
-    {
+    onPress: () => void;
+  };
+  const studentQuickActions: QuickTile[] = [
+    can("homework.view") && {
       label: "Homework",
-      icon: "book-open-page-variant-outline",
+      icon: "book-open-page-variant-outline" as IconName,
       color: "#7c3aed",
       bg: "#f5f3ff",
-      screen: "Learning",
+      onPress: () => navigation.navigate("Learning"),
     },
-    {
+    can("attendance.view") && {
       label: "Attendance",
-      icon: "calendar-check-outline",
+      icon: "calendar-check-outline" as IconName,
       color: "#059669",
       bg: "#ecfdf5",
-      screen: "Attendance",
+      onPress: () => navigation.navigate("Attendance"),
     },
-    {
+    can("result.view") && {
       label: "Results",
-      icon: "chart-line",
+      icon: "chart-line" as IconName,
       color: "#2563eb",
       bg: "#eff6ff",
-      screen: "Results",
+      onPress: () => navigation.navigate("Results"),
     },
-    {
+    can("invoice.view", "fee.view") && {
       label: "Fees",
-      icon: "wallet-outline",
+      icon: "wallet-outline" as IconName,
       color: "#d97706",
       bg: "#fffbeb",
-      screen: "More",
+      onPress: () => navigation.navigate("Fees"),
     },
-    {
-      label: "Timetable",
-      icon: "calendar-clock-outline",
+    Boolean(user?.studentId) && can("leave.create") && {
+      label: "Leave",
+      icon: "calendar-remove-outline" as IconName,
       color: "#db2777",
       bg: "#fdf2f8",
-      screen: "More",
+      onPress: () => navigation.navigate("Leave"),
     },
-    {
-      label: "Library",
-      icon: "bookshelf",
-      color: "#0891b2",
-      bg: "#ecfeff",
-      screen: "More",
-    },
-  ];
+  ].filter((action): action is QuickTile => Boolean(action));
 
-  const workflowActions = [
+  const workflowActions: {
+    label: string;
+    description: string;
+    icon: IconName;
+    onPress: () => void;
+  }[] = [
     can("attendance.create", "attendance.edit")
       ? {
           label: "Take attendance",
           description: "Open today's register",
           icon: "calendar-check-outline" as IconName,
-          screen: "Attendance",
+          onPress: () => navigation.navigate("Attendance"),
         }
       : null,
     can("homework.view", "homework.create", "homework.edit")
@@ -203,7 +211,7 @@ export function Home() {
           label: "Review learning",
           description: "Check assignments and work",
           icon: "book-open-outline" as IconName,
-          screen: "Learning",
+          onPress: () => navigation.navigate("Learning"),
         }
       : null,
     can("result.view", "result.create")
@@ -211,7 +219,7 @@ export function Home() {
           label: "Review results",
           description: "Open exams and scores",
           icon: "chart-box-outline" as IconName,
-          screen: "Results",
+          onPress: () => navigation.navigate("Results"),
         }
       : null,
     can("fee.view", "invoice.view")
@@ -219,14 +227,14 @@ export function Home() {
           label: "Check fees",
           description: "View balances and invoices",
           icon: "cash-multiple" as IconName,
-          screen: "More",
+          onPress: () => navigation.navigate("Fees"),
         }
       : null,
   ].filter((action): action is NonNullable<typeof action> => Boolean(action));
 
   return (
     <ScrollView
-      contentContainerStyle={styles.container}
+      contentContainerStyle={[styles.container, { paddingTop: insets.top + 12 }]}
       showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl
@@ -378,9 +386,7 @@ export function Home() {
             {studentQuickActions.map((action) => (
               <Pressable
                 key={action.label}
-                onPress={() =>
-                  navigation.navigate("HomeTabs", { screen: action.screen })
-                }
+                onPress={action.onPress}
                 style={({ pressed }) => [
                   styles.tile,
                   pressed && styles.pressedTile,
@@ -436,9 +442,7 @@ export function Home() {
                 label={action.label}
                 description={action.description}
                 icon={action.icon}
-                onPress={() =>
-                  navigation.navigate("HomeTabs", { screen: action.screen })
-                }
+                onPress={action.onPress}
               />
             ))}
           </View>

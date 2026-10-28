@@ -1,16 +1,19 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Image,
   Linking,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import { Directory, File, Paths } from "expo-file-system";
@@ -62,46 +65,51 @@ const moduleTheme: Record<
 function useList(path: string) {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-  useEffect(() => {
-    let active = true;
-    void mobileToken()
-      .then((token) => {
-        if (!token) {
-          if (active) {
-            setError("Session expired. Please sign in again.");
-            setLoading(false);
-          }
-          return;
-        }
-        return new EduApiClient(API_URL, () => token)
-          .get<{ data: Item[] }>(path)
-          .then((result) => {
-            if (active) setItems(result.data);
-          })
-          .catch((err: unknown) => {
-            if (active)
-              setError(
-                err instanceof Error
-                  ? err.message
-                  : `Unable to load data from ${API_URL}`,
-              );
-          })
-          .finally(() => {
-            if (active) setLoading(false);
-          });
-      })
-      .catch((err: unknown) => {
-        if (active) {
-          setError(err instanceof Error ? err.message : "Unable to load data");
-          setLoading(false);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [path]);
-  return { items, loading, error };
+  const hasLoaded = useRef(false);
+
+  const load = useCallback(
+    async (mode: "initial" | "refresh" | "silent" = "initial") => {
+      if (mode === "refresh") setRefreshing(true);
+      try {
+        const token = await mobileToken();
+        if (!token) throw new Error("Session expired. Please sign in again.");
+        const result = await new EduApiClient(API_URL, () => token).get<{
+          data: Item[];
+        }>(path);
+        setItems(result.data);
+        setError("");
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : `Unable to load data from ${API_URL}`,
+        );
+      } finally {
+        hasLoaded.current = true;
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [path],
+  );
+
+  // Reload whenever the tab regains focus so submissions, marks and
+  // invoices stay in sync without a manual refresh.
+  useFocusEffect(
+    useCallback(() => {
+      void load(hasLoaded.current ? "silent" : "initial");
+    }, [load]),
+  );
+
+  return {
+    items,
+    loading,
+    refreshing,
+    error,
+    reload: () => load("refresh"),
+  };
 }
 
 function ModuleList({
@@ -111,6 +119,10 @@ function ModuleList({
   getTitle,
   getMeta,
   renderExtra,
+  renderSummary,
+  renderBadge,
+  emptyTitle,
+  emptyText,
 }: {
   title: string;
   subtitle: string;
@@ -118,15 +130,31 @@ function ModuleList({
   getTitle: (item: Item) => string;
   getMeta: (item: Item) => string;
   renderExtra?: (item: Item) => ReactNode;
+  renderSummary?: (items: Item[]) => ReactNode;
+  renderBadge?: (item: Item) => ReactNode;
+  emptyTitle?: string;
+  emptyText?: string;
 }) {
-  const { items, loading, error } = useList(path);
+  const { items, loading, refreshing, error, reload } = useList(path);
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const theme = moduleTheme[title] ?? moduleTheme.Learning;
 
   return (
     <ScrollView
-      contentContainerStyle={styles.container}
+      contentContainerStyle={[
+        styles.container,
+        { paddingTop: insets.top + 12 },
+      ]}
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => void reload()}
+          colors={[palette.primary]}
+          tintColor={palette.primary}
+        />
+      }
     >
       {/* Header */}
       <View style={styles.headerRow}>
@@ -144,10 +172,12 @@ function ModuleList({
       </View>
       <Text style={styles.subtitle}>{subtitle}</Text>
 
+      {renderSummary?.(items)}
+
       {loading ? (
         <ActivityIndicator color={palette.primary} style={styles.loader} />
       ) : error ? (
-        <View style={styles.errorCard}>
+        <Pressable onPress={() => void reload()} style={styles.errorCard}>
           <View style={styles.errorIcon}>
             <MaterialCommunityIcons
               name="cloud-alert-outline"
@@ -156,7 +186,10 @@ function ModuleList({
             />
           </View>
           <Text style={styles.errorText}>{error}</Text>
-        </View>
+          <View style={styles.retryButton}>
+            <Text style={styles.retryText}>Retry</Text>
+          </View>
+        </Pressable>
       ) : items.length ? (
         <View style={styles.list}>
           {items.map((item, index) => (
@@ -169,9 +202,12 @@ function ModuleList({
                     size={18}
                   />
                 </View>
-                <Text style={styles.cardIndex}>
-                  {String(index + 1).padStart(2, "0")}
-                </Text>
+                <View style={styles.cardTopRight}>
+                  {renderBadge?.(item)}
+                  <Text style={styles.cardIndex}>
+                    {String(index + 1).padStart(2, "0")}
+                  </Text>
+                </View>
               </View>
               <Text style={styles.cardTitle}>{getTitle(item)}</Text>
               <Text style={styles.cardMeta}>{getMeta(item)}</Text>
@@ -188,9 +224,9 @@ function ModuleList({
               size={26}
             />
           </View>
-          <Text style={styles.emptyTitle}>Nothing here yet</Text>
+          <Text style={styles.emptyTitle}>{emptyTitle ?? "Nothing here yet"}</Text>
           <Text style={styles.emptyText}>
-            New activity will appear here when it's available. Check back soon!
+            {emptyText ?? "New activity will appear here when it's available. Check back soon!"}
           </Text>
         </View>
       )}
@@ -200,17 +236,25 @@ function ModuleList({
 
 export function Attendance() {
   const { user } = useAuth();
+  const isLearner =
+    Boolean(user?.studentId) ||
+    Boolean(
+      user?.roles?.some((role) => role === "parent" || role === "guardian"),
+    );
   return (
     <ModuleList
       title="Attendance"
       subtitle="See how your attendance is tracking this term."
-      path={`/attendance${user?.studentId ? `?studentId=${user.studentId}` : ""}`}
+      path="/attendance"
       getTitle={(item) =>
-        String(item.studentName ?? item.date ?? "Attendance record")
+        String(item.studentName ?? item.date ?? "Attendance day")
       }
       getMeta={(item) =>
-        `${String(item.status ?? "recorded")} · ${String(item.date ?? "")}`
+        `${capitalize(String(item.status ?? "recorded"))}${item.remarks ? ` · ${String(item.remarks)}` : ""} · ${formatDate(item.date)}`
       }
+      renderSummary={isLearner ? () => <AttendanceOverview /> : undefined}
+      emptyTitle="No attendance yet"
+      emptyText="Attendance appears here once your teacher marks the register."
     />
   );
 }
@@ -224,7 +268,10 @@ export function Learning() {
       getMeta={(item) =>
         `${String(item.subjectName ?? "Subject")} · assigned ${formatDate(item.assignedDate)} · due ${formatDate(item.submissionDate)}`
       }
+      renderBadge={(item) => dueBadge(item.submissionDate)}
       renderExtra={(item) => <AssignmentDetails item={item} />}
+      emptyTitle="You're all caught up"
+      emptyText="New homework will appear here as soon as your teacher posts it."
     />
   );
 }
@@ -238,8 +285,12 @@ export function Fees() {
         `${String(item.invoiceNumber ?? "Invoice")} · ${String(item.studentName ?? "")}`
       }
       getMeta={(item) =>
-        `Rs ${Number(item.balance ?? 0).toLocaleString()} outstanding · ${String(item.status ?? "")}`
+        `Rs ${Number(item.balance ?? 0).toLocaleString()} outstanding · due ${formatDate(item.dueDate)}`
       }
+      renderBadge={invoiceBadge}
+      renderSummary={(items) => <FeesSummary items={items} />}
+      emptyTitle="No invoices yet"
+      emptyText="Invoices will appear here once the school issues them."
     />
   );
 }
@@ -253,13 +304,214 @@ export function Results() {
       getMeta={(item) =>
         `${String(item.type ?? "")} · ${String(item.status ?? "draft")}`
       }
+      renderBadge={(item) => examBadge(item.status)}
       renderExtra={(item) => (
         <MarksheetButton
           examId={String(item.id ?? "")}
           examName={String(item.name ?? "Examination")}
         />
       )}
+      emptyTitle="No exams yet"
+      emptyText="Published exams and marksheets will show up here."
     />
+  );
+}
+
+function capitalize(value: string) {
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
+}
+
+type BadgeTone = "ok" | "warn" | "danger" | "info";
+
+function StatusBadge({ label, tone }: { label: string; tone: BadgeTone }) {
+  const tones: Record<BadgeTone, { bg: string; fg: string }> = {
+    ok: { bg: palette.successSoft, fg: palette.success },
+    warn: { bg: palette.warnSoft, fg: palette.warn },
+    danger: { bg: palette.dangerSoft, fg: palette.danger },
+    info: { bg: palette.primarySoft, fg: palette.primary },
+  };
+  return (
+    <View style={[styles.badge, { backgroundColor: tones[tone].bg }]}>
+      <Text style={[styles.badgeText, { color: tones[tone].fg }]}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function dueBadge(value: unknown) {
+  if (typeof value !== "string" || !value) return null;
+  const due = new Date(`${value}T23:59:59`);
+  if (Number.isNaN(due.getTime())) return null;
+  const days = Math.ceil((due.getTime() - Date.now()) / 86400000);
+  if (days < 0) return <StatusBadge label="Overdue" tone="danger" />;
+  if (days === 0) return <StatusBadge label="Due today" tone="warn" />;
+  if (days <= 3)
+    return <StatusBadge label={`${days} day${days === 1 ? "" : "s"} left`} tone="warn" />;
+  return <StatusBadge label={`${days} days left`} tone="info" />;
+}
+
+function invoiceBadge(item: Item) {
+  const status = String(item.status ?? "unpaid");
+  const balance = Number(item.balance ?? 0);
+  if (status === "paid" || balance <= 0)
+    return <StatusBadge label="Paid" tone="ok" />;
+  if (status === "cancelled")
+    return <StatusBadge label="Cancelled" tone="info" />;
+  if (status === "overdue" || isPastDue(item.dueDate))
+    return <StatusBadge label="Overdue" tone="danger" />;
+  if (status === "partial")
+    return <StatusBadge label="Part paid" tone="warn" />;
+  return <StatusBadge label="Unpaid" tone="warn" />;
+}
+
+function isPastDue(value: unknown) {
+  if (typeof value !== "string" || !value) return false;
+  const due = new Date(`${value}T23:59:59`);
+  return !Number.isNaN(due.getTime()) && due.getTime() < Date.now();
+}
+
+function examBadge(status: unknown) {
+  const value = String(status ?? "draft");
+  return (
+    <StatusBadge
+      label={capitalize(value)}
+      tone={value === "published" ? "ok" : value === "draft" ? "info" : "warn"}
+    />
+  );
+}
+
+function FeesSummary({ items }: { items: Item[] }) {
+  if (!items.length) return null;
+  const outstanding = items.reduce(
+    (total, item) => total + Math.max(0, Number(item.balance ?? 0)),
+    0,
+  );
+  const unpaid = items.filter((item) => Number(item.balance ?? 0) > 0).length;
+  return (
+    <View style={styles.summaryCard}>
+      <View style={styles.summaryTop}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.summaryLabel}>Total outstanding</Text>
+          <Text style={styles.summaryBig}>Rs {outstanding.toLocaleString()}</Text>
+          <Text style={styles.summaryHint}>
+            {unpaid
+              ? `${unpaid} invoice${unpaid === 1 ? "" : "s"} waiting for payment`
+              : "All invoices are settled"}
+          </Text>
+        </View>
+        <View style={styles.summaryIcon}>
+          <MaterialCommunityIcons
+            name={unpaid ? "wallet-outline" : "check-decagram-outline"}
+            color={unpaid ? palette.warn : palette.success}
+            size={26}
+          />
+        </View>
+      </View>
+    </View>
+  );
+}
+
+type AttendanceRow = {
+  studentId: string;
+  studentName?: string;
+  present: number;
+  absent: number;
+  late: number;
+  leave: number;
+  excused: number;
+  total: number;
+  percentage: number;
+};
+
+function AttendanceOverview() {
+  const [rows, setRows] = useState<AttendanceRow[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      void mobileToken()
+        .then((token) => {
+          if (!token) return undefined;
+          return new EduApiClient(API_URL, () => token).get<{
+            data: AttendanceRow[];
+          }>("/attendance/summary");
+        })
+        .then((result) => {
+          if (active && result) setRows(result.data);
+        })
+        .catch(() => undefined);
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
+
+  if (!rows.length) return null;
+
+  if (rows.length === 1) {
+    const row = rows[0];
+    return (
+      <View style={styles.summaryCard}>
+        <View style={styles.summaryTop}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.summaryLabel}>Attendance this term</Text>
+            <Text style={styles.summaryBig}>{row.percentage}%</Text>
+            <Text style={styles.summaryHint}>
+              {row.total} day{row.total === 1 ? "" : "s"} recorded
+            </Text>
+          </View>
+          <View style={styles.summaryIcon}>
+            <MaterialCommunityIcons
+              name="calendar-check"
+              color={palette.success}
+              size={26}
+            />
+          </View>
+        </View>
+        <View style={styles.summaryStats}>
+          <SummaryStat label="Present" value={row.present} tone={palette.success} />
+          <SummaryStat label="Absent" value={row.absent} tone={palette.danger} />
+          <SummaryStat label="Late" value={row.late} tone={palette.warn} />
+          <SummaryStat label="Leave" value={row.leave} tone={palette.inkSoft} />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.childrenList}>
+      {rows.map((row) => (
+        <View key={row.studentId} style={styles.childCard}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.childName}>
+              {row.studentName ?? "Student"}
+            </Text>
+            <Text style={styles.childMeta}>
+              {row.present} present · {row.absent} absent · {row.late} late
+            </Text>
+          </View>
+          <Text style={styles.childPercent}>{row.percentage}%</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function SummaryStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: string;
+}) {
+  return (
+    <View style={styles.summaryStat}>
+      <Text style={[styles.summaryStatValue, { color: tone }]}>{value}</Text>
+      <Text style={styles.summaryStatLabel}>{label}</Text>
+    </View>
   );
 }
 
@@ -363,47 +615,51 @@ function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
   const [content, setContent] = useState("");
   const [attachment, setAttachment] = useState<SubmissionFile | null>(null);
   const [status, setStatus] = useState("");
+  const [saved, setSaved] = useState<{
+    marks: number | null;
+    feedback: string | null;
+  } | null>(null);
   const [busy, setBusy] = useState<"upload" | "submit" | null>(null);
 
-  useEffect(() => {
-    if (!user?.studentId) return;
-    let active = true;
-    void mobileToken().then((token) =>
-      token
-        ? new EduApiClient(API_URL, () => token)
-            .get<{
-              data: Array<{
-                content: string | null;
-                fileUrl: string | null;
-                status: string;
-                feedback: string | null;
-                marks: number | null;
-              }>;
-            }>(`/homework/${homeworkId}/submissions`)
-            .then((result) => {
-              const submission = result.data[0];
-              if (active && submission) {
-                setContent(submission.content ?? "");
-                setStatus(
-                  submission.marks === null
-                    ? "✓ Submitted — waiting for grading"
-                    : `★ Graded: ${submission.marks}`,
-                );
-                if (submission.fileUrl)
-                  setAttachment({
-                    url: submission.fileUrl,
-                    name: "Submitted file",
-                    mimeType: "application/octet-stream",
-                  });
-              }
-            })
-            .catch(() => undefined)
-        : undefined,
-    );
-    return () => {
-      active = false;
-    };
-  }, [homeworkId, user?.studentId]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!user?.studentId) return undefined;
+      let active = true;
+      void mobileToken()
+        .then((token) =>
+          token
+            ? new EduApiClient(API_URL, () => token).get<{
+                data: Array<{
+                  content: string | null;
+                  fileUrl: string | null;
+                  status: string;
+                  feedback: string | null;
+                  marks: number | null;
+                }>;
+              }>(`/homework/${homeworkId}/submissions`)
+            : undefined,
+        )
+        .then((result) => {
+          const submission = result?.data[0];
+          if (!active || !submission) return;
+          setContent(submission.content ?? "");
+          setSaved({
+            marks: submission.marks,
+            feedback: submission.feedback,
+          });
+          if (submission.fileUrl)
+            setAttachment({
+              url: submission.fileUrl,
+              name: "Submitted file",
+              mimeType: "application/octet-stream",
+            });
+        })
+        .catch(() => undefined);
+      return () => {
+        active = false;
+      };
+    }, [homeworkId, user?.studentId]),
+  );
 
   if (!user?.studentId) return null;
 
@@ -434,6 +690,10 @@ function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
     }
   }
   async function submit() {
+    if (!content.trim() && !attachment) {
+      setStatus("Write an answer or attach a file before submitting.");
+      return;
+    }
     setBusy("submit");
     setStatus("");
     try {
@@ -443,6 +703,7 @@ function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
         `/homework/${homeworkId}/submissions`,
         { content: content.trim() || null, fileUrl: attachment?.url ?? null },
       );
+      setSaved({ marks: null, feedback: null });
       setStatus("✓ Submission saved — nice work!");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Unable to submit");
@@ -468,6 +729,37 @@ function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
           </Text>
         </View>
       </View>
+
+      {saved ? (
+        <View style={submissionStyles.savedPanel}>
+          <View style={submissionStyles.savedRow}>
+            <MaterialCommunityIcons
+              name={
+                saved.marks === null
+                  ? "check-circle-outline"
+                  : "star-circle-outline"
+              }
+              color={saved.marks === null ? palette.success : palette.warn}
+              size={16}
+            />
+            <Text style={submissionStyles.savedText}>
+              {saved.marks === null
+                ? "Submitted — waiting for grading"
+                : `Graded · ${saved.marks} marks`}
+            </Text>
+          </View>
+          {saved.feedback ? (
+            <View style={submissionStyles.feedbackBox}>
+              <Text style={submissionStyles.feedbackLabel}>
+                Teacher feedback
+              </Text>
+              <Text style={submissionStyles.feedbackText}>
+                {saved.feedback}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
 
       <TextInput
         multiline
@@ -538,7 +830,11 @@ function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
           size={17}
         />
         <Text style={submissionStyles.submitText}>
-          {busy === "submit" ? "Saving..." : "Submit assignment"}
+          {busy === "submit"
+            ? "Saving..."
+            : saved
+              ? "Update submission"
+              : "Submit assignment"}
         </Text>
       </Pressable>
 
@@ -558,6 +854,38 @@ function MarksheetButton({
 }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [choices, setChoices] = useState<MarksheetResult[] | null>(null);
+
+  async function saveMarksheet(row: MarksheetResult) {
+    const bytes = await createMarksheetPdf(examName, row);
+    const filename = `${examName
+      .replace(/[^a-z0-9]+/gi, "-")
+      .replace(/^-|-$/g, "")
+      .toLowerCase()}-${row.studentName
+      .replace(/[^a-z0-9]+/gi, "-")
+      .replace(/^-|-$/g, "")
+      .toLowerCase()}-marksheet.pdf`;
+    if (Platform.OS === "web") {
+      const blob = new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], {
+        type: "application/pdf",
+      });
+      const href = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = href;
+      anchor.download = filename;
+      anchor.click();
+      URL.revokeObjectURL(href);
+    } else {
+      const directory = new Directory(Paths.document, "marksheets");
+      directory.create({ idempotent: true, intermediates: true });
+      const file = new File(directory, filename);
+      file.write(bytes);
+      if (await Sharing.isAvailableAsync())
+        await Sharing.shareAsync(file.uri, { dialogTitle: "Save marksheet" });
+      else await WebBrowser.openBrowserAsync(file.uri);
+    }
+  }
+
   async function generate() {
     setBusy(true);
     setMessage("");
@@ -567,35 +895,31 @@ function MarksheetButton({
       const result = await new EduApiClient(API_URL, () => token).get<{
         data: MarksheetResult[];
       }>(`/exams/results?examId=${encodeURIComponent(examId)}`);
-      const row = result.data[0];
-      if (!row) {
+      if (!result.data.length) {
         setMessage("Marks aren't published yet — check back soon.");
         return;
       }
-      const bytes = await createMarksheetPdf(examName, row);
-      const filename = `${examName
-        .replace(/[^a-z0-9]+/gi, "-")
-        .replace(/^-|-$/g, "")
-        .toLowerCase()}-marksheet.pdf`;
-      if (Platform.OS === "web") {
-        const blob = new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], {
-          type: "application/pdf",
-        });
-        const href = URL.createObjectURL(blob);
-        const anchor = document.createElement("a");
-        anchor.href = href;
-        anchor.download = filename;
-        anchor.click();
-        URL.revokeObjectURL(href);
-      } else {
-        const directory = new Directory(Paths.document, "marksheets");
-        directory.create({ idempotent: true, intermediates: true });
-        const file = new File(directory, filename);
-        file.write(bytes);
-        if (await Sharing.isAvailableAsync())
-          await Sharing.shareAsync(file.uri, { dialogTitle: "Save marksheet" });
-        else await WebBrowser.openBrowserAsync(file.uri);
+      if (result.data.length > 1) {
+        setChoices(result.data);
+        return;
       }
+      await saveMarksheet(result.data[0]);
+      setMessage("✓ Marksheet ready!");
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Unable to generate marksheet",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function choose(row: MarksheetResult) {
+    setChoices(null);
+    setBusy(true);
+    setMessage("");
+    try {
+      await saveMarksheet(row);
       setMessage("✓ Marksheet ready!");
     } catch (error) {
       setMessage(
@@ -625,6 +949,38 @@ function MarksheetButton({
         </Text>
       </Pressable>
       {message ? <Text style={styles.marksheetMessage}>{message}</Text> : null}
+      <Modal
+        visible={choices !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setChoices(null)}
+      >
+        <Pressable
+          style={styles.pickerBackdrop}
+          onPress={() => setChoices(null)}
+        >
+          <View style={styles.pickerCard}>
+            <Text style={styles.pickerTitle}>Choose a child</Text>
+            {choices?.map((row, index) => (
+              <Pressable
+                key={`${row.studentName}-${index}`}
+                onPress={() => void choose(row)}
+                style={({ pressed }) => [
+                  styles.pickerRow,
+                  pressed && { backgroundColor: palette.primarySoft },
+                ]}
+              >
+                <Text style={styles.pickerName}>{row.studentName}</Text>
+                <MaterialCommunityIcons
+                  name="chevron-right"
+                  color={palette.muted}
+                  size={18}
+                />
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -864,6 +1220,35 @@ const submissionStyles = StyleSheet.create({
     elevation: 3,
   },
   submitText: { color: "#fff", fontSize: 14, fontWeight: "800" },
+  savedPanel: {
+    backgroundColor: "#fff",
+    borderColor: palette.primaryBorder,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 12,
+    padding: 11,
+  },
+  savedRow: { alignItems: "center", flexDirection: "row", gap: 6 },
+  savedText: { color: palette.ink, fontSize: 12, fontWeight: "800" },
+  feedbackBox: {
+    borderTopColor: palette.border,
+    borderTopWidth: 1,
+    marginTop: 9,
+    paddingTop: 9,
+  },
+  feedbackLabel: {
+    color: palette.inkSoft,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  feedbackText: {
+    color: palette.ink,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 4,
+  },
   submissionStatus: {
     color: palette.inkSoft,
     fontSize: 12,
@@ -1073,6 +1458,107 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     marginTop: 6,
   },
+  cardTopRight: { alignItems: "center", flexDirection: "row", gap: 8 },
+  badge: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
+  badgeText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.2 },
+
+  // Error retry
+  retryButton: {
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  retryText: { color: palette.danger, fontSize: 12, fontWeight: "800" },
+
+  // Summary
+  summaryCard: {
+    backgroundColor: "#fff",
+    borderColor: palette.border,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginTop: 20,
+    padding: 18,
+    shadowColor: palette.primary,
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { height: 4, width: 0 },
+    elevation: 1,
+  },
+  summaryTop: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+  },
+  summaryLabel: {
+    color: palette.inkSoft,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  summaryBig: {
+    color: palette.ink,
+    fontSize: 30,
+    fontWeight: "800",
+    letterSpacing: -0.8,
+    marginTop: 4,
+  },
+  summaryHint: {
+    color: palette.muted,
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 4,
+  },
+  summaryIcon: {
+    alignItems: "center",
+    backgroundColor: palette.bg,
+    borderRadius: 16,
+    height: 52,
+    justifyContent: "center",
+    width: 52,
+  },
+  summaryStats: {
+    borderTopColor: palette.border,
+    borderTopWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 16,
+    paddingTop: 14,
+  },
+  summaryStat: { alignItems: "center", flex: 1 },
+  summaryStatValue: { fontSize: 19, fontWeight: "800" },
+  summaryStatLabel: {
+    color: palette.muted,
+    fontSize: 10,
+    fontWeight: "700",
+    marginTop: 2,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  childrenList: { gap: 10, marginTop: 20 },
+  childCard: {
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderColor: palette.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    padding: 15,
+  },
+  childName: { color: palette.ink, fontSize: 14, fontWeight: "800" },
+  childMeta: {
+    color: palette.inkSoft,
+    fontSize: 12,
+    fontWeight: "500",
+    marginTop: 3,
+  },
+  childPercent: {
+    color: palette.success,
+    fontSize: 18,
+    fontWeight: "800",
+  },
 
   // Description
   descriptionBox: {
@@ -1128,6 +1614,35 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginTop: 8,
   },
+  pickerBackdrop: {
+    alignItems: "center",
+    backgroundColor: "rgba(15, 23, 42, 0.45)",
+    flex: 1,
+    justifyContent: "center",
+    padding: 24,
+  },
+  pickerCard: {
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    maxWidth: 420,
+    padding: 16,
+    width: "100%",
+  },
+  pickerTitle: {
+    color: palette.ink,
+    fontSize: 16,
+    fontWeight: "800",
+    marginBottom: 8,
+  },
+  pickerRow: {
+    alignItems: "center",
+    borderRadius: 12,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 10,
+    paddingVertical: 13,
+  },
+  pickerName: { color: palette.ink, fontSize: 14, fontWeight: "700" },
 
   // Attachments
   attachment: { marginTop: 10 },

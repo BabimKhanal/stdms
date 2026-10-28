@@ -4,7 +4,7 @@ import { Platform } from "react-native";
 import { EduApiClient } from "@edu/api-client";
 import { API_URL } from "./config";
 
-export type MobileUser = { id: string; name: string; email?: string | null; username?: string | null; avatarUrl?: string | null; orgName?: string | null; roles: string[]; permissions: string[]; isPlatformAdmin?: boolean; studentId?: string | null };
+export type MobileUser = { id: string; name: string; email?: string | null; username?: string | null; avatarUrl?: string | null; orgName?: string | null; roles: string[]; permissions: string[]; isPlatformAdmin?: boolean; mustChangePassword?: boolean; studentId?: string | null };
 
 const ACCESS_KEY = "edu_access_token";
 const REFRESH_KEY = "edu_refresh_token";

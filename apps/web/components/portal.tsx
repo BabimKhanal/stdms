@@ -30,6 +30,7 @@ import { StudentDirectory } from "./student-directory";
 import { FeeWorkspace } from "./fee-workspace";
 import { ExamWorkspace } from "./exam-workspace";
 import { LearningWorkspace } from "./learning-workspace";
+import { StudentLearning } from "./student-learning";
 import { AcademicWorkspace } from "./academic-workspace";
 import { GuardianWorkspace } from "./guardian-workspace";
 import { AttendanceWorkspace } from "./attendance-workspace";
@@ -42,7 +43,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { formatNpr } from "../lib/utils";
 import { NotificationBell } from "./notification-bell";
 
-type User = { name: string; email?: string | null; orgName?: string | null; roles: string[]; permissions?: string[]; isPlatformAdmin?: boolean };
+type User = { name: string; email?: string | null; orgName?: string | null; roles: string[]; permissions?: string[]; isPlatformAdmin?: boolean; studentId?: string | null };
 type Notice = { id: string; title: string; body?: string | null; priority?: string; publishAt?: string };
 type CalendarEvent = { id: string; title: string; startDate?: string; endDate?: string | null; startTime?: string | null; venue?: string | null };
 type Dashboard = {
@@ -258,8 +259,8 @@ export function Portal() {
             : section === "academics" ? <AcademicWorkspace />
             : section === "attendance" ? <AttendanceWorkspace />
             : section === "fees" ? <FeeWorkspace />
-            : section === "exams" ? <ExamWorkspace />
-            : section === "learning" ? <LearningWorkspace />
+            : section === "exams" ? <ExamWorkspace canManage={Boolean(user?.isPlatformAdmin || user?.permissions?.includes("exam.create") || user?.permissions?.includes("exam.edit"))} />
+            : section === "learning" ? (user?.studentId ? <StudentLearning /> : <LearningWorkspace canManage={Boolean(user?.isPlatformAdmin || user?.permissions?.includes("homework.create"))} />)
             : section === "reports" ? <ReportsWorkspace />
             : section === "communication" ? <CommunicationWorkspace />
             : section === "users" ? <UserManagement />

@@ -5,6 +5,7 @@ import { createURL } from 'expo-linking';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Navigation } from './navigation';
 import { AuthProvider, useAuth } from './auth';
 import { Login } from './screens/Login';
@@ -24,7 +25,7 @@ const linking = {
 };
 
 export function App() {
-  return <AuthProvider><AuthenticatedApp /></AuthProvider>;
+  return <SafeAreaProvider><AuthProvider><AuthenticatedApp /></AuthProvider></SafeAreaProvider>;
 }
 
 function AuthenticatedApp() {
