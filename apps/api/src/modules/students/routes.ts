@@ -125,6 +125,17 @@ const promoteSchema = z.object({
     .min(1),
 });
 
+const lifecycleSchema = z.object({
+  status: z.enum(["active", "graduated", "suspended", "withdrawn", "transferred", "alumni"]),
+});
+
+studentRoutes.post("/:id/lifecycle", requirePermission("student.edit"), async (c) => {
+  const input = parse(lifecycleSchema, await c.req.json());
+  const row = await svc.transitionStudentStatus(c.get("db"), c.get("orgId")!, c.req.param("id"), input.status);
+  await writeAudit(c, { action: "status_change", entity: "student", entityId: row.id, newValue: input });
+  return ok(c, row);
+});
+
 enrolmentRoutes.post("/promote", requirePermission("enrolment.edit"), async (c) => {
   const input = parse(promoteSchema, await c.req.json());
   const result = await svc.promoteStudents(
