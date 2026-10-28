@@ -97,6 +97,7 @@ export type GradingScale = z.infer<typeof gradingScaleSchema>;
 
 export const gradingScaleInputSchema = z.object({
   name: z.string().trim().min(2).max(60),
+  isDefault: z.boolean().optional(),
   bands: z
     .array(
       z.object({
@@ -136,6 +137,7 @@ export const resultRowSchema = z.object({
   gpa: z.number().nullable(),
   grade: z.string().nullable(),
   rank: z.number().nullable(),
+  sectionRank: z.number().nullable().optional(),
   passed: z.boolean(),
 });
 export type ResultRow = z.infer<typeof resultRowSchema>;

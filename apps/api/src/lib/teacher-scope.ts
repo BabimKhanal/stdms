@@ -1,7 +1,7 @@
-import { and, eq, or, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import type { DB } from "./types";
 import type { AuthUser } from "./context";
-import { classes, sections, classSubjects, enrolments, students, employees, users } from "../db/schema";
+import { classes, sections, classSubjects, enrolments, studentGuardians, students, employees, users } from "../db/schema";
 import { forbidden, notFound } from "./errors";
 
 export function isUnrestrictedAdmin(user: AuthUser) {
@@ -10,6 +10,29 @@ export function isUnrestrictedAdmin(user: AuthUser) {
 
 export function isScopedTeacher(user: AuthUser) {
   return !isUnrestrictedAdmin(user) && user.roles.includes("teacher");
+}
+
+/** Student records linked to a guardian login. */
+export async function guardianStudentIds(db: DB, orgId: string, guardianIds?: string[] | null) {
+  if (!guardianIds?.length) return [];
+  const rows = await db.select({ id: studentGuardians.studentId }).from(studentGuardians).where(and(eq(studentGuardians.organisationId, orgId), inArray(studentGuardians.guardianId, guardianIds)));
+  return rows.map((row) => row.id);
+}
+
+/**
+ * Student ids a learner or guardian login is limited to.
+ * Returns null for staff, who keep the existing role-based scoping.
+ */
+export async function learnerStudentIds(db: DB, orgId: string, user?: AuthUser | null): Promise<string[] | null> {
+  if (!user) return null;
+  if (user.studentId) return [user.studentId];
+  if (user.roles.some((role) => role === "parent" || role === "guardian")) return guardianStudentIds(db, orgId, user.guardianIds);
+  return null;
+}
+
+/** A safe `id in (?, ?, ...)` fragment for a known list of ids. */
+export function idList(ids: string[]) {
+  return sql.join(ids.map((id) => sql`${id}`), sql`, `);
 }
 
 /** Adds class/section assignment filtering while leaving students and parents unchanged. */

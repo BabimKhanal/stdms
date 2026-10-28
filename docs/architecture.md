@@ -14,6 +14,22 @@ The migration runner enables and forces RLS on tenant tables. A request with no 
 
 Student class placement belongs to `enrolments`, not the student profile. Promotion inserts a new academic-year row, preserving transcripts and previous class history.
 
+## Results
+
+`/exams/results` computes subject grades and GPA from the tenant's default grading scale (`grading_scales` + `grading_scale_bands`), the overall grade from the total percentage, and competition ranks inside the class and section. Only students enrolled in the exam's academic year are included, and rank is calculated against peers even when a learner requests their own row.
+
+Exams are visible to learners only after `POST /exams/:id/publish` flips the status to `published`; publishing notifies affected students and guardians. `/exams/:id/report-card/:studentId` renders a printable HTML report card under the same learner scoping as results.
+
+## Learner Access
+
+Student and guardian logins are scoped to records they own:
+
+- Students see only their own enrolment, attendance, homework, invoices, leave requests and published results for their class.
+- Guardians see the same data for the children linked through `student_guardians`; a guardian with no linked children sees nothing rather than the whole institution.
+- Staff keep the existing role and class/subject scoping.
+
+Homework submissions are guarded by `homework.view` plus a student-profile check (`POST /homework/:id/submissions`). Students cannot create or edit assignments, and non-student accounts cannot submit on a learner's behalf.
+
 ## Portable Features
 
 Features communicate through shared zod contracts and REST endpoints. The web app and future Expo app use the same API client contract; neither contains business logic that belongs in the backend.

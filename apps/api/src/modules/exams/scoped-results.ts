@@ -2,10 +2,19 @@ import { and, eq } from "drizzle-orm";
 import type { DB } from "../../lib/types";
 import type { AuthUser } from "../../lib/context";
 import { classSubjects, sections } from "../../db/schema";
-import { assertAssigned, assertStudentAssigned, isScopedTeacher } from "../../lib/teacher-scope";
+import { assertAssigned, assertStudentAssigned, isScopedTeacher, learnerStudentIds } from "../../lib/teacher-scope";
 import { resultRows } from "./service";
 
 export async function scopedResultRows(db: DB, orgId: string, examId: string, classId: string | undefined, sectionId: string | undefined, studentId: string | null | undefined, canViewDraft: boolean, principal: AuthUser) {
+  // Learners and guardians only ever see their own children's rows.
+  const learnerIds = await learnerStudentIds(db, orgId, principal);
+  if (learnerIds) {
+    if (studentId && !learnerIds.includes(studentId)) return [];
+    const targets = studentId ? [studentId] : learnerIds;
+    if (!targets.length) return [];
+    const rows = await Promise.all(targets.map((target) => resultRows(db, orgId, examId, classId, sectionId, target, canViewDraft)));
+    return [...new Map(rows.flat().map((row) => [row.studentId, row])).values()];
+  }
   if (!isScopedTeacher(principal)) return resultRows(db, orgId, examId, classId, sectionId, studentId, canViewDraft);
   if (studentId) await assertStudentAssigned(db, principal, orgId, studentId);
   if (classId) await assertAssigned(db, principal, orgId, classId, sectionId);

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { attendanceListQuerySchema, eventInputSchema, gradeSubmissionSchema, homeworkInputSchema, homeworkSubmitInputSchema, homeworkUpdateSchema, leaveInputSchema, leaveReviewSchema, markAttendanceSchema, noticeInputSchema } from "@edu/shared";
 import type { AppEnv } from "../../lib/types";
 import { ok, okList, parse } from "../../lib/http";
+import { forbidden } from "../../lib/errors";
 import { requireAuth, requireOrg, requirePermission } from "../../middleware/guards";
 import * as svc from "./service";
 
@@ -15,15 +16,21 @@ operationRoutes.delete("/timetable/periods/:id", requirePermission("timetable.de
 operationRoutes.get("/attendance", requirePermission("attendance.view"), async (c) => { const q = parse(attendanceListQuerySchema, c.req.query()); const rows = await svc.listAttendance(db(c), org(c), q, c.get("user")!.studentId, c.get("user")!); return okList(c, rows, rows.length, 1, 1000); });
 operationRoutes.get("/attendance/summary", requirePermission("attendance.view"), async (c) => ok(c, await svc.attendanceSummary(db(c), org(c), c.req.query(), c.get("user")!)));
 operationRoutes.post("/attendance/mark", requirePermission("attendance.create"), async (c) => ok(c, await svc.markAttendance(db(c), org(c), user(c), parse(markAttendanceSchema, await c.req.json()), c.get("user")!), 201));
-operationRoutes.get("/leave", requirePermission("leave.view"), async (c) => { const rows = await svc.listLeave(db(c), org(c)); return okList(c, rows, rows.length, 1, 1000); });
-operationRoutes.post("/leave", requirePermission("leave.create"), async (c) => ok(c, await svc.createLeave(db(c), org(c), user(c), parse(leaveInputSchema, await c.req.json())), 201));
+operationRoutes.get("/leave", requirePermission("leave.view"), async (c) => { const rows = await svc.listLeave(db(c), org(c), c.get("user")!); return okList(c, rows, rows.length, 1, 1000); });
+operationRoutes.post("/leave", requirePermission("leave.create"), async (c) => ok(c, await svc.createLeave(db(c), org(c), user(c), parse(leaveInputSchema, await c.req.json()), c.get("user")!), 201));
 operationRoutes.put("/leave/:id/review", requirePermission("leave.approve"), async (c) => ok(c, await svc.reviewLeave(db(c), org(c), user(c), c.req.param("id"), parse(leaveReviewSchema, await c.req.json()))));
 operationRoutes.get("/homework", requirePermission("homework.view"), async (c) => { const rows = await svc.listHomework(db(c), org(c), c.get("user")!.studentId, c.get("user")!); return okList(c, rows, rows.length, 1, 1000); });
 operationRoutes.post("/homework", requirePermission("homework.create"), async (c) => ok(c, await svc.createHomework(db(c), org(c), user(c), parse(homeworkInputSchema, await c.req.json()), c.get("user")!), 201));
 operationRoutes.put("/homework/:id", requirePermission("homework.edit"), async (c) => ok(c, await svc.updateHomework(db(c), org(c), c.req.param("id"), parse(homeworkUpdateSchema, await c.req.json()), c.get("user")!)));
 operationRoutes.delete("/homework/:id", requirePermission("homework.delete"), async (c) => { await svc.deleteHomework(db(c), org(c), c.req.param("id"), c.get("user")!); return ok(c, { deleted: true }); });
 operationRoutes.get("/homework/:id/submissions", requirePermission("homework.view"), async (c) => okList(c, await svc.listSubmissions(db(c), org(c), c.req.param("id"), c.get("user")!), 0, 1, 1000));
-operationRoutes.post("/homework/:id/submissions", requirePermission("homework.create"), async (c) => ok(c, await svc.saveSubmission(db(c), org(c), c.req.param("id"), c.get("user")!.studentId!, parse(homeworkSubmitInputSchema, await c.req.json())), 201));
+// Submission is a learner action, not staff-owned homework creation. The
+// service also verifies that the learner is enrolled in this assignment.
+operationRoutes.post("/homework/:id/submissions", async (c) => {
+  const principal = c.get("user")!;
+  if (!principal.studentId) throw forbidden("Only students can submit assignments");
+  return ok(c, await svc.saveSubmission(db(c), org(c), c.req.param("id"), principal.studentId, parse(homeworkSubmitInputSchema, await c.req.json())), 201);
+});
 operationRoutes.put("/homework/submissions/:id/grade", requirePermission("homework.edit"), async (c) => ok(c, await svc.gradeSubmission(db(c), org(c), c.req.param("id"), parse(gradeSubmissionSchema, await c.req.json()), c.get("user")!)));
 operationRoutes.get("/notices", requirePermission("notice.view"), async (c) => { const rows = await svc.listNotices(db(c), org(c)); return okList(c, rows, rows.length, 1, 1000); });
 operationRoutes.post("/notices", requirePermission("notice.create"), async (c) => ok(c, await svc.createNotice(db(c), org(c), user(c), parse(noticeInputSchema, await c.req.json())), 201));

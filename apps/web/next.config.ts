@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import path from "node:path";
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@edu/api-client", "@edu/shared"],
@@ -10,7 +11,7 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {
-    root: "../../",
+    root: path.resolve(__dirname, "../../"),
     rules: {
       "*.css": {
         loaders: ["@tailwindcss/turbopack"],
