@@ -1,16 +1,22 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { paginationQuerySchema, idSchema } from "@edu/shared";
+import { employeeInputSchema } from "@edu/shared";
 import type { AppEnv } from "../../lib/types";
 import { ok, okList, parse } from "../../lib/http";
 import { requireAuth, requireOrg, requirePermission } from "../../middleware/guards";
 import * as svc from "./service";
+import { writeAudit } from "../../lib/audit";
 
 export const userRoutes = new Hono<AppEnv>(); userRoutes.use("*", requireAuth, requireOrg);
 const body = z.record(z.string(), z.unknown()); const id = (v: string) => parse(idSchema, v);
 userRoutes.get("/", requirePermission("user.view"), async (c) => okList(c, await svc.list(c.get("db"), c.get("orgId")!, { search: c.req.query("search"), status: c.req.query("status"), employeeId: c.req.query("employeeId"), roleId: c.req.query("roleId") }), 0, 1, 1000));
 userRoutes.get("/teachers", requirePermission("user.view"), async (c) => okList(c, await svc.listTeacherAccounts(c.get("db"), c.get("orgId")!), 0, 1, 1000));
 userRoutes.get("/employees", requirePermission("user.view"), async (c) => okList(c, await svc.listEmployeeOptions(c.get("db"), c.get("orgId")!), 0, 1, 1000));
+userRoutes.get("/employees/all", requirePermission("employee.view"), async (c) => okList(c, await svc.listEmployees(c.get("db"), c.get("orgId")!), 0, 1, 1000));
+userRoutes.post("/employees", requirePermission("employee.create"), async (c) => { const input = parse(employeeInputSchema, await c.req.json()); const row = await svc.saveEmployee(c.get("db"), c.get("orgId")!, undefined, input); await writeAudit(c, { action: "create", entity: "employee", entityId: row.id, newValue: input }); return ok(c, row, 201); });
+userRoutes.put("/employees/:id", requirePermission("employee.edit"), async (c) => { const input = parse(employeeInputSchema.partial(), await c.req.json()); const row = await svc.saveEmployee(c.get("db"), c.get("orgId")!, id(c.req.param("id")), input as never); await writeAudit(c, { action: "update", entity: "employee", entityId: row.id, newValue: input }); return ok(c, row); });
+userRoutes.delete("/employees/:id", requirePermission("employee.delete"), async (c) => { const row = await svc.removeEmployee(c.get("db"), c.get("orgId")!, id(c.req.param("id"))); await writeAudit(c, { action: "deactivate", entity: "employee", entityId: row.id }); return ok(c, row); });
 userRoutes.post("/", requirePermission("user.create"), async (c) => ok(c, await svc.save(c.get("db"), c.get("orgId")!, undefined, parse(body, await c.req.json())), 201));
 userRoutes.put("/:id", requirePermission("user.edit"), async (c) => ok(c, await svc.save(c.get("db"), c.get("orgId")!, id(c.req.param("id")), parse(body, await c.req.json()))));
 userRoutes.delete("/:id", requirePermission("user.delete"), async (c) => { await svc.remove(c.get("db"), c.get("orgId")!, id(c.req.param("id"))); return ok(c, { deleted: true }); });

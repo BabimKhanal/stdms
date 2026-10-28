@@ -126,6 +126,22 @@ export const payments = pgTable(
   (t) => [index("payments_invoice_idx").on(t.invoiceId), uniqueIndex("payments_gateway_ref_uq").on(t.gatewayRef)],
 );
 
+export const refunds = pgTable(
+  "refunds",
+  {
+    id: idCol(),
+    organisationId: orgIdCol(),
+    paymentId: uuid("payment_id").notNull().references(() => payments.id, { onDelete: "restrict" }),
+    invoiceId: uuid("invoice_id").notNull().references(() => invoices.id, { onDelete: "restrict" }),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    reason: text("reason"),
+    refundedBy: uuid("refunded_by").references(() => users.id, { onDelete: "set null" }),
+    refundedAt: timestamp("refunded_at", { withTimezone: true }).defaultNow().notNull(),
+    createdAt: createdAtCol(),
+  },
+  (t) => [index("refunds_invoice_idx").on(t.invoiceId), index("refunds_payment_idx").on(t.paymentId)],
+);
+
 export const paymentMethods = pgTable(
   "payment_methods",
   {
@@ -221,6 +237,12 @@ export const invoiceItemsRelations = relations(invoiceItems, ({ one }) => ({
 export const paymentsRelations = relations(payments, ({ one }) => ({
   invoice: one(invoices, { fields: [payments.invoiceId], references: [invoices.id] }),
   receiver: one(users, { fields: [payments.receivedBy], references: [users.id] }),
+}));
+
+export const refundsRelations = relations(refunds, ({ one }) => ({
+  payment: one(payments, { fields: [refunds.paymentId], references: [payments.id] }),
+  invoice: one(invoices, { fields: [refunds.invoiceId], references: [invoices.id] }),
+  refunder: one(users, { fields: [refunds.refundedBy], references: [users.id] }),
 }));
 
 export const discountsRelations = relations(discounts, ({ one }) => ({

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import { feeCategoryInputSchema, feeStructureInputSchema, generateInvoicesSchema, invoiceInputSchema, manualPaymentSubmissionSchema, paymentInitiateSchema, paymentInputSchema, paymentMethodInputSchema, paymentSubmissionReviewSchema } from "@edu/shared";
 import type { AppEnv } from "../../lib/types";
 import { ok, okList, parse } from "../../lib/http";
@@ -7,8 +8,10 @@ import * as svc from "./service";
 import { env } from "../../env";
 import { getPaymentIntent } from "../../lib/redis";
 import { createEsewaRequest } from "./esewa";
+import { writeAudit } from "../../lib/audit";
 export const feeRoutes = new Hono<AppEnv>(); feeRoutes.use("*", requireAuth, requireOrg);
 const db = (c: any) => c.get("db"); const org = (c: any) => c.get("orgId")!; const user = (c: any) => c.get("user")!.id;
+const discountInput = z.object({ amount: z.number().positive(), reason: z.string().trim().max(200).nullable().optional() });
 feeRoutes.get("/categories", requirePermission("fee.view"), async (c) => { const rows = await svc.listCategories(db(c), org(c)); return okList(c, rows, rows.length, 1, 1000); });
 feeRoutes.post("/categories", requirePermission("fee.create"), async (c) => ok(c, await svc.createCategory(db(c), org(c), parse(feeCategoryInputSchema, await c.req.json())), 201));
 feeRoutes.put("/categories/:id", requirePermission("fee.edit"), async (c) => ok(c, await svc.updateCategory(db(c), org(c), c.req.param("id"), parse(feeCategoryInputSchema.partial(), await c.req.json()))));
@@ -21,6 +24,7 @@ feeRoutes.get("/invoices", requirePermission("invoice.view"), async (c) => { con
 feeRoutes.get("/invoices/:id", requirePermission("invoice.view"), async (c) => ok(c, await svc.getInvoice(db(c), org(c), c.req.param("id"), c.get("user")!)));
 feeRoutes.post("/invoices", requirePermission("invoice.create"), async (c) => ok(c, await svc.createInvoice(db(c), org(c), user(c), parse(invoiceInputSchema, await c.req.json())), 201));
 feeRoutes.post("/invoices/generate", requirePermission("invoice.create"), async (c) => ok(c, await svc.generateInvoices(db(c), org(c), user(c), parse(generateInvoicesSchema, await c.req.json())), 201));
+feeRoutes.post("/invoices/:id/discount", requirePermission("invoice.edit"), async (c) => { const input = parse(discountInput, await c.req.json()); const row = await svc.applyDiscount(db(c), org(c), user(c), c.req.param("id"), input.amount, input.reason); await writeAudit(c, { action: "discount", entity: "invoice", entityId: c.req.param("id"), newValue: input }); return ok(c, row); });
 feeRoutes.get("/invoices/:id/receipt", requirePermission("invoice.view"), async (c) => c.html(svc.buildReceiptHtml(await svc.receiptContext(db(c), org(c), c.req.param("id"), c.get("user")!))));
 feeRoutes.post("/payments", requirePermission("payment.create"), async (c) => ok(c, await svc.addPayment(db(c), org(c), user(c), parse(paymentInputSchema, await c.req.json())), 201));
 feeRoutes.post("/payments/esewa", requirePermission("payment.create"), async (c) => ok(c, await svc.initiateEsewa(db(c), org(c), c.get("user")!, parse(paymentInitiateSchema, await c.req.json()).invoiceId)));

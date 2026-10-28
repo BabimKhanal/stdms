@@ -43,6 +43,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { formatNpr } from "../lib/utils";
 import { NotificationBell } from "./notification-bell";
 import { PaymentSettings } from "./payment-settings";
+import { EmployeeDirectory } from "./employee-directory";
+import { ExamApprovalPanel } from "./exam-approval-panel";
 
 type User = { name: string; email?: string | null; orgName?: string | null; roles: string[]; permissions?: string[]; isPlatformAdmin?: boolean; studentId?: string | null };
 type Notice = { id: string; title: string; body?: string | null; priority?: string; publishAt?: string };
@@ -68,6 +70,7 @@ const nav = [
   ["Reports", LineChart, "reports"],
   ["Notices & events", Megaphone, "communication"],
   ["User management", UserCog, "users"],
+  ["Staff profiles", UserCog, "employees"],
   ["Branding", Palette, "branding"],
   ["Payment settings", CreditCard, "payment-settings"],
 ] as const;
@@ -261,11 +264,12 @@ export function Portal() {
             : section === "academics" ? <AcademicWorkspace />
             : section === "attendance" ? <AttendanceWorkspace />
             : section === "fees" ? <FeeWorkspace canManage={Boolean(user?.permissions?.includes("invoice.create"))} />
-            : section === "exams" ? <ExamWorkspace canManage={Boolean(user?.isPlatformAdmin || user?.permissions?.includes("exam.create") || user?.permissions?.includes("exam.edit"))} />
+            : section === "exams" ? <div className="space-y-6"><ExamWorkspace canManage={Boolean(user?.isPlatformAdmin || user?.permissions?.includes("exam.create") || user?.permissions?.includes("exam.edit"))} />{user?.isPlatformAdmin || user?.permissions?.includes("result.approve") ? <ExamApprovalPanel /> : null}</div>
             : section === "learning" ? (user?.studentId ? <StudentLearning /> : <LearningWorkspace canManage={Boolean(user?.isPlatformAdmin || user?.permissions?.includes("homework.create"))} />)
             : section === "reports" ? <ReportsWorkspace />
             : section === "communication" ? <CommunicationWorkspace />
             : section === "users" ? <UserManagement />
+            : section === "employees" ? <EmployeeDirectory />
             : section === "branding" && branding && user?.permissions?.includes("organisation.edit") ? <BrandingSettings branding={branding} onSaved={(updated) => { setBranding(updated); setBrandingError(""); }} />
             : section === "payment-settings" && user?.permissions?.includes("payment.edit") ? <PaymentSettings />
             : <PlaceholderView section={section} />}

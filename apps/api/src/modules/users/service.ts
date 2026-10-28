@@ -3,11 +3,27 @@ import type { DB } from "../../lib/types";
 import { employees, permissions, rolePermissions, roles, userRoles, users } from "../../db/schema";
 import { hashPassword } from "../../lib/password";
 import { notFound } from "../../lib/errors";
+import type { EmployeeInput } from "@edu/shared";
 
 const safe = { id: users.id, organisationId: users.organisationId, name: users.name, email: users.email, username: users.username, avatarUrl: users.avatarUrl, isPlatformAdmin: users.isPlatformAdmin, status: users.status, locale: users.locale, employeeId: users.employeeId, studentId: users.studentId, guardianId: users.guardianId, lastLoginAt: users.lastLoginAt, createdAt: users.createdAt, updatedAt: users.updatedAt };
 export async function list(db: DB, orgId: string, filters: { search?: string; status?: string; employeeId?: string; roleId?: string } = {}) { const conditions = [eq(users.organisationId, orgId)]; if (filters.search?.trim()) { const search = `%${filters.search.trim()}%`; conditions.push(or(ilike(users.name, search), ilike(users.email, search), ilike(users.username, search))!); } if (filters.status && filters.status !== "all") conditions.push(eq(users.status, filters.status)); if (filters.employeeId) conditions.push(eq(users.employeeId, filters.employeeId)); const rows = await db.select(safe).from(users).where(and(...conditions)).orderBy(asc(users.name)); const assignments = await db.select({ userId: userRoles.userId, roleId: userRoles.roleId }).from(userRoles); return rows.map((row) => ({ ...row, roleIds: assignments.filter((assignment) => assignment.userId === row.id).map((assignment) => assignment.roleId) })).filter((row) => !filters.roleId || row.roleIds.includes(filters.roleId)); }
 export async function listTeacherAccounts(db: DB, orgId: string) { return db.select({ id: users.id, name: users.name, employeeId: users.employeeId, employeeName: employees.fullName }).from(users).innerJoin(employees, eq(users.employeeId, employees.id)).where(and(eq(users.organisationId, orgId), eq(employees.status, "active"))).orderBy(asc(users.name)); }
 export async function listEmployeeOptions(db: DB, orgId: string) { return db.select({ id: employees.id, employeeId: employees.employeeId, name: employees.fullName }).from(employees).where(and(eq(employees.organisationId, orgId), eq(employees.status, "active"))).orderBy(asc(employees.fullName)); }
+export async function listEmployees(db: DB, orgId: string) { return db.select().from(employees).where(eq(employees.organisationId, orgId)).orderBy(asc(employees.fullName)); }
+export async function saveEmployee(db: DB, orgId: string, id: string | undefined, input: EmployeeInput) {
+  const values = { ...input, organisationId: orgId, photoUrl: input.photoUrl ?? null, department: input.department ?? null, designation: input.designation ?? null, joiningDate: input.joiningDate ?? null, qualification: input.qualification ?? null, phone: input.phone ?? null, email: input.email ?? null, emergencyContact: input.emergencyContact ?? null, salary: input.salary == null ? null : String(input.salary) } as typeof employees.$inferInsert;
+  try {
+    const [row] = id
+      ? await db.update(employees).set(values).where(and(eq(employees.id, id), eq(employees.organisationId, orgId))).returning()
+      : await db.insert(employees).values(values).returning();
+    if (!row) throw notFound("Employee not found");
+    return row;
+  } catch (error) {
+    if ((error as { code?: string }).code === "23505") throw new Error("Employee ID or email already exists");
+    throw error;
+  }
+}
+export async function removeEmployee(db: DB, orgId: string, id: string) { const [row] = await db.update(employees).set({ status: "terminated" }).where(and(eq(employees.id, id), eq(employees.organisationId, orgId))).returning({ id: employees.id }); if (!row) throw notFound("Employee not found"); return row; }
 export async function get(db: DB, orgId: string, id: string) { const [row] = await db.select(safe).from(users).where(and(eq(users.id, id), eq(users.organisationId, orgId))).limit(1); if (!row) throw notFound("User not found"); return row; }
 export async function save(db: DB, orgId: string, id: string | undefined, input: Record<string, any>) {
   const { password, roleIds, ...data } = input;

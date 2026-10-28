@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { DB } from "../../lib/types";
-import { feeCategories, feeStructures, feeStructureItems, invoices, invoiceItems, payments, paymentMethods, paymentSubmissions, students, classes, enrolments, sections, organisations } from "../../db/schema";
+import { discounts, feeCategories, feeStructures, feeStructureItems, invoices, invoiceItems, payments, paymentMethods, paymentSubmissions, students, classes, enrolments, sections, organisations } from "../../db/schema";
 import type { FeeStructureInput, PaymentInput, GenerateInvoicesInput, ManualPaymentSubmissionInput } from "@edu/shared";
 import { z } from "zod";
 import { feeCategoryInputSchema, invoiceInputSchema } from "@edu/shared";
@@ -24,6 +24,20 @@ export async function deleteStructure(db: DB, orgId: string, id: string) { const
 export async function listInvoices(db: DB, orgId: string, principal?: AuthUser) { const learnerIds = principal ? await learnerStudentIds(db, orgId, principal) : null; const conditions = [tenant(invoices, orgId)]; if (learnerIds) conditions.push(learnerIds.length ? inArray(invoices.studentId, learnerIds) : sql`false`); return db.select({ ...(invoices as any), studentName: sql<string>`concat(${students.firstName}, ' ', ${students.lastName})`, balance: sql<number>`${invoices.total} - ${invoices.paid}` }).from(invoices).innerJoin(students, eq(invoices.studentId, students.id)).where(and(...conditions)).orderBy(desc(invoices.issueDate)); }
 export async function getInvoice(db: DB, orgId: string, id: string, principal?: AuthUser) { const [invoice] = await db.select().from(invoices).where(and(eq(invoices.id, id), tenant(invoices, orgId))); if (!invoice) throw notFound("Invoice not found"); const learnerIds = principal ? await learnerStudentIds(db, orgId, principal) : null; if (learnerIds && !learnerIds.includes(invoice.studentId)) throw notFound("Invoice not found"); const items = await db.select().from(invoiceItems).where(and(eq(invoiceItems.invoiceId, id), tenant(invoiceItems, orgId))); const paid = await db.select().from(payments).where(and(eq(payments.invoiceId, id), tenant(payments, orgId))); return { ...invoice, items, payments: paid, balance: Number(invoice.total) - Number(invoice.paid) }; }
 export async function createInvoice(db: DB, orgId: string, userId: string, input: InvoiceInput) { return db.transaction(async (tx) => { const subtotal = input.items.reduce((n, i) => n + i.amount, 0); const total = subtotal - input.discount + input.fine; const [invoice] = await tx.insert(invoices).values({ organisationId: orgId, invoiceNumber: `INV-${Date.now()}`, studentId: input.studentId, issueDate: input.issueDate, dueDate: input.dueDate ?? null, subtotal: String(subtotal), discount: String(input.discount), fine: String(input.fine), total: String(total), createdBy: userId }).returning(); await tx.insert(invoiceItems).values(input.items.map((i) => ({ ...i, invoiceId: invoice.id, organisationId: orgId, amount: String(i.amount), dueDate: i.dueDate ?? null }))); return invoice; }); }
+export async function applyDiscount(db: DB, orgId: string, userId: string, invoiceId: string, amount: number, reason?: string | null) {
+  if (amount <= 0) throw conflict("Discount must be greater than zero");
+  return db.transaction(async (tx) => {
+    const [invoice] = await tx.select().from(invoices).where(and(eq(invoices.id, invoiceId), tenant(invoices, orgId))).limit(1);
+    if (!invoice) throw notFound("Invoice not found");
+    const remaining = Number(invoice.total) - Number(invoice.paid);
+    if (amount > remaining) throw conflict("Discount cannot exceed the invoice balance");
+    const [row] = await tx.insert(discounts).values({ organisationId: orgId, invoiceId, amount: String(amount), reason: reason ?? null, createdBy: userId }).returning();
+    const totalDiscount = Number(invoice.discount) + amount;
+    const total = Number(invoice.subtotal) - totalDiscount + Number(invoice.fine);
+    await tx.update(invoices).set({ discount: String(totalDiscount), total: String(total), status: Number(invoice.paid) >= total ? "paid" : invoice.status }).where(and(eq(invoices.id, invoiceId), tenant(invoices, orgId)));
+    return row;
+  });
+}
 
 export async function generateInvoices(db: DB, orgId: string, userId: string, input: GenerateInvoicesInput) {
   return db.transaction(async (tx) => {
