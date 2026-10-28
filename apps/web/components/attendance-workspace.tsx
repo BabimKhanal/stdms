@@ -14,8 +14,8 @@ type ClassOption = { id: string; name: string };
 type SectionOption = { id: string; name: string; classId: string };
 type Student = { id: string; fullName?: string; studentId?: string; className?: string | null; sectionName?: string | null };
 type Attendance = { id: string; studentId: string; studentName?: string; studentCode?: string; classId?: string | null; sectionId?: string | null; date: string; status: string; remarks?: string | null };
-type Status = "present" | "absent" | "late" | "leave" | "excused";
-const statuses: Status[] = ["present", "absent", "late", "leave", "excused"];
+type Status = "present" | "absent" | "late" | "leave" | "excused" | "sick";
+const statuses: Status[] = ["present", "absent", "late", "leave", "excused", "sick"];
 const today = new Date().toISOString().slice(0, 10);
 
 export function AttendanceWorkspace() {

@@ -44,6 +44,12 @@ export const markAttendanceSchema = z.object({
 });
 export type MarkAttendanceInput = z.infer<typeof markAttendanceSchema>;
 
+export const attendanceCorrectionSchema = z.object({
+  status: z.enum(ATTENDANCE_STATUSES),
+  remarks: z.string().trim().max(200).nullable().optional(),
+});
+export type AttendanceCorrectionInput = z.infer<typeof attendanceCorrectionSchema>;
+
 export const attendanceListQuerySchema = z.object({
   sectionId: z.uuid().optional(),
   classId: z.uuid().optional(),

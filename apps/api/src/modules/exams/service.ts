@@ -104,6 +104,14 @@ export async function deleteExamSubject(db: DB, orgId: string, id: string, princ
 }
 
 export async function saveMarks(db: DB, orgId: string, userId: string, input: MarkEntryInput, principal?: AuthUser) {
+  const [examState] = await db
+    .select({ status: exams.status })
+    .from(examSubjects)
+    .innerJoin(exams, eq(examSubjects.examId, exams.id))
+    .where(and(eq(examSubjects.id, input.examSubjectId), tenant(examSubjects, orgId), tenant(exams, orgId)))
+    .limit(1);
+  if (!examState) throw notFound("Exam subject not found");
+  if (examState.status === "completed" || examState.status === "published") throw conflict("This examination is locked for mark changes");
   if (principal) {
     const [row] = await db.select({ classId: examSubjects.classId, subjectId: examSubjects.subjectId }).from(examSubjects).where(and(eq(examSubjects.id, input.examSubjectId), tenant(examSubjects, orgId))).limit(1);
     if (!row) throw notFound("Exam subject not found");
@@ -134,6 +142,17 @@ export async function saveMarks(db: DB, orgId: string, userId: string, input: Ma
     }
     return input.marks.length;
   });
+}
+
+export async function approveExam(db: DB, orgId: string, examId: string) {
+  const [exam] = await db.select({ id: exams.id, status: exams.status }).from(exams).where(and(eq(exams.id, examId), tenant(exams, orgId))).limit(1);
+  if (!exam) throw notFound("Examination not found");
+  if (exam.status === "published") throw conflict("Published examination results are already locked");
+  if (exam.status === "completed") return exam;
+  const [subject] = await db.select({ id: examSubjects.id }).from(examSubjects).where(and(eq(examSubjects.examId, examId), tenant(examSubjects, orgId))).limit(1);
+  if (!subject) throw conflict("Add at least one subject before approving");
+  const [updated] = await db.update(exams).set({ status: "completed" }).where(and(eq(exams.id, examId), tenant(exams, orgId))).returning();
+  return updated;
 }
 
 export async function listMarks(db: DB, orgId: string, examSubjectId: string, principal?: AuthUser) {
@@ -346,6 +365,7 @@ export async function publishExam(db: DB, orgId: string, examId: string, princip
     .limit(1);
   if (!exam) throw notFound("Examination not found");
   if (exam.status === "published") return exam;
+  if (exam.status !== "completed") throw conflict("Approve and lock the examination before publishing results");
 
   if (principal && isScopedTeacher(principal)) {
     if (!principal.employeeId) throw forbidden("Teacher account is not linked to an employee");

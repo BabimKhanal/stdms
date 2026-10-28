@@ -40,6 +40,7 @@ export const attendanceStatusEnum = pgEnum("attendance_status", [
   "late",
   "leave",
   "excused",
+  "sick",
 ]);
 
 export const leaveTypeEnum = pgEnum("leave_type", [

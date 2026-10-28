@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { attendanceListQuerySchema, eventInputSchema, gradeSubmissionSchema, homeworkInputSchema, homeworkSubmitInputSchema, homeworkUpdateSchema, leaveInputSchema, leaveReviewSchema, markAttendanceSchema, noticeInputSchema } from "@edu/shared";
+import { attendanceCorrectionSchema, attendanceListQuerySchema, eventInputSchema, gradeSubmissionSchema, homeworkInputSchema, homeworkSubmitInputSchema, homeworkUpdateSchema, leaveInputSchema, leaveReviewSchema, markAttendanceSchema, noticeInputSchema } from "@edu/shared";
 import type { AppEnv } from "../../lib/types";
 import { ok, okList, parse } from "../../lib/http";
 import { forbidden } from "../../lib/errors";
@@ -16,6 +16,7 @@ operationRoutes.delete("/timetable/periods/:id", requirePermission("timetable.de
 operationRoutes.get("/attendance", requirePermission("attendance.view"), async (c) => { const q = parse(attendanceListQuerySchema, c.req.query()); const rows = await svc.listAttendance(db(c), org(c), q, c.get("user")!.studentId, c.get("user")!); return okList(c, rows, rows.length, 1, 1000); });
 operationRoutes.get("/attendance/summary", requirePermission("attendance.view"), async (c) => ok(c, await svc.attendanceSummary(db(c), org(c), c.req.query(), c.get("user")!)));
 operationRoutes.post("/attendance/mark", requirePermission("attendance.create"), async (c) => ok(c, await svc.markAttendance(db(c), org(c), user(c), parse(markAttendanceSchema, await c.req.json()), c.get("user")!), 201));
+operationRoutes.put("/attendance/:id", requirePermission("attendance.edit"), async (c) => ok(c, await svc.correctAttendance(db(c), org(c), user(c), c.req.param("id"), parse(attendanceCorrectionSchema, await c.req.json()), c.get("user")!)));
 operationRoutes.get("/leave", requirePermission("leave.view"), async (c) => { const rows = await svc.listLeave(db(c), org(c), c.get("user")!); return okList(c, rows, rows.length, 1, 1000); });
 operationRoutes.post("/leave", requirePermission("leave.create"), async (c) => ok(c, await svc.createLeave(db(c), org(c), user(c), parse(leaveInputSchema, await c.req.json()), c.get("user")!), 201));
 operationRoutes.put("/leave/:id/review", requirePermission("leave.approve"), async (c) => ok(c, await svc.reviewLeave(db(c), org(c), user(c), c.req.param("id"), parse(leaveReviewSchema, await c.req.json()))));

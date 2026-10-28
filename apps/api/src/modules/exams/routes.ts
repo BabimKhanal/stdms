@@ -9,6 +9,7 @@ import { learnerStudentIds } from "../../lib/teacher-scope";
 import * as svc from "./service";
 import { scopedResultRows } from "./scoped-results";
 import { buildReportCardHtml } from "./report-card";
+import { writeAudit } from "../../lib/audit";
 export const examRoutes = new Hono<AppEnv>(); examRoutes.use("*", requireAuth, requireOrg);
 const db = (c: any) => c.get("db"); const org = (c: any) => c.get("orgId")!; const user = (c: any) => c.get("user")!.id;
 examRoutes.get("/", requirePermission("exam.view"), async (c) => { const rows = await svc.listExams(db(c), org(c), c.get("user")!); return okList(c, rows, rows.length, 1, 1000); });
@@ -22,6 +23,7 @@ examRoutes.post("/marks", requirePermission("result.create"), async (c) => ok(c,
 examRoutes.get("/marks/:examSubjectId", requirePermission("result.view"), async (c) => okList(c, await svc.listMarks(db(c), org(c), c.req.param("examSubjectId"), c.get("user")!), 0, 1, 1000));
 examRoutes.get("/results", requirePermission("result.view"), async (c) => { const q = parse(resultQuerySchema, c.req.query()); const principal = c.get("user")!; const rows = await scopedResultRows(db(c), org(c), q.examId, q.classId, q.sectionId, principal.studentId, principal.permissions.includes("exam.edit") || principal.permissions.includes("result.edit"), principal); return okList(c, rows, rows.length, 1, 1000); });
 examRoutes.post("/:id/publish", requirePermission("exam.edit"), async (c) => ok(c, await svc.publishExam(db(c), org(c), c.req.param("id"), c.get("user")!)));
+examRoutes.post("/:id/approve", requirePermission("result.approve"), async (c) => { const row = await svc.approveExam(db(c), org(c), c.req.param("id")); await writeAudit(c, { action: "approve", entity: "exam", entityId: row.id }); return ok(c, row); });
 examRoutes.get("/:id/report-card/:studentId", requirePermission("result.view"), async (c) => {
   const principal = c.get("user")!;
   const studentId = parse(z.uuid(), c.req.param("studentId"));
