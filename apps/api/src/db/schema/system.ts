@@ -1,6 +1,6 @@
 import { relations } from "drizzle-orm";
 import { bigint, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { createdAtCol, idCol, orgIdCol } from "./tenant";
+import { createdAtCol, idCol, orgIdCol, updatedAtCol } from "./tenant";
 import { organisations, users } from "./tenant";
 
 /**
@@ -34,7 +34,7 @@ export const documentTemplates = pgTable(
     isDefault: integer("is_default").notNull().default(0),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAtCol(),
-    updatedAt: createdAtCol(),
+    updatedAt: updatedAtCol(),
   },
   (t) => [uniqueIndex("document_templates_org_name_uq").on(t.organisationId, t.name), index("document_templates_org_type_idx").on(t.organisationId, t.documentType)],
 );
