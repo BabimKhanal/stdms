@@ -6,7 +6,7 @@ import { EduApiClient } from "@edu/api-client";
 import { Button } from "./ui/button";
 import { FilePreview } from "./file-preview";
 
-type UploadFolder = "students" | "users" | "assignments" | "content" | "documents" | "branding";
+type UploadFolder = "students" | "users" | "assignments" | "content" | "documents" | "branding" | "payments";
 type UploadProps = { value: string; onChange: (url: string) => void; folder: UploadFolder; accept?: string; label?: string };
 type MultiUploadProps = { values: string[]; onChange: (urls: string[]) => void; folder: UploadFolder; accept?: string; label?: string };
 

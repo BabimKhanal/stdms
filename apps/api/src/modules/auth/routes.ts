@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
-import { loginSchema, changePasswordSchema, type SessionUser } from "@edu/shared";
+import { loginSchema, changePasswordSchema, passwordResetRequestSchema, passwordResetSchema, type SessionUser } from "@edu/shared";
 import type { AppEnv } from "../../lib/types";
 import { ok, parse } from "../../lib/http";
 import { rateLimit } from "../../lib/redis";
@@ -70,6 +70,16 @@ authRoutes.post("/login", async (c) => {
     refreshToken: result.refreshToken,
     expiresIn: result.expiresIn,
   });
+});
+
+authRoutes.post("/password-reset/request", async (c) => {
+  await authService.requestPasswordReset(c, parse(passwordResetRequestSchema, await c.req.json()).identifier);
+  return ok(c, { requested: true });
+});
+
+authRoutes.post("/password-reset/reset", async (c) => {
+  const body = parse(passwordResetSchema, await c.req.json());
+  return ok(c, await authService.resetPassword(body.token, body.newPassword));
 });
 
 const refreshSchema = z.object({ refreshToken: z.string().min(20) });

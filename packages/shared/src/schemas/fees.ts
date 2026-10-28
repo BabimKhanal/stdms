@@ -116,6 +116,8 @@ export const paymentSchema = z.object({
   amount: z.number(),
   method: z.enum(PAYMENT_METHODS),
   reference: z.string().nullable(),
+  gatewayRef: z.string().nullable().optional(),
+  verifiedAt: z.string().nullable().optional(),
   paidAt: z.string(),
   receivedBy: z.uuid().nullable(),
   notes: z.string().nullable(),
@@ -131,6 +133,37 @@ export const paymentInputSchema = z.object({
   notes: z.string().trim().max(300).nullable().optional(),
 });
 export type PaymentInput = z.infer<typeof paymentInputSchema>;
+
+export const paymentInitiateSchema = z.object({
+  invoiceId: idSchema,
+});
+
+export const paymentMethodInputSchema = z.object({
+  method: z.enum(PAYMENT_METHODS),
+  label: z.string().trim().min(1).max(80),
+  enabled: z.boolean().default(true),
+  instructions: z.string().trim().max(1000).nullable().optional(),
+  bankName: z.string().trim().max(120).nullable().optional(),
+  accountName: z.string().trim().max(120).nullable().optional(),
+  accountNumber: z.string().trim().max(80).nullable().optional(),
+  branch: z.string().trim().max(120).nullable().optional(),
+  qrImageUrl: z.string().url().nullable().optional(),
+  sortOrder: z.number().int().min(0).max(1000).default(0),
+});
+
+export const manualPaymentSubmissionSchema = z.object({
+  invoiceId: idSchema,
+  paymentMethodId: idSchema,
+  amount: z.number().positive(),
+  reference: z.string().trim().max(120).nullable().optional(),
+  proofUrl: z.string().url().nullable().optional(),
+});
+export type ManualPaymentSubmissionInput = z.infer<typeof manualPaymentSubmissionSchema>;
+
+export const paymentSubmissionReviewSchema = z.object({
+  status: z.enum(["approved", "rejected"]),
+  reviewNote: z.string().trim().max(500).nullable().optional(),
+});
 
 export const studentFeeProfileSchema = z.object({
   studentId: idSchema,

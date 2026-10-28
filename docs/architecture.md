@@ -33,3 +33,9 @@ Homework submissions are guarded by `homework.view` plus a student-profile check
 ## Portable Features
 
 Features communicate through shared zod contracts and REST endpoints. The web app and future Expo app use the same API client contract; neither contains business logic that belongs in the backend.
+
+## Password Recovery and Auditing
+
+Password reset requests always return the same response whether an account exists. A matching active account receives a provider-backed email containing a Redis token with a 15-minute TTL. The token is deleted after one successful reset and all refresh sessions are revoked. `MAILER_PROVIDER=console` is suitable for local development; production should configure the Resend adapter and `PASSWORD_RESET_URL`.
+
+Authenticated tenant mutations are recorded by the API mutation-audit middleware after the route completes. The row includes the HTTP action/path, actor, tenant, status, IP, and timestamp. Authentication lifecycle endpoints are excluded from tenant audit rows; password changes write their own audit entry.

@@ -37,6 +37,16 @@ const envSchema = z.object({
   CLOUDINARY_API_KEY: z.string().default(""),
 
   CLOUDINARY_API_SECRET: z.string().default(""),
+
+  MAILER_PROVIDER: z.enum(["console", "resend"]).default("console"),
+  RESEND_API_KEY: z.string().default(""),
+  MAIL_FROM: z.string().default("Nucleus <no-reply@example.com>"),
+  PASSWORD_RESET_URL: z.string().default("http://localhost:3000/reset-password"),
+  ESEWA_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  ESEWA_MERCHANT_CODE: z.string().default("EPAYTEST"),
+  ESEWA_SECRET_KEY: z.string().default("8gBm/:&EnhH.1/q"),
+  ESEWA_FORM_URL: z.string().default("https://rc-epay.esewa.com.np/api/epay/main/v2/form"),
+  PAYMENT_CALLBACK_URL: z.string().default("http://localhost:4000/api/v1/payments/esewa"),
 });
 
 export const env = envSchema.parse(process.env);

@@ -3,6 +3,7 @@ services:
     name: nucleus-api
     runtime: node
     buildCommand: npm ci --include=dev && npm run build -w @edu/shared && npm run build -w @edu/api
+    preDeployCommand: npm run db:migrate
     startCommand: npm run start -w @edu/api
     healthCheckPath: /health
     envVars:
@@ -33,4 +34,22 @@ services:
       - key: CLOUDINARY_API_KEY
         sync: false
       - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: MAILER_PROVIDER
+        value: console
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        value: Nucleus <no-reply@example.com>
+      - key: PASSWORD_RESET_URL
+        sync: false
+      - key: ESEWA_ENABLED
+        value: false
+      - key: ESEWA_MERCHANT_CODE
+        value: EPAYTEST
+      - key: ESEWA_SECRET_KEY
+        sync: false
+      - key: ESEWA_FORM_URL
+        value: https://rc-epay.esewa.com.np/api/epay/main/v2/form
+      - key: PAYMENT_CALLBACK_URL
         sync: false

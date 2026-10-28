@@ -75,10 +75,8 @@ function useList(path: string) {
       try {
         const token = await mobileToken();
         if (!token) throw new Error("Session expired. Please sign in again.");
-        const result = await new EduApiClient(API_URL, () => token).get<{
-          data: Item[];
-        }>(path);
-        setItems(result.data);
+        const result = await new EduApiClient(API_URL, () => token).get<Item[]>(path);
+        setItems(Array.isArray(result) ? result : []);
         setError("");
       } catch (err) {
         setError(
@@ -433,12 +431,10 @@ function AttendanceOverview() {
       void mobileToken()
         .then((token) => {
           if (!token) return undefined;
-          return new EduApiClient(API_URL, () => token).get<{
-            data: AttendanceRow[];
-          }>("/attendance/summary");
+            return new EduApiClient(API_URL, () => token).get<AttendanceRow[]>("/attendance/summary");
         })
         .then((result) => {
-          if (active && result) setRows(result.data);
+          if (active) setRows(Array.isArray(result) ? result : []);
         })
         .catch(() => undefined);
       return () => {
@@ -629,18 +625,16 @@ function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
         .then((token) =>
           token
             ? new EduApiClient(API_URL, () => token).get<{
-                data: Array<{
-                  content: string | null;
-                  fileUrl: string | null;
-                  status: string;
-                  feedback: string | null;
-                  marks: number | null;
-                }>;
-              }>(`/homework/${homeworkId}/submissions`)
+                content: string | null;
+                fileUrl: string | null;
+                status: string;
+                feedback: string | null;
+                marks: number | null;
+              }[]>(`/homework/${homeworkId}/submissions`)
             : undefined,
         )
         .then((result) => {
-          const submission = result?.data[0];
+          const submission = result?.[0];
           if (!active || !submission) return;
           setContent(submission.content ?? "");
           setSaved({
@@ -892,18 +886,16 @@ function MarksheetButton({
     try {
       const token = await mobileToken();
       if (!token) throw new Error("Session expired");
-      const result = await new EduApiClient(API_URL, () => token).get<{
-        data: MarksheetResult[];
-      }>(`/exams/results?examId=${encodeURIComponent(examId)}`);
-      if (!result.data.length) {
+      const result = await new EduApiClient(API_URL, () => token).get<MarksheetResult[]>(`/exams/results?examId=${encodeURIComponent(examId)}`);
+      if (!result.length) {
         setMessage("Marks aren't published yet — check back soon.");
         return;
       }
-      if (result.data.length > 1) {
-        setChoices(result.data);
+      if (result.length > 1) {
+        setChoices(result);
         return;
       }
-      await saveMarksheet(result.data[0]);
+      await saveMarksheet(result[0]);
       setMessage("✓ Marksheet ready!");
     } catch (error) {
       setMessage(
@@ -1591,6 +1583,10 @@ const styles = StyleSheet.create({
 
   // Marksheet
   marksheet: { marginTop: 14 },
+  payNow: { marginTop: 12 },
+  payNowButton: { alignItems: "center", alignSelf: "flex-start", backgroundColor: "#059669", borderRadius: 11, flexDirection: "row", gap: 7, paddingHorizontal: 13, paddingVertical: 10 },
+  payNowText: { color: "#fff", fontSize: 12, fontWeight: "800" },
+  payNowMessage: { color: palette.danger, fontSize: 11, marginTop: 6 },
   marksheetButton: {
     alignItems: "center",
     alignSelf: "flex-start",

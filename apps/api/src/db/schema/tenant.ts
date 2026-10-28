@@ -105,6 +105,8 @@ export const paymentMethodEnum = pgEnum("payment_method", [
   "other",
 ]);
 
+export const paymentSubmissionStatusEnum = pgEnum("payment_submission_status", ["pending", "approved", "rejected"]);
+
 export const invoiceStatusEnum = pgEnum("invoice_status", [
   "unpaid",
   "partial",

@@ -8,6 +8,9 @@ import { signAccessToken } from "../../lib/jwt";
 import { badRequest, unauthorized } from "../../lib/errors";
 import type { AuthUser } from "../../lib/context";
 import { randomToken, readSession, revokeAllSessions, revokeSession, saveSession, type SessionData } from "./session";
+import { deletePasswordResetToken, getPasswordResetUser, setPasswordResetToken } from "../../lib/redis";
+import { sendMail } from "../../lib/mailer";
+import { env } from "../../env";
 
 /**
  * Loads roles + permissions for a user. Must run AFTER the tenant GUC has
@@ -141,6 +144,53 @@ export async function changePassword(db: DB, userId: string, currentPassword: st
     .update(users)
     .set({ passwordHash: await hashPassword(newPassword), mustChangePassword: false })
     .where(eq(users.id, userId));
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>\"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[character] ?? character);
+}
+
+export async function requestPasswordReset(c: Context<AppEnv>, identifier: string) {
+  await c.var.client.query("SELECT set_config('app.allow_unscoped', 'true', false)");
+  const result = await c.var.client.query<{ id: string; email: string | null; name: string }>(
+    `SELECT id, email, name FROM users WHERE status = 'active' AND (lower(email) = lower($1) OR lower(username) = lower($1)) LIMIT 1`,
+    [identifier],
+  );
+  const user = result.rows[0];
+  if (user?.email) {
+    const token = randomToken();
+    await setPasswordResetToken(token, user.id);
+    const link = `${env.PASSWORD_RESET_URL}?token=${encodeURIComponent(token)}`;
+    await sendMail({
+      to: user.email,
+      subject: "Reset your Nucleus password",
+      html: `<p>Hello ${escapeHtml(user.name)},</p><p>Use the link below to choose a new password. It expires in 15 minutes and can only be used once.</p><p><a href="${escapeHtml(link)}">Reset password</a></p>`,
+    });
+  }
+  // Do not reveal whether an account exists.
+  return { requested: true };
+}
+
+export async function resetPassword(token: string, newPassword: string) {
+  const userId = await getPasswordResetUser(token);
+  if (!userId) throw unauthorized("Reset link is invalid or expired");
+  const { hashPassword } = await import("../../lib/password");
+  const { appPool } = await import("../../db/client");
+  const client = await appPool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query("UPDATE users SET password_hash = $1, must_change_password = false, updated_at = now() WHERE id = $2 AND status = 'active' RETURNING id", [await hashPassword(newPassword), userId]);
+    if (!result.rowCount) throw unauthorized("Account is disabled");
+    await client.query("COMMIT");
+    await deletePasswordResetToken(token);
+    await revokeAllSessions(userId);
+    return { reset: true };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function getOrganisation(db: DB, orgId: string) {

@@ -4,12 +4,11 @@ import { Asset } from 'expo-asset';
 import { createURL } from 'expo-linking';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import { useColorScheme } from 'react-native';
+import { ActivityIndicator, useColorScheme, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Navigation } from './navigation';
 import { AuthProvider, useAuth } from './auth';
 import { Login } from './screens/Login';
-import { ActivityIndicator, View } from 'react-native';
 
 Asset.loadAsync([
   ...NavigationAssets,

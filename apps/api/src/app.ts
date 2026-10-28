@@ -7,7 +7,7 @@ import { authRoutes } from "./modules/auth/routes";
 import { academicRoutes } from "./modules/academics/routes";
 import { enrolmentRoutes, guardianRoutes, studentRoutes } from "./modules/students/routes";
 import { operationRoutes } from "./modules/operations/routes";
-import { feeRoutes } from "./modules/fees/routes";
+import { feeRoutes, paymentCallbackRoutes } from "./modules/fees/routes";
 import { examRoutes } from "./modules/exams/routes";
 import { reportRoutes } from "./modules/reports/routes";
 import { dashboardRoutes } from "./modules/dashboard/routes";
@@ -17,6 +17,7 @@ import { superAdminRoutes } from "./modules/super-admin/routes";
 import { uploadRoutes } from "./modules/uploads/routes";
 import { notificationRoutes } from "./modules/notifications/routes";
 import type { AppEnv } from "./lib/types";
+import { writeAudit } from "./lib/audit";
 
 export const app = new Hono<AppEnv>();
 
@@ -42,6 +43,20 @@ app.use(
 // Every request gets a scoped DB connection + RLS session GUCs.
 app.use("*", requestScope);
 
+app.use("/api/v1/*", async (c, next) => {
+  await next();
+  const method = c.req.method;
+  const path = c.req.path;
+  const isAuthLifecycle = path.startsWith("/api/v1/auth/") && !path.endsWith("/change-password");
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method) && !isAuthLifecycle && c.get("user")?.orgId) {
+    await writeAudit(c, {
+      action: `${method} ${path}`,
+      entity: "http_mutation",
+      newValue: { status: c.res.status },
+    });
+  }
+});
+
 app.get("/health", (c) => c.json({ ok: true, service: "edu-api", time: new Date().toISOString() }));
 
 app.route("/api/v1/auth", authRoutes);
@@ -55,6 +70,7 @@ app.route("/api/v1/enrolments", enrolmentRoutes);
 app.route("/api/v1/super", superAdminRoutes);
 app.route("/api/v1", operationRoutes);
 app.route("/api/v1/fees", feeRoutes);
+app.route("/api/v1/payments", paymentCallbackRoutes);
 app.route("/api/v1/exams", examRoutes);
 app.route("/api/v1/reports", reportRoutes);
 app.route("/api/v1/dashboard", dashboardRoutes);
