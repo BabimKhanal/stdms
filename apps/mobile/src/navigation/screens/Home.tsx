@@ -101,17 +101,17 @@ export function Home() {
       canViewDashboard
         ? api.get<Dashboard>("/dashboard")
         : Promise.resolve(null),
-      api.get<Notice[]>("/notices"),
-      api.get<CalendarEvent[]>("/events"),
+      api.get<{ data?: Notice[] }>("/notices"),
+      api.get<{ data?: CalendarEvent[] }>("/events"),
     ]);
     if (stats.status === "fulfilled" && stats.value) {
       setDashboard(stats.value);
       if (stats.value.recentNotices) setNotices(stats.value.recentNotices);
     }
     if (noticeResult.status === "fulfilled")
-      setNotices(noticeResult.value.slice(0, 3));
+      setNotices((noticeResult.value.data ?? []).slice(0, 3));
     if (eventResult.status === "fulfilled")
-      setEvents(eventResult.value.slice(0, 3));
+      setEvents((eventResult.value.data ?? []).slice(0, 3));
     if (
       stats.status === "rejected" &&
       noticeResult.status === "rejected" &&

@@ -75,8 +75,9 @@ function useList(path: string) {
       try {
         const token = await mobileToken();
         if (!token) throw new Error("Session expired. Please sign in again.");
-        const result = await new EduApiClient(API_URL, () => token).get<Item[]>(path);
-        setItems(Array.isArray(result) ? result : []);
+        const result = await new EduApiClient(API_URL, () => token).get<Item[] | { data?: Item[] }>(path);
+        const items = Array.isArray(result) ? result : result && Array.isArray(result.data) ? result.data : [];
+        setItems(items);
         setError("");
       } catch (err) {
         setError(
@@ -630,11 +631,18 @@ function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
                 status: string;
                 feedback: string | null;
                 marks: number | null;
-              }[]>(`/homework/${homeworkId}/submissions`)
+              }[] | { data?: {
+                content: string | null;
+                fileUrl: string | null;
+                status: string;
+                feedback: string | null;
+                marks: number | null;
+              }[] }>(`/homework/${homeworkId}/submissions`)
             : undefined,
         )
         .then((result) => {
-          const submission = result?.[0];
+          const submissions = Array.isArray(result) ? result : result?.data ?? [];
+          const submission = submissions[0];
           if (!active || !submission) return;
           setContent(submission.content ?? "");
           setSaved({
@@ -886,16 +894,17 @@ function MarksheetButton({
     try {
       const token = await mobileToken();
       if (!token) throw new Error("Session expired");
-      const result = await new EduApiClient(API_URL, () => token).get<MarksheetResult[]>(`/exams/results?examId=${encodeURIComponent(examId)}`);
-      if (!result.length) {
+      const result = await new EduApiClient(API_URL, () => token).get<{ data?: MarksheetResult[] }>(`/exams/results?examId=${encodeURIComponent(examId)}`);
+      const rows = result.data ?? [];
+      if (!rows.length) {
         setMessage("Marks aren't published yet — check back soon.");
         return;
       }
-      if (result.length > 1) {
-        setChoices(result);
+      if (rows.length > 1) {
+        setChoices(rows);
         return;
       }
-      await saveMarksheet(result[0]);
+      await saveMarksheet(rows[0]);
       setMessage("✓ Marksheet ready!");
     } catch (error) {
       setMessage(
