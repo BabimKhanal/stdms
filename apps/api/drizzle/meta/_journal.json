@@ -85,6 +85,13 @@
       "when": 1791988000000,
       "tag": "0011_fee_access_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791989000000,
+      "tag": "0012_document_templates",
+      "breakpoints": true
     }
   ]
 }

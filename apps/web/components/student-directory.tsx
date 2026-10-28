@@ -171,7 +171,7 @@ function StudentDirectoryContent({
       const token = localStorage.getItem("edu_access_token");
       const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
       const response = await fetch(`${base}/students/${selected.id}/identity-card`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-      if (!response.ok) throw new Error("Unable to generate identity card");
+      if (!response.ok) { const body = await response.json().catch(() => null) as { error?: string } | null; throw new Error(body?.error ?? "Unable to generate identity card"); }
       const windowRef = window.open("", "_blank");
       if (!windowRef) throw new Error("Allow pop-ups to print the identity card");
       windowRef.document.write(await response.text());
@@ -574,6 +574,7 @@ function StudentDirectoryContent({
         </CardContent>
       </Card>
       {selected && !showForm && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/30 p-4 backdrop-blur-sm sm:p-8"><div className="mx-auto max-w-5xl">
         <Card>
           <CardHeader className="flex flex-row items-start justify-between">
             <div className="flex items-center gap-4">
@@ -678,7 +679,7 @@ function StudentDirectoryContent({
               )}
             </div>
           </CardContent>
-        </Card>
+        </Card></div></div>
       )}
     </div>
   );

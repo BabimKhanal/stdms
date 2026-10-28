@@ -47,6 +47,7 @@ import { EmployeeDirectory } from "./employee-directory";
 import { ExamApprovalPanel } from "./exam-approval-panel";
 import { GatewaySettings } from "./gateway-settings";
 import { FeeAccessSettings } from "./fee-access-settings";
+import { DocumentTemplateWorkspace } from "./document-template-workspace";
 
 type User = { name: string; email?: string | null; orgName?: string | null; roles: string[]; permissions?: string[]; isPlatformAdmin?: boolean; studentId?: string | null };
 type Notice = { id: string; title: string; body?: string | null; priority?: string; publishAt?: string };
@@ -75,6 +76,7 @@ const nav = [
   ["Staff profiles", UserCog, "employees"],
   ["Branding", Palette, "branding"],
   ["Payment settings", CreditCard, "payment-settings"],
+  ["Document templates", FileText, "document-templates"],
 ] as const;
 
 export function Portal() {
@@ -274,6 +276,7 @@ export function Portal() {
             : section === "employees" ? <EmployeeDirectory />
             : section === "branding" && branding && user?.permissions?.includes("organisation.edit") ? <BrandingSettings branding={branding} onSaved={(updated) => { setBranding(updated); setBrandingError(""); }} />
             : section === "payment-settings" && user?.permissions?.includes("payment.edit") ? <div className="space-y-6"><PaymentSettings /><GatewaySettings /><FeeAccessSettings /></div>
+            : section === "document-templates" && user?.permissions?.includes("organisation.edit") ? <DocumentTemplateWorkspace />
             : <PlaceholderView section={section} />}
         </main>
       </div>
@@ -526,11 +529,13 @@ const roleNav: Record<string, string[]> = {
   users: ["owner", "principal", "administrator"],
   branding: ["owner", "principal", "administrator"],
   "payment-settings": ["owner", "principal", "administrator", "accountant"],
+  "document-templates": ["owner", "principal", "administrator"],
 };
 
 const permissionNav: Record<string, string> = {
   branding: "organisation.edit",
   "payment-settings": "payment.edit",
+  "document-templates": "organisation.edit",
   reports: "report.view",
   communication: "notice.view",
 };

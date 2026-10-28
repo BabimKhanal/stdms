@@ -38,17 +38,6 @@ studentRoutes.get("/", requirePermission("student.view"), async (c) => {
   return okList(c, data, total, q.page, q.pageSize);
 });
 
-studentRoutes.get("/:id", requirePermission("student.view"), async (c) => {
-  return ok(
-    c,
-    await svc.getStudent(
-      c.get("db"),
-      c.get("orgId")!,
-      c.req.param("id"),
-      c.get("user")!,
-    ),
-  );
-});
 studentRoutes.get(
   "/:id/identity-card",
   requirePermission("student.view"),
@@ -62,6 +51,17 @@ studentRoutes.get(
       ),
     ),
 );
+studentRoutes.get("/:id", requirePermission("student.view"), async (c) => {
+  return ok(
+    c,
+    await svc.getStudent(
+      c.get("db"),
+      c.get("orgId")!,
+      c.req.param("id"),
+      c.get("user")!,
+    ),
+  );
+});
 
 studentRoutes.post("/", requirePermission("student.create"), async (c) => {
   const input = parse(studentInputSchema, await c.req.json());
