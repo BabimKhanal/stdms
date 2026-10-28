@@ -12,6 +12,7 @@ import { writeAudit } from "../../lib/audit";
 export const feeRoutes = new Hono<AppEnv>(); feeRoutes.use("*", requireAuth, requireOrg);
 const db = (c: any) => c.get("db"); const org = (c: any) => c.get("orgId")!; const user = (c: any) => c.get("user")!.id;
 const discountInput = z.object({ amount: z.number().positive(), reason: z.string().trim().max(200).nullable().optional() });
+const refundInput = z.object({ amount: z.number().positive(), reason: z.string().trim().max(200).nullable().optional() });
 feeRoutes.get("/categories", requirePermission("fee.view"), async (c) => { const rows = await svc.listCategories(db(c), org(c)); return okList(c, rows, rows.length, 1, 1000); });
 feeRoutes.post("/categories", requirePermission("fee.create"), async (c) => ok(c, await svc.createCategory(db(c), org(c), parse(feeCategoryInputSchema, await c.req.json())), 201));
 feeRoutes.put("/categories/:id", requirePermission("fee.edit"), async (c) => ok(c, await svc.updateCategory(db(c), org(c), c.req.param("id"), parse(feeCategoryInputSchema.partial(), await c.req.json()))));
@@ -27,6 +28,7 @@ feeRoutes.post("/invoices/generate", requirePermission("invoice.create"), async 
 feeRoutes.post("/invoices/:id/discount", requirePermission("invoice.edit"), async (c) => { const input = parse(discountInput, await c.req.json()); const row = await svc.applyDiscount(db(c), org(c), user(c), c.req.param("id"), input.amount, input.reason); await writeAudit(c, { action: "discount", entity: "invoice", entityId: c.req.param("id"), newValue: input }); return ok(c, row); });
 feeRoutes.get("/invoices/:id/receipt", requirePermission("invoice.view"), async (c) => c.html(svc.buildReceiptHtml(await svc.receiptContext(db(c), org(c), c.req.param("id"), c.get("user")!))));
 feeRoutes.post("/payments", requirePermission("payment.create"), async (c) => ok(c, await svc.addPayment(db(c), org(c), user(c), parse(paymentInputSchema, await c.req.json())), 201));
+feeRoutes.post("/payments/:id/refund", requirePermission("payment.approve"), async (c) => { const input = parse(refundInput, await c.req.json()); const row = await svc.refundPayment(db(c), org(c), user(c), c.req.param("id"), input.amount, input.reason); await writeAudit(c, { action: "refund", entity: "payment", entityId: c.req.param("id"), newValue: input }); return ok(c, row, 201); });
 feeRoutes.post("/payments/esewa", requirePermission("payment.create"), async (c) => ok(c, await svc.initiateEsewa(db(c), org(c), c.get("user")!, parse(paymentInitiateSchema, await c.req.json()).invoiceId)));
 feeRoutes.get("/payment-methods", requirePermission("payment.view"), async (c) => okList(c, await svc.listPaymentMethods(db(c), org(c)), 0, 1, 1000));
 feeRoutes.post("/payment-methods", requirePermission("payment.edit"), async (c) => ok(c, await svc.createPaymentMethod(db(c), org(c), parse(paymentMethodInputSchema, await c.req.json())), 201));

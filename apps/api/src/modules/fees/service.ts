@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { DB } from "../../lib/types";
-import { discounts, feeCategories, feeStructures, feeStructureItems, invoices, invoiceItems, payments, paymentMethods, paymentSubmissions, students, classes, enrolments, sections, organisations } from "../../db/schema";
+import { discounts, feeCategories, feeStructures, feeStructureItems, invoices, invoiceItems, payments, paymentMethods, paymentSubmissions, refunds, students, classes, enrolments, sections, organisations } from "../../db/schema";
 import type { FeeStructureInput, PaymentInput, GenerateInvoicesInput, ManualPaymentSubmissionInput } from "@edu/shared";
 import { z } from "zod";
 import { feeCategoryInputSchema, invoiceInputSchema } from "@edu/shared";
@@ -35,6 +35,22 @@ export async function applyDiscount(db: DB, orgId: string, userId: string, invoi
     const totalDiscount = Number(invoice.discount) + amount;
     const total = Number(invoice.subtotal) - totalDiscount + Number(invoice.fine);
     await tx.update(invoices).set({ discount: String(totalDiscount), total: String(total), status: Number(invoice.paid) >= total ? "paid" : invoice.status }).where(and(eq(invoices.id, invoiceId), tenant(invoices, orgId)));
+    return row;
+  });
+}
+export async function refundPayment(db: DB, orgId: string, userId: string, paymentId: string, amount: number, reason?: string | null) {
+  if (amount <= 0) throw conflict("Refund must be greater than zero");
+  return db.transaction(async (tx) => {
+    const [payment] = await tx.select().from(payments).where(and(eq(payments.id, paymentId), tenant(payments, orgId))).limit(1);
+    if (!payment) throw notFound("Payment not found");
+    const [invoice] = await tx.select().from(invoices).where(and(eq(invoices.id, payment.invoiceId), tenant(invoices, orgId))).limit(1);
+    if (!invoice) throw notFound("Invoice not found");
+    const [refunded] = await tx.select({ total: sql<number>`coalesce(sum(${refunds.amount}),0)` }).from(refunds).where(and(eq(refunds.paymentId, paymentId), tenant(refunds, orgId)));
+    const remainingPayment = Number(payment.amount) - Number(refunded.total);
+    if (amount > remainingPayment) throw conflict("Refund exceeds the remaining payment amount");
+    const [row] = await tx.insert(refunds).values({ organisationId: orgId, paymentId, invoiceId: invoice.id, amount: String(amount), reason: reason ?? null, refundedBy: userId }).returning();
+    const paid = Math.max(0, Number(invoice.paid) - amount);
+    await tx.update(invoices).set({ paid: String(paid), status: paid <= 0 ? "unpaid" : paid < Number(invoice.total) ? "partial" : "paid" }).where(and(eq(invoices.id, invoice.id), tenant(invoices, orgId)));
     return row;
   });
 }
