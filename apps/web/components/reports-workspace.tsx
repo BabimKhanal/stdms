@@ -17,6 +17,7 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
+import { Alert } from "./ui/alert";
 import { downloadCsv } from "../lib/csv";
 import { formatNpr } from "../lib/utils";
 
@@ -183,7 +184,7 @@ export function ReportsWorkspace() {
         </div>
       </div>
 
-      {error && <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}
+      {error && <Alert tone="error" title="Reports" onDismiss={() => setError("")}>{error}</Alert>}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {kpis.map(({ label, value, icon: Icon, tone }) => (
@@ -361,7 +362,7 @@ export function ReportsWorkspace() {
         </CardHeader>
         <CardContent>
           {resultsError && (
-            <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{resultsError}</p>
+            <Alert tone="error" title="Exam results" onDismiss={() => setResultsError("")}>{resultsError}</Alert>
           )}
           {resultsLoading ? (
             <p className="py-8 text-center text-sm text-slate-500">Loading results…</p>

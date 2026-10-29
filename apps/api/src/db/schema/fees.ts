@@ -126,6 +126,22 @@ export const payments = pgTable(
   (t) => [index("payments_invoice_idx").on(t.invoiceId), uniqueIndex("payments_gateway_ref_uq").on(t.gatewayRef)],
 );
 
+export const refunds = pgTable(
+  "refunds",
+  {
+    id: idCol(),
+    organisationId: orgIdCol(),
+    paymentId: uuid("payment_id").notNull().references(() => payments.id, { onDelete: "restrict" }),
+    invoiceId: uuid("invoice_id").notNull().references(() => invoices.id, { onDelete: "restrict" }),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    reason: text("reason"),
+    refundedBy: uuid("refunded_by").references(() => users.id, { onDelete: "set null" }),
+    refundedAt: timestamp("refunded_at", { withTimezone: true }).defaultNow().notNull(),
+    createdAt: createdAtCol(),
+  },
+  (t) => [index("refunds_invoice_idx").on(t.invoiceId), index("refunds_payment_idx").on(t.paymentId)],
+);
+
 export const paymentMethods = pgTable(
   "payment_methods",
   {
@@ -145,6 +161,42 @@ export const paymentMethods = pgTable(
     updatedAt: updatedAtCol(),
   },
   (t) => [index("payment_methods_org_idx").on(t.organisationId)],
+);
+
+/** Tenant-owned gateway credentials. Secret fields are never returned by API routes. */
+export const paymentGatewaySettings = pgTable(
+  "payment_gateway_settings",
+  {
+    id: idCol(),
+    organisationId: orgIdCol(),
+    provider: text("provider").notNull(),
+    enabled: integer("enabled").notNull().default(0),
+    merchantCode: text("merchant_code"),
+    secretKey: text("secret_key"),
+    publicKey: text("public_key"),
+    apiUrl: text("api_url"),
+    successUrl: text("success_url"),
+    failureUrl: text("failure_url"),
+    createdAt: createdAtCol(),
+    updatedAt: updatedAtCol(),
+  },
+  (t) => [uniqueIndex("payment_gateway_settings_org_provider_uq").on(t.organisationId, t.provider)],
+);
+
+export const feeAccessSettings = pgTable(
+  "fee_access_settings",
+  {
+    id: idCol(),
+    organisationId: orgIdCol(),
+    studentVisible: integer("student_visible").notNull().default(1),
+    studentOnlinePayment: integer("student_online_payment").notNull().default(0),
+    guardianVisible: integer("guardian_visible").notNull().default(1),
+    showDiscounts: integer("show_discounts").notNull().default(1),
+    dueReminders: integer("due_reminders").notNull().default(1),
+    createdAt: createdAtCol(),
+    updatedAt: updatedAtCol(),
+  },
+  (t) => [uniqueIndex("fee_access_settings_org_uq").on(t.organisationId)],
 );
 
 export const paymentSubmissions = pgTable(
@@ -221,6 +273,12 @@ export const invoiceItemsRelations = relations(invoiceItems, ({ one }) => ({
 export const paymentsRelations = relations(payments, ({ one }) => ({
   invoice: one(invoices, { fields: [payments.invoiceId], references: [invoices.id] }),
   receiver: one(users, { fields: [payments.receivedBy], references: [users.id] }),
+}));
+
+export const refundsRelations = relations(refunds, ({ one }) => ({
+  payment: one(payments, { fields: [refunds.paymentId], references: [payments.id] }),
+  invoice: one(invoices, { fields: [refunds.invoiceId], references: [invoices.id] }),
+  refunder: one(users, { fields: [refunds.refundedBy], references: [users.id] }),
 }));
 
 export const discountsRelations = relations(discounts, ({ one }) => ({

@@ -45,6 +45,7 @@ export const attendanceRecords = pgTable(
     date: date("date").notNull(),
     /** Null = whole-day attendance; set = period attendance. */
     periodId: uuid("period_id").references(() => timetablePeriods.id, { onDelete: "set null" }),
+    subjectId: uuid("subject_id").references(() => subjects.id, { onDelete: "set null" }),
     status: attendanceStatusEnum("status").notNull(),
     markedBy: uuid("marked_by").references(() => users.id, { onDelete: "set null" }),
     remarks: text("remarks"),
@@ -57,10 +58,27 @@ export const attendanceRecords = pgTable(
       t.studentId,
       t.date,
       t.periodId,
+      t.subjectId,
     ),
     index("attendance_records_section_date_idx").on(t.sectionId, t.date),
     index("attendance_records_student_date_idx").on(t.studentId, t.date),
   ],
+);
+
+export const attendanceSettings = pgTable(
+  "attendance_settings",
+  {
+    id: idCol(),
+    organisationId: orgIdCol(),
+    minimumPercentage: integer("minimum_percentage").notNull().default(75),
+    countLateAsPresent: integer("count_late_as_present").notNull().default(1),
+    excludeLeave: integer("exclude_leave").notNull().default(1),
+    excludeExcused: integer("exclude_excused").notNull().default(1),
+    excludeSick: integer("exclude_sick").notNull().default(1),
+    createdAt: createdAtCol(),
+    updatedAt: updatedAtCol(),
+  },
+  (t) => [uniqueIndex("attendance_settings_org_uq").on(t.organisationId)],
 );
 
 /** Leave requests for students AND staff (SRS §11). */

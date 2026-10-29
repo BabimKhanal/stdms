@@ -1,39 +1,288 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { examInputSchema, examSubjectInputSchema, gradingScaleInputSchema, markEntrySchema, resultQuerySchema } from "@edu/shared";
+import {
+  examInputSchema,
+  examSubjectInputSchema,
+  gradingScaleInputSchema,
+  markEntrySchema,
+  resultQuerySchema,
+} from "@edu/shared";
 import type { AppEnv } from "../../lib/types";
 import { ok, okList, parse } from "../../lib/http";
 import { notFound } from "../../lib/errors";
-import { requireAuth, requireOrg, requirePermission } from "../../middleware/guards";
+import {
+  requireAuth,
+  requireOrg,
+  requirePermission,
+} from "../../middleware/guards";
 import { learnerStudentIds } from "../../lib/teacher-scope";
 import * as svc from "./service";
 import { scopedResultRows } from "./scoped-results";
 import { buildReportCardHtml } from "./report-card";
-export const examRoutes = new Hono<AppEnv>(); examRoutes.use("*", requireAuth, requireOrg);
-const db = (c: any) => c.get("db"); const org = (c: any) => c.get("orgId")!; const user = (c: any) => c.get("user")!.id;
-examRoutes.get("/", requirePermission("exam.view"), async (c) => { const rows = await svc.listExams(db(c), org(c), c.get("user")!); return okList(c, rows, rows.length, 1, 1000); });
-examRoutes.post("/", requirePermission("exam.create"), async (c) => ok(c, await svc.createExam(db(c), org(c), parse(examInputSchema, await c.req.json())), 201));
-examRoutes.put("/:id", requirePermission("exam.edit"), async (c) => ok(c, await svc.updateExam(db(c), org(c), c.req.param("id"), parse(examInputSchema.partial(), await c.req.json()))));
-examRoutes.delete("/:id", requirePermission("exam.delete"), async (c) => { await svc.deleteExam(db(c), org(c), c.req.param("id")); return ok(c, { deleted: true }); });
-examRoutes.get("/:id/subjects", requirePermission("exam.view"), async (c) => okList(c, await svc.listExamSubjects(db(c), org(c), c.req.param("id"), c.get("user")!), 0, 1, 1000));
-examRoutes.post("/:id/subjects", requirePermission("exam.create"), async (c) => ok(c, await svc.addExamSubject(db(c), org(c), c.req.param("id"), parse(examSubjectInputSchema, await c.req.json()), c.get("user")!), 201));
-examRoutes.delete("/subjects/:id", requirePermission("exam.delete"), async (c) => { await svc.deleteExamSubject(db(c), org(c), c.req.param("id"), c.get("user")!); return ok(c, { deleted: true }); });
-examRoutes.post("/marks", requirePermission("result.create"), async (c) => ok(c, await svc.saveMarks(db(c), org(c), user(c), parse(markEntrySchema, await c.req.json()), c.get("user")!), 201));
-examRoutes.get("/marks/:examSubjectId", requirePermission("result.view"), async (c) => okList(c, await svc.listMarks(db(c), org(c), c.req.param("examSubjectId"), c.get("user")!), 0, 1, 1000));
-examRoutes.get("/results", requirePermission("result.view"), async (c) => { const q = parse(resultQuerySchema, c.req.query()); const principal = c.get("user")!; const rows = await scopedResultRows(db(c), org(c), q.examId, q.classId, q.sectionId, principal.studentId, principal.permissions.includes("exam.edit") || principal.permissions.includes("result.edit"), principal); return okList(c, rows, rows.length, 1, 1000); });
-examRoutes.post("/:id/publish", requirePermission("exam.edit"), async (c) => ok(c, await svc.publishExam(db(c), org(c), c.req.param("id"), c.get("user")!)));
-examRoutes.get("/:id/report-card/:studentId", requirePermission("result.view"), async (c) => {
-  const principal = c.get("user")!;
-  const studentId = parse(z.uuid(), c.req.param("studentId"));
-  const learnerIds = await learnerStudentIds(db(c), org(c), principal);
-  if (learnerIds && !learnerIds.includes(studentId)) throw notFound("Report card not found");
-  const canViewDraft = principal.isPlatformAdmin || principal.permissions.includes("exam.edit") || principal.permissions.includes("result.edit");
-  const rows = await scopedResultRows(db(c), org(c), c.req.param("id"), undefined, undefined, studentId, canViewDraft, principal);
-  const row = rows[0];
-  if (!row) throw notFound("Results not found for this student");
-  const context = await svc.reportCardContext(db(c), org(c), c.req.param("id"));
-  return c.html(buildReportCardHtml({ ...context, row }));
+import { writeAudit } from "../../lib/audit";
+export const examRoutes = new Hono<AppEnv>();
+examRoutes.use("*", requireAuth, requireOrg);
+const db = (c: any) => c.get("db");
+const org = (c: any) => c.get("orgId")!;
+const user = (c: any) => c.get("user")!.id;
+examRoutes.get("/", requirePermission("exam.view"), async (c) => {
+  const rows = await svc.listExams(db(c), org(c), c.get("user")!);
+  return okList(c, rows, rows.length, 1, 1000);
 });
-examRoutes.get("/grading-scales", requirePermission("exam.view"), async (c) => okList(c, await svc.listScales(db(c), org(c)), 0, 1, 1000));
-examRoutes.post("/grading-scales", requirePermission("exam.create"), async (c) => ok(c, await svc.createScale(db(c), org(c), parse(gradingScaleInputSchema, await c.req.json())), 201));
-examRoutes.post("/grading-scales/:id/default", requirePermission("exam.edit"), async (c) => ok(c, await svc.setDefaultScale(db(c), org(c), c.req.param("id"))));
+examRoutes.post("/", requirePermission("exam.create"), async (c) =>
+  ok(
+    c,
+    await svc.createExam(
+      db(c),
+      org(c),
+      parse(examInputSchema, await c.req.json()),
+    ),
+    201,
+  ),
+);
+examRoutes.put("/:id", requirePermission("exam.edit"), async (c) =>
+  ok(
+    c,
+    await svc.updateExam(
+      db(c),
+      org(c),
+      c.req.param("id"),
+      parse(examInputSchema.partial(), await c.req.json()),
+    ),
+  ),
+);
+examRoutes.delete("/:id", requirePermission("exam.delete"), async (c) => {
+  await svc.deleteExam(db(c), org(c), c.req.param("id"));
+  return ok(c, { deleted: true });
+});
+examRoutes.get("/:id/subjects", requirePermission("exam.view"), async (c) =>
+  okList(
+    c,
+    await svc.listExamSubjects(
+      db(c),
+      org(c),
+      c.req.param("id"),
+      c.get("user")!,
+    ),
+    0,
+    1,
+    1000,
+  ),
+);
+examRoutes.post("/:id/subjects", requirePermission("exam.create"), async (c) =>
+  ok(
+    c,
+    await svc.addExamSubject(
+      db(c),
+      org(c),
+      c.req.param("id"),
+      parse(examSubjectInputSchema, await c.req.json()),
+      c.get("user")!,
+    ),
+    201,
+  ),
+);
+examRoutes.delete(
+  "/subjects/:id",
+  requirePermission("exam.delete"),
+  async (c) => {
+    await svc.deleteExamSubject(
+      db(c),
+      org(c),
+      c.req.param("id"),
+      c.get("user")!,
+    );
+    return ok(c, { deleted: true });
+  },
+);
+examRoutes.post("/marks", requirePermission("result.create"), async (c) =>
+  ok(
+    c,
+    await svc.saveMarks(
+      db(c),
+      org(c),
+      user(c),
+      parse(markEntrySchema, await c.req.json()),
+      c.get("user")!,
+    ),
+    201,
+  ),
+);
+examRoutes.get(
+  "/marks/:examSubjectId",
+  requirePermission("result.view"),
+  async (c) =>
+    okList(
+      c,
+      await svc.listMarks(
+        db(c),
+        org(c),
+        c.req.param("examSubjectId"),
+        c.get("user")!,
+      ),
+      0,
+      1,
+      1000,
+    ),
+);
+examRoutes.get("/results", requirePermission("result.view"), async (c) => {
+  const q = parse(resultQuerySchema, c.req.query());
+  const principal = c.get("user")!;
+  const rows = await scopedResultRows(
+    db(c),
+    org(c),
+    q.examId,
+    q.classId,
+    q.sectionId,
+    principal.studentId,
+    principal.permissions.includes("exam.edit") ||
+      principal.permissions.includes("result.edit"),
+    principal,
+  );
+  return okList(c, rows, rows.length, 1, 1000);
+});
+examRoutes.post("/:id/publish", requirePermission("exam.edit"), async (c) =>
+  ok(
+    c,
+    await svc.publishExam(db(c), org(c), c.req.param("id"), c.get("user")!),
+  ),
+);
+examRoutes.post(
+  "/:id/approve",
+  requirePermission("result.approve"),
+  async (c) => {
+    const row = await svc.approveExam(db(c), org(c), c.req.param("id"));
+    await writeAudit(c, {
+      action: "approve",
+      entity: "exam",
+      entityId: row.id,
+    });
+    return ok(c, row);
+  },
+);
+examRoutes.get(
+  "/:id/report-card/:studentId",
+  requirePermission("result.view"),
+  async (c) => {
+    const principal = c.get("user")!;
+    const studentId = parse(z.uuid(), c.req.param("studentId"));
+    const learnerIds = await learnerStudentIds(db(c), org(c), principal);
+    if (learnerIds && !learnerIds.includes(studentId))
+      throw notFound("Report card not found");
+    const canViewDraft =
+      principal.isPlatformAdmin ||
+      principal.permissions.includes("exam.edit") ||
+      principal.permissions.includes("result.edit");
+    const rows = await scopedResultRows(
+      db(c),
+      org(c),
+      c.req.param("id"),
+      undefined,
+      undefined,
+      studentId,
+      canViewDraft,
+      principal,
+    );
+    const row = rows[0];
+    if (!row) throw notFound("Results not found for this student");
+    const context = await svc.reportCardContext(
+      db(c),
+      org(c),
+      c.req.param("id"),
+    );
+    return c.html(buildReportCardHtml({ ...context, row }));
+  },
+);
+examRoutes.get(
+  "/transcript/:studentId",
+  requirePermission("result.view"),
+  async (c) => {
+    const principal = c.get("user")!;
+    const studentId = parse(z.uuid(), c.req.param("studentId"));
+    const learnerIds = await learnerStudentIds(db(c), org(c), principal);
+    if (learnerIds && !learnerIds.includes(studentId))
+      throw notFound("Transcript not found");
+    return ok(
+      c,
+      await svc.transcriptRows(
+        db(c),
+        org(c),
+        studentId,
+        c.req.query("academicYearId"),
+      ),
+    );
+  },
+);
+examRoutes.get(
+  "/transcript/:studentId/export",
+  requirePermission("result.view"),
+  async (c) => {
+    const principal = c.get("user")!;
+    const studentId = parse(z.uuid(), c.req.param("studentId"));
+    const learnerIds = await learnerStudentIds(db(c), org(c), principal);
+    if (learnerIds && !learnerIds.includes(studentId))
+      throw notFound("Transcript not found");
+    const transcript = await svc.transcriptRows(
+      db(c),
+      org(c),
+      studentId,
+      c.req.query("academicYearId"),
+    );
+    const escape = (value: unknown) =>
+      `"${String(value ?? "").replace(/"/g, '""')}"`;
+    const lines = [
+      ["Exam", "Subject", "Marks", "Grade", "GPA", "Percentage", "Pass"]
+        .map(escape)
+        .join(","),
+    ];
+    transcript.records.forEach((record) =>
+      record.subjects.forEach((subject) =>
+        lines.push(
+          [
+            record.examName,
+            subject.subjectName,
+            subject.marksObtained,
+            subject.grade,
+            subject.gpa,
+            record.percentage,
+            record.passed ? "Yes" : "No",
+          ]
+            .map(escape)
+            .join(","),
+        ),
+      ),
+    );
+    lines.push(
+      ["CGPA", "", "", "", transcript.cgpa, "", ""].map(escape).join(","),
+    );
+    return new Response(`${lines.join("\n")}\n`, {
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="transcript-${studentId}.csv"`,
+      },
+    });
+  },
+);
+examRoutes.get("/grading-scales", requirePermission("exam.view"), async (c) =>
+  okList(c, await svc.listScales(db(c), org(c)), 0, 1, 1000),
+);
+examRoutes.post(
+  "/grading-scales",
+  requirePermission("exam.create"),
+  async (c) =>
+    ok(
+      c,
+      await svc.createScale(
+        db(c),
+        org(c),
+        parse(gradingScaleInputSchema, await c.req.json()),
+      ),
+      201,
+    ),
+);
+examRoutes.post(
+  "/grading-scales/:id/default",
+  requirePermission("exam.edit"),
+  async (c) =>
+    ok(c, await svc.setDefaultScale(db(c), org(c), c.req.param("id"))),
+);

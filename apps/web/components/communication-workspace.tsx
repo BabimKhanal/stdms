@@ -13,9 +13,12 @@ import {
 } from "lucide-react";
 import { EduApiClient } from "@edu/api-client";
 import { Badge } from "./ui/badge";
+import { Alert } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
+import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
+import { useToast } from "./ui/toast";
 
 type Notice = {
   id: string;
@@ -71,6 +74,7 @@ function priorityTone(priority: string) {
 
 export function CommunicationWorkspace() {
   const api = new EduApiClient(undefined, () => localStorage.getItem("edu_access_token"));
+  const toast = useToast();
   const permissions = readPermissions();
   const canCreateNotice = permissions.includes("notice.create");
   const canDeleteNotice = permissions.includes("notice.delete");
@@ -126,6 +130,7 @@ export function CommunicationWorkspace() {
       formElement.reset();
       setShowForm(false);
       setMessage("Notice published to the selected audience.");
+      toast.success("Notice published", "The selected audience can now see it.");
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to publish notice");
@@ -155,6 +160,7 @@ export function CommunicationWorkspace() {
       formElement.reset();
       setShowForm(false);
       setMessage("Event added to the school calendar.");
+      toast.success("Event added", "The school calendar has been updated.");
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to create event");
@@ -169,6 +175,7 @@ export function CommunicationWorkspace() {
     try {
       await api.delete(`/notices/${id}`);
       setMessage("Notice deleted.");
+      toast.success("Notice deleted");
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to delete notice");
@@ -181,6 +188,7 @@ export function CommunicationWorkspace() {
     try {
       await api.delete(`/events/${id}`);
       setMessage("Event deleted.");
+      toast.success("Event deleted");
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to delete event");
@@ -207,21 +215,21 @@ export function CommunicationWorkspace() {
         )}
       </div>
 
-      {error && <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}
-      {message && <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</p>}
+      {error && <Alert tone="error" title="Notices & events" onDismiss={() => setError("")}>{error}</Alert>}
+      {message && <Alert tone="success" onDismiss={() => setMessage("")}>{message}</Alert>}
 
-      <div className="flex flex-wrap gap-2">
-        <Button variant={tab === "notices" ? "primary" : "outline"} onClick={() => { setTab("notices"); setShowForm(false); }}>
-          <Megaphone size={15} />
-          Notices
-          <Badge tone="blue">{notices.length}</Badge>
-        </Button>
-        <Button variant={tab === "events" ? "primary" : "outline"} onClick={() => { setTab("events"); setShowForm(false); }}>
-          <CalendarDays size={15} />
-          Events
-          <Badge tone="blue">{events.length}</Badge>
-        </Button>
-      </div>
+      <Tabs
+        value={tab}
+        onValueChange={(value) => {
+          setTab(value as "notices" | "events");
+          setShowForm(false);
+        }}
+      >
+        <TabsList ariaLabel="Notices and events">
+          <TabsTrigger value="notices" icon={<Megaphone size={15} />} badge={notices.length}>Notices</TabsTrigger>
+          <TabsTrigger value="events" icon={<CalendarDays size={15} />} badge={events.length}>Events</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       {showForm && tab === "notices" && canCreateNotice && (
         <Card className="border-blue-200">

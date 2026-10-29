@@ -1,24 +1,27 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { env } from "../../env";
 
-function signature(value: string) {
-  return createHmac("sha256", env.ESEWA_SECRET_KEY).update(value).digest("base64");
+type EsewaConfig = { merchantCode: string; secretKey: string; formUrl?: string | null; successUrl?: string | null; failureUrl?: string | null };
+
+function signature(value: string, secretKey: string) {
+  return createHmac("sha256", secretKey).update(value).digest("base64");
 }
 
-export function createEsewaRequest(input: { amount: number; transactionUuid: string }) {
+export function createEsewaRequest(input: { amount: number; transactionUuid: string; config?: EsewaConfig }) {
+  const config = input.config ?? { merchantCode: env.ESEWA_MERCHANT_CODE, secretKey: env.ESEWA_SECRET_KEY, formUrl: env.ESEWA_FORM_URL };
   const totalAmount = input.amount.toFixed(2);
   return {
     amount: totalAmount,
     tax_amount: "0",
     total_amount: totalAmount,
     transaction_uuid: input.transactionUuid,
-    product_code: env.ESEWA_MERCHANT_CODE,
+    product_code: config.merchantCode,
     product_service_charge: "0",
     product_delivery_charge: "0",
-    success_url: `${env.PAYMENT_CALLBACK_URL}/success`,
-    failure_url: `${env.PAYMENT_CALLBACK_URL}/failure`,
+    success_url: config.successUrl ?? `${env.PAYMENT_CALLBACK_URL}/success`,
+    failure_url: config.failureUrl ?? `${env.PAYMENT_CALLBACK_URL}/failure`,
     signed_field_names: "total_amount,transaction_uuid,product_code",
-    signature: signature(`total_amount=${totalAmount},transaction_uuid=${input.transactionUuid},product_code=${env.ESEWA_MERCHANT_CODE}`),
+    signature: signature(`total_amount=${totalAmount},transaction_uuid=${input.transactionUuid},product_code=${config.merchantCode}`, config.secretKey),
   };
 }
 
@@ -26,9 +29,10 @@ export function newTransactionUuid() {
   return `nucleus-${randomUUID()}`;
 }
 
-export async function verifyEsewa(input: { transactionUuid: string; totalAmount: number }) {
+export async function verifyEsewa(input: { transactionUuid: string; totalAmount: number; config?: EsewaConfig }) {
+  const config = input.config ?? { merchantCode: env.ESEWA_MERCHANT_CODE, secretKey: env.ESEWA_SECRET_KEY };
   const url = new URL("https://rc-epay.esewa.com.np/api/epay/transaction/status/");
-  url.searchParams.set("product_code", env.ESEWA_MERCHANT_CODE);
+  url.searchParams.set("product_code", config.merchantCode);
   url.searchParams.set("total_amount", input.totalAmount.toFixed(2));
   url.searchParams.set("transaction_uuid", input.transactionUuid);
   const response = await fetch(url);

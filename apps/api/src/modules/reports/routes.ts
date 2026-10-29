@@ -7,4 +7,5 @@ export const reportRoutes = new Hono<AppEnv>(); reportRoutes.use("*", requireAut
 reportRoutes.get("/overview", requirePermission("report.view"), async (c) => ok(c, await svc.overview(c.get("db"), c.get("orgId")!)));
 reportRoutes.get("/attendance", requirePermission("report.view"), async (c) => ok(c, await svc.attendance(c.get("db"), c.get("orgId")!, c.req.query("from"), c.req.query("to"))));
 reportRoutes.get("/fees", requirePermission("report.view"), async (c) => ok(c, await svc.fees(c.get("db"), c.get("orgId")!)));
+reportRoutes.get("/fees/collections", requirePermission("report.view"), async (c) => ok(c, await svc.feeCollections(c.get("db"), c.get("orgId")!)));
 reportRoutes.get("/results", requirePermission("report.view"), async (c) => ok(c, await svc.results(c.get("db"), c.get("orgId")!, c.req.query("examId")!)));

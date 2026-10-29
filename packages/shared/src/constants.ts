@@ -10,7 +10,7 @@ export const STUDENT_STATUSES = [
 ] as const;
 export type StudentStatus = (typeof STUDENT_STATUSES)[number];
 
-export const ATTENDANCE_STATUSES = ["present", "absent", "late", "leave", "excused"] as const;
+export const ATTENDANCE_STATUSES = ["present", "absent", "late", "leave", "excused", "sick"] as const;
 export type AttendanceStatus = (typeof ATTENDANCE_STATUSES)[number];
 
 export const LEAVE_TYPES = [

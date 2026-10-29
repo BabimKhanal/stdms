@@ -11,6 +11,8 @@ import {
   roles,
   userRoles,
   users,
+  organisations,
+  documentTemplates,
 } from "../../db/schema";
 import type { StudentInput, GuardianInput } from "@edu/shared";
 import { conflict, notFound } from "../../lib/errors";
@@ -18,14 +20,22 @@ import { hashPassword } from "../../lib/password";
 import { randomBytes } from "node:crypto";
 import type { AuthUser } from "../../lib/context";
 import { assertStudentAssigned, teacherScope } from "../../lib/teacher-scope";
+import { buildDocumentData } from "../../lib/document-data";
+import { renderTemplateHtml } from "../../lib/document-template-renderer";
 
 type StudentRow = typeof students.$inferSelect;
 
-function fullName(s: { firstName: string; middleName: string | null; lastName: string }) {
+function fullName(s: {
+  firstName: string;
+  middleName: string | null;
+  lastName: string;
+}) {
   return [s.firstName, s.middleName, s.lastName].filter(Boolean).join(" ");
 }
 
-function temporaryPassword() { return `Nuc-${randomBytes(5).toString("base64url")}`; }
+function temporaryPassword() {
+  return `Nuc-${randomBytes(5).toString("base64url")}`;
+}
 
 /* ------------------------------ Students ------------------------------ */
 
@@ -50,7 +60,11 @@ const SORTABLE: Record<string, unknown> = {
   createdAt: students.createdAt,
 };
 
-export async function listStudents(db: DB, orgId: string, f: StudentListFilters) {
+export async function listStudents(
+  db: DB,
+  orgId: string,
+  f: StudentListFilters,
+) {
   const conds = [eq(students.organisationId, orgId)];
   if (f.status) conds.push(eq(students.status, f.status as never));
   if (f.search) {
@@ -68,11 +82,16 @@ export async function listStudents(db: DB, orgId: string, f: StudentListFilters)
   if (f.sectionId) conds.push(eq(enrolments.sectionId, f.sectionId));
 
   if (f.principal) {
-    const scope = teacherScope(f.principal, sql`${enrolments.classId}`, sql`${enrolments.sectionId}`);
+    const scope = teacherScope(
+      f.principal,
+      sql`${enrolments.classId}`,
+      sql`${enrolments.sectionId}`,
+    );
     if (scope) conds.push(scope as never);
   }
   const where = and(...conds);
-  const sortCol = (SORTABLE[f.sort ?? "createdAt"] ?? students.createdAt) as typeof students.createdAt;
+  const sortCol = (SORTABLE[f.sort ?? "createdAt"] ??
+    students.createdAt) as typeof students.createdAt;
   const order = f.order === "asc" ? sql`asc` : sql`desc`;
 
   const countRow = await db
@@ -82,7 +101,9 @@ export async function listStudents(db: DB, orgId: string, f: StudentListFilters)
       enrolments,
       and(
         eq(enrolments.studentId, students.id),
-        f.academicYearId ? eq(enrolments.academicYearId, f.academicYearId) : sql`true`,
+        f.academicYearId
+          ? eq(enrolments.academicYearId, f.academicYearId)
+          : sql`true`,
       ),
     )
     .where(where);
@@ -117,7 +138,9 @@ export async function listStudents(db: DB, orgId: string, f: StudentListFilters)
       enrolments,
       and(
         eq(enrolments.studentId, students.id),
-        f.academicYearId ? eq(enrolments.academicYearId, f.academicYearId) : sql`true`,
+        f.academicYearId
+          ? eq(enrolments.academicYearId, f.academicYearId)
+          : sql`true`,
       ),
     )
     .leftJoin(classes, eq(enrolments.classId, classes.id))
@@ -128,12 +151,21 @@ export async function listStudents(db: DB, orgId: string, f: StudentListFilters)
     .offset((f.page - 1) * f.pageSize);
 
   return {
-    data: rows.map((r) => ({ ...r, fullName: fullName(r), academicYearId: f.academicYearId ?? null })),
+    data: rows.map((r) => ({
+      ...r,
+      fullName: fullName(r),
+      academicYearId: f.academicYearId ?? null,
+    })),
     total,
   };
 }
 
-export async function getStudent(db: DB, orgId: string, id: string, principal?: AuthUser) {
+export async function getStudent(
+  db: DB,
+  orgId: string,
+  id: string,
+  principal?: AuthUser,
+) {
   if (principal) await assertStudentAssigned(db, principal, orgId, id);
   const [student] = await db
     .select()
@@ -158,7 +190,9 @@ export async function getStudent(db: DB, orgId: string, id: string, principal?: 
     .innerJoin(academicYears, eq(enrolments.academicYearId, academicYears.id))
     .innerJoin(classes, eq(enrolments.classId, classes.id))
     .leftJoin(sections, eq(enrolments.sectionId, sections.id))
-    .where(and(eq(enrolments.studentId, id), eq(enrolments.organisationId, orgId)))
+    .where(
+      and(eq(enrolments.studentId, id), eq(enrolments.organisationId, orgId)),
+    )
     .orderBy(desc(academicYears.startDate));
 
   const guardianRows = await db
@@ -166,15 +200,20 @@ export async function getStudent(db: DB, orgId: string, id: string, principal?: 
       id: guardians.id,
       fullName: guardians.fullName,
       relationship: guardians.relationship,
-       phone: guardians.phone,
-       email: guardians.email,
-       address: guardians.address,
-       occupation: guardians.occupation,
+      phone: guardians.phone,
+      email: guardians.email,
+      address: guardians.address,
+      occupation: guardians.occupation,
       isPrimary: studentGuardians.isPrimary,
     })
     .from(studentGuardians)
     .innerJoin(guardians, eq(studentGuardians.guardianId, guardians.id))
-    .where(and(eq(studentGuardians.studentId, id), eq(studentGuardians.organisationId, orgId)));
+    .where(
+      and(
+        eq(studentGuardians.studentId, id),
+        eq(studentGuardians.organisationId, orgId),
+      ),
+    );
 
   const current = history[0] ?? null;
   return {
@@ -191,10 +230,106 @@ export async function getStudent(db: DB, orgId: string, id: string, principal?: 
   };
 }
 
+function cardEscape(value: unknown) {
+  return String(value ?? "").replace(
+    /[&<>"']/g,
+    (character) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        character
+      ] ?? character,
+  );
+}
+async function legacyIdentityCardHtml(
+  db: DB,
+  orgId: string,
+  id: string,
+  principal?: AuthUser,
+) {
+  const student = await getStudent(db, orgId, id, principal);
+  const [organisation] = await db
+    .select({
+      name: organisations.name,
+      logoUrl: organisations.logoUrl,
+      address: organisations.address,
+      phone: organisations.phone,
+      email: organisations.email,
+      primaryColor: organisations.primaryColor,
+    })
+    .from(organisations)
+    .where(eq(organisations.id, orgId))
+    .limit(1);
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Identity Card - ${cardEscape(student.fullName)}</title><style>@page{size:A4;margin:18mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#172033;margin:0;background:#fff}.sheet{display:flex;gap:20px;flex-wrap:wrap}.card{width:86mm;height:54mm;border:1px solid #dbe3ef;border-radius:14px;overflow:hidden;position:relative;background:#fff;box-shadow:0 4px 14px #0f172a12}.band{height:12mm;background:${cardEscape(organisation?.primaryColor ?? "#2563eb")};color:#fff;padding:5px 10px;display:flex;align-items:center;gap:8px}.band img{width:24px;height:24px;object-fit:contain;background:#fff;border-radius:5px}.school{font-size:11px;font-weight:700}.sub{font-size:7px;opacity:.85;margin-top:2px}.body{display:flex;gap:9px;padding:9px}.photo{width:24mm;height:30mm;object-fit:cover;border:1px solid #dbe3ef;border-radius:5px}.placeholder{width:24mm;height:30mm;background:#eff6ff;color:#2563eb;display:grid;place-items:center;font-size:24px;font-weight:700;border-radius:5px}.details{font-size:8px;line-height:1.65;min-width:0}.details strong{display:block;font-size:12px;line-height:1.2;margin-bottom:3px}.label{color:#64748b}.footer{position:absolute;bottom:0;left:0;right:0;background:#f8fafc;padding:4px 9px;font-size:7px;color:#64748b}.back{padding:12px;font-size:8px;line-height:1.6}.back h3{margin:0 0 8px;color:${cardEscape(organisation?.primaryColor ?? "#2563eb")};font-size:11px}.back p{margin:4px 0}.print{margin-top:24px;padding:8px 14px;border:0;border-radius:6px;background:#172033;color:#fff}@media print{.print{display:none}.card{box-shadow:none}}</style></head><body><div class="sheet"><section class="card"><div class="band">${organisation?.logoUrl ? `<img src="${cardEscape(organisation.logoUrl)}" alt="">` : ""}<div><div class="school">${cardEscape(organisation?.name)}</div><div class="sub">STUDENT IDENTITY CARD</div></div></div><div class="body">${student.photoUrl ? `<img class="photo" src="${cardEscape(student.photoUrl)}" alt="">` : `<div class="placeholder">${cardEscape(student.firstName?.[0] ?? "S")}</div>`}<div class="details"><strong>${cardEscape(student.fullName)}</strong><div><span class="label">Student ID:</span> ${cardEscape(student.studentId)}</div><div><span class="label">Class:</span> ${cardEscape(student.className)} ${student.sectionName ? `· ${cardEscape(student.sectionName)}` : ""}</div><div><span class="label">Roll:</span> ${cardEscape(student.rollNumber)}</div><div><span class="label">Status:</span> ${cardEscape(student.status)}</div></div></div><div class="footer">${cardEscape(organisation?.phone)} · ${cardEscape(organisation?.email)}</div></section><section class="card back"><h3>${cardEscape(organisation?.name)} · Student Card</h3><p><strong>Address:</strong> ${cardEscape(organisation?.address)}</p><p><strong>In case of emergency:</strong> Contact the institution using the details above.</p><p>This card remains the property of the institution and must be returned when requested.</p><div class="footer">Issued for the current academic enrolment</div></section></div><button class="print" onclick="window.print()">Print identity card</button></body></html>`;
+}
+
+async function staticIdentityCardHtml(
+  db: DB,
+  orgId: string,
+  id: string,
+  principal?: AuthUser,
+) {
+  const student = await getStudent(db, orgId, id, principal);
+  const [organisation] = await db.select({ name: organisations.name, logoUrl: organisations.logoUrl, address: organisations.address, phone: organisations.phone, email: organisations.email, primaryColor: organisations.primaryColor }).from(organisations).where(eq(organisations.id, orgId)).limit(1);
+  const brand = cardEscape(organisation?.primaryColor ?? "#1d4ed8");
+  const school = cardEscape(organisation?.name ?? "Institution name");
+  const address = cardEscape(organisation?.address ?? "");
+  const contact = cardEscape([organisation?.phone, organisation?.email].filter(Boolean).join(" · "));
+  const photo = student.photoUrl ? `<img class="photo" src="${cardEscape(student.photoUrl)}" alt="${cardEscape(student.fullName)}">` : `<div class="photo placeholder">${cardEscape(student.fullName.slice(0, 1))}</div>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Identity Card - ${cardEscape(student.fullName)}</title><style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#172033;margin:0;background:#f1f5f9;padding:24px}.sheet{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:24px}.card{min-width:0;aspect-ratio:1.586;border:1px solid #dbe3ef;border-radius:16px;overflow:hidden;position:relative;background:#fff;box-shadow:0 8px 24px #0f172a18}.band{height:31%;background:${brand};color:#fff;padding:14px 18px;display:flex;align-items:center;gap:12px}.band img{width:42px;height:42px;object-fit:contain;background:#fff;border-radius:8px}.school{font-size:clamp(15px,2vw,22px);font-weight:800;line-height:1.1}.sub{font-size:11px;letter-spacing:.08em;margin-top:5px;opacity:.9}.body{height:69%;display:flex;gap:18px;padding:18px}.photo{width:30%;min-width:100px;height:100%;max-height:150px;object-fit:cover;border:1px solid #dbe3ef;border-radius:8px}.placeholder{display:grid;place-items:center;background:#eff6ff;color:${brand};font-size:42px;font-weight:800}.details{font-size:clamp(11px,1.25vw,14px);line-height:1.55;min-width:0}.details strong{display:block;font-size:clamp(17px,2vw,24px);line-height:1.15;margin-bottom:7px;color:#0f172a}.details p{margin:2px 0;overflow-wrap:anywhere}.label{color:#64748b}.footer{position:absolute;bottom:0;left:0;right:0;background:#f8fafc;padding:8px 14px;font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.back{padding:24px;font-size:clamp(11px,1.3vw,14px);line-height:1.7}.back h3{margin:0 0 14px;color:${brand};font-size:clamp(16px,2vw,24px)}.back p{margin:8px 0}.print{display:block;margin:28px auto 0;padding:12px 18px;border:0;border-radius:8px;background:#172033;color:#fff;font-size:16px;cursor:pointer}@media(max-width:520px){body{padding:12px}.sheet{gap:16px}.body{gap:10px;padding:12px}.photo{min-width:82px}.band{padding:10px 12px}.band img{width:34px;height:34px}}@media print{body{padding:0;background:#fff}.sheet{max-width:none;grid-template-columns:repeat(2,86mm);gap:6mm}.card{width:86mm;height:54mm;aspect-ratio:auto;border-radius:4mm;box-shadow:none}.print{display:none}.school{font-size:11px}.sub{font-size:7px}.band{height:12mm;padding:5px 10px}.band img{width:24px;height:24px}.body{height:42mm;padding:9px;gap:9px}.photo{width:24mm;min-width:24mm;height:30mm}.details{font-size:8px}.details strong{font-size:12px}.footer{font-size:7px;padding:4px 9px}.back{padding:12px;font-size:8px}.back h3{font-size:11px}}</style></head><body><div class="sheet"><section class="card"><div class="band">${organisation?.logoUrl ? `<img src="${cardEscape(organisation.logoUrl)}" alt="">` : ""}<div><div class="school">${school}</div><div class="sub">STUDENT IDENTITY CARD</div></div></div><div class="body">${photo}<div class="details"><strong>${cardEscape(student.fullName)}</strong><p><span class="label">Student ID:</span> ${cardEscape(student.studentId)}</p><p><span class="label">Class:</span> ${cardEscape(student.className ?? "-")} ${student.sectionName ? `· ${cardEscape(student.sectionName)}` : ""}</p><p><span class="label">Roll:</span> ${cardEscape(student.rollNumber ?? "-")}</p><p><span class="label">Status:</span> ${cardEscape(student.status)}</p></div></div><div class="footer">${contact}</div></section><section class="card"><div class="back"><h3>${school} · Student Card</h3><p><strong>Address:</strong> ${address || "Institution address"}</p><p><strong>In case of emergency:</strong> Contact the institution using the details above.</p><p>This card remains the property of the institution and must be returned when requested.</p></div><div class="footer">Issued for the current academic enrolment</div></section></div><button class="print" onclick="window.print()">Print identity card</button></body></html>`;
+}
+
+export async function identityCardHtml(
+  db: DB,
+  orgId: string,
+  id: string,
+  principal?: AuthUser,
+) {
+  const student = await getStudent(db, orgId, id, principal);
+  const [organisation] = await db.select({ name: organisations.name, logoUrl: organisations.logoUrl, address: organisations.address, phone: organisations.phone, email: organisations.email, primaryColor: organisations.primaryColor }).from(organisations).where(eq(organisations.id, orgId)).limit(1);
+  const [template] = await db.select({ design: documentTemplates.design }).from(documentTemplates).where(and(eq(documentTemplates.organisationId, orgId), eq(documentTemplates.documentType, "identity_card"), eq(documentTemplates.isDefault, 1))).limit(1);
+  const design = (template?.design ?? {}) as Record<string, unknown>;
+  if (design.version === 2 && Array.isArray(design.elements) && design.page) {
+    return renderTemplateHtml(
+      design as unknown as Parameters<typeof renderTemplateHtml>[0],
+      buildDocumentData(student, organisation),
+      { title: `${student.fullName} — identity card` },
+    );
+  }
+  const primary = cardEscape(typeof design.primary === "string" ? design.primary : organisation?.primaryColor ?? "#2563eb");
+  const background = cardEscape(typeof design.background === "string" ? design.background : "#ffffff");
+  const title = cardEscape(typeof design.title === "string" ? design.title : "STUDENT IDENTITY CARD");
+  const subtitle = cardEscape(typeof design.subtitle === "string" ? design.subtitle : organisation?.name ?? "Institution name");
+  const logoUrl = typeof design.logoUrl === "string" && design.logoUrl ? design.logoUrl : organisation?.logoUrl;
+  const fields = Array.isArray(design.fields) ? design.fields.filter((field): field is string => typeof field === "string") : ["fullName", "studentId", "className", "sectionName", "dateOfBirth", "address", "phone"];
+  const values: Record<string, string> = {
+    fullName: student.fullName,
+    studentId: student.studentId,
+    dateOfBirth: student.dateOfBirth ?? "-",
+    className: student.className ?? "-",
+    sectionName: student.sectionName ?? "-",
+    address: student.address ?? organisation?.address ?? "-",
+    phone: student.phone ?? "-",
+    email: student.email ?? organisation?.email ?? "-",
+    admissionNumber: student.admissionNumber ?? "-",
+    session: "Current session",
+    fatherName: "-",
+    motherName: "-",
+    principal: "Principal",
+  };
+  const labels: Record<string, string> = { fullName: "Name", studentId: "Student ID", dateOfBirth: "D.O.B", className: "Class", sectionName: "Section", address: "Address", phone: "Ph. No.", email: "E-mail", admissionNumber: "Adm. No.", session: "Session", fatherName: "F. Name", motherName: "M. Name", principal: "" };
+  const rows = fields.filter((field) => field !== "photoUrl" && field !== "principal").map((field) => `<p><span class="label">${cardEscape(labels[field] ?? field)}:</span> ${cardEscape(values[field] ?? "-")}</p>`).join("");
+  const principalFooter = fields.includes("principal") ? `<span class="principal">Principal</span>` : "";
+  const photo = student.photoUrl ? `<img class="photo" src="${cardEscape(student.photoUrl)}" alt="${cardEscape(student.fullName)}">` : `<div class="photo placeholder">${cardEscape(student.fullName.slice(0, 1))}</div>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} - ${cardEscape(student.fullName)}</title><style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#172033;margin:0;background:#f1f5f9;padding:24px}.sheet{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:24px}.card{min-width:0;aspect-ratio:1.586;border:1px solid #dbe3ef;border-radius:16px;overflow:hidden;position:relative;background:${background};box-shadow:0 8px 24px #0f172a18}.band{height:31%;background:${primary};color:#fff;padding:14px 18px;display:flex;align-items:center;gap:12px}.band img{width:42px;height:42px;object-fit:contain;background:#fff;border-radius:8px}.school{font-size:clamp(15px,2vw,22px);font-weight:800;line-height:1.1}.sub{font-size:11px;letter-spacing:.08em;margin-top:5px;opacity:.9}.body{height:69%;display:flex;gap:18px;padding:18px}.photo{width:30%;min-width:100px;height:100%;max-height:150px;object-fit:cover;border:1px solid #dbe3ef;border-radius:8px}.placeholder{display:grid;place-items:center;background:#eff6ff;color:${primary};font-size:42px;font-weight:800}.details{font-size:clamp(11px,1.25vw,14px);line-height:1.55;min-width:0;overflow:hidden}.details strong{display:block;font-size:clamp(17px,2vw,24px);line-height:1.15;margin-bottom:7px;color:#0f172a}.details p{margin:2px 0;overflow-wrap:anywhere}.label{color:#64748b}.footer{position:absolute;bottom:0;left:0;right:0;background:#f8fafc;padding:8px 14px;font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.principal{position:absolute;right:14px;bottom:8px;color:#172033;font-weight:700;font-size:11px}.back{padding:24px;font-size:clamp(11px,1.3vw,14px);line-height:1.7}.back h3{margin:0 0 14px;color:${primary};font-size:clamp(16px,2vw,24px)}.back p{margin:8px 0}.print{display:block;margin:28px auto 0;padding:12px 18px;border:0;border-radius:8px;background:#172033;color:#fff;font-size:16px;cursor:pointer}@media(max-width:520px){body{padding:12px}.sheet{gap:16px}.body{gap:10px;padding:12px}.photo{min-width:82px}.band{padding:10px 12px}.band img{width:34px;height:34px}}@media print{body{padding:0;background:#fff}.sheet{max-width:none;grid-template-columns:repeat(2,86mm);gap:6mm}.card{width:86mm;height:54mm;aspect-ratio:auto;border-radius:4mm;box-shadow:none}.print{display:none}.school{font-size:11px}.sub{font-size:7px}.band{height:12mm;padding:5px 10px}.band img{width:24px;height:24px}.body{height:42mm;padding:9px;gap:9px}.photo{width:24mm;min-width:24mm;height:30mm}.details{font-size:8px}.details strong{font-size:12px}.footer{font-size:7px;padding:4px 9px}.back{padding:12px;font-size:8px}.back h3{font-size:11px}.principal{font-size:7px;bottom:4px;right:9px}}</style></head><body><div class="sheet"><section class="card"><div class="band">${logoUrl ? `<img src="${cardEscape(logoUrl)}" alt="">` : ""}<div><div class="school">${subtitle}</div><div class="sub">${title}</div></div></div><div class="body">${photo}<div class="details"><strong>${cardEscape(student.fullName)}</strong>${rows}</div></div><div class="footer">${cardEscape([organisation?.phone, organisation?.email].filter(Boolean).join(" · "))}${principalFooter}</div></section><section class="card"><div class="back"><h3>${subtitle} · ${title}</h3><p><strong>Address:</strong> ${cardEscape(organisation?.address ?? "Institution address")}</p><p><strong>In case of emergency:</strong> Contact the institution using the details above.</p><p>This card remains the property of the institution and must be returned when requested.</p></div><div class="footer">Issued for the current academic enrolment</div></section></div><button class="print" onclick="window.print()">Print identity card</button></body></html>`;
+}
+
 export async function createStudent(
   db: DB,
   orgId: string,
-  input: StudentInput & { academicYearId?: string | null; classId?: string | null; sectionId?: string | null },
+  input: StudentInput & {
+    academicYearId?: string | null;
+    classId?: string | null;
+    sectionId?: string | null;
+  },
 ) {
   try {
     return await db.transaction(async (tx) => {
@@ -240,7 +375,12 @@ export async function createStudent(
   }
 }
 
-export async function updateStudent(db: DB, orgId: string, id: string, input: Partial<StudentInput>) {
+export async function updateStudent(
+  db: DB,
+  orgId: string,
+  id: string,
+  input: Partial<StudentInput>,
+) {
   const [row] = await db
     .update(students)
     .set({
@@ -269,7 +409,13 @@ export async function transitionStudentStatus(
   db: DB,
   orgId: string,
   id: string,
-  status: "active" | "graduated" | "suspended" | "withdrawn" | "transferred" | "alumni",
+  status:
+    | "active"
+    | "graduated"
+    | "suspended"
+    | "withdrawn"
+    | "transferred"
+    | "alumni",
 ) {
   return db.transaction(async (tx) => {
     const [student] = await tx
@@ -282,13 +428,24 @@ export async function transitionStudentStatus(
     const [currentYear] = await tx
       .select({ id: academicYears.id })
       .from(academicYears)
-      .where(and(eq(academicYears.organisationId, orgId), eq(academicYears.isCurrent, true)))
+      .where(
+        and(
+          eq(academicYears.organisationId, orgId),
+          eq(academicYears.isCurrent, true),
+        ),
+      )
       .limit(1);
     if (currentYear) {
       await tx
         .update(enrolments)
         .set({ promotionStatus: status === "active" ? null : status })
-        .where(and(eq(enrolments.organisationId, orgId), eq(enrolments.studentId, id), eq(enrolments.academicYearId, currentYear.id)));
+        .where(
+          and(
+            eq(enrolments.organisationId, orgId),
+            eq(enrolments.studentId, id),
+            eq(enrolments.academicYearId, currentYear.id),
+          ),
+        );
     }
     return student;
   });
@@ -298,7 +455,13 @@ export async function updateStudentProfile(
   db: DB,
   orgId: string,
   id: string,
-  input: { phone?: string | null; email?: string | null; address?: string | null; nationality?: string | null; photoUrl?: string | null },
+  input: {
+    phone?: string | null;
+    email?: string | null;
+    address?: string | null;
+    nationality?: string | null;
+    photoUrl?: string | null;
+  },
 ) {
   const [row] = await db
     .update(students)
@@ -323,18 +486,56 @@ export async function deleteStudent(db: DB, orgId: string, id: string) {
   if (!rows.length) throw notFound("Student not found");
 }
 
-export async function provisionStudentAccount(db: DB, orgId: string, studentId: string) {
-  const [student] = await db.select().from(students).where(and(eq(students.id, studentId), eq(students.organisationId, orgId))).limit(1);
+export async function provisionStudentAccount(
+  db: DB,
+  orgId: string,
+  studentId: string,
+) {
+  const [student] = await db
+    .select()
+    .from(students)
+    .where(and(eq(students.id, studentId), eq(students.organisationId, orgId)))
+    .limit(1);
   if (!student) throw notFound("Student not found");
-  const [existing] = await db.select({ id: users.id, username: users.username, email: users.email }).from(users).where(and(eq(users.studentId, studentId), eq(users.organisationId, orgId))).limit(1);
-  if (existing) return { created: false, username: existing.username, email: existing.email, temporaryPassword: null };
+  const [existing] = await db
+    .select({ id: users.id, username: users.username, email: users.email })
+    .from(users)
+    .where(and(eq(users.studentId, studentId), eq(users.organisationId, orgId)))
+    .limit(1);
+  if (existing)
+    return {
+      created: false,
+      username: existing.username,
+      email: existing.email,
+      temporaryPassword: null,
+    };
   const password = temporaryPassword();
   const username = student.studentId;
-  const [role] = await db.select({ id: roles.id }).from(roles).where(and(eq(roles.organisationId, orgId), eq(roles.key, "student"))).limit(1);
+  const [role] = await db
+    .select({ id: roles.id })
+    .from(roles)
+    .where(and(eq(roles.organisationId, orgId), eq(roles.key, "student")))
+    .limit(1);
   if (!role) throw notFound("Student role not configured");
-  const [account] = await db.insert(users).values({ organisationId: orgId, name: fullName(student), email: student.email, username, passwordHash: await hashPassword(password), studentId, mustChangePassword: true }).returning({ id: users.id, username: users.username, email: users.email });
+  const [account] = await db
+    .insert(users)
+    .values({
+      organisationId: orgId,
+      name: fullName(student),
+      email: student.email,
+      username,
+      passwordHash: await hashPassword(password),
+      studentId,
+      mustChangePassword: true,
+    })
+    .returning({ id: users.id, username: users.username, email: users.email });
   await db.insert(userRoles).values({ userId: account.id, roleId: role.id });
-  return { created: true, username: account.username, email: account.email, temporaryPassword: password };
+  return {
+    created: true,
+    username: account.username,
+    email: account.email,
+    temporaryPassword: password,
+  };
 }
 
 /* ------------------------------ Guardians ------------------------------ */
@@ -377,7 +578,11 @@ export async function listGuardians(db: DB, orgId: string, search?: string) {
   });
 }
 
-export async function createGuardian(db: DB, orgId: string, input: GuardianInput) {
+export async function createGuardian(
+  db: DB,
+  orgId: string,
+  input: GuardianInput,
+) {
   const [row] = await db
     .insert(guardians)
     .values({
@@ -394,21 +599,68 @@ export async function createGuardian(db: DB, orgId: string, input: GuardianInput
   return row;
 }
 
-export async function provisionGuardianAccount(db: DB, orgId: string, guardianId: string) {
-  const [guardian] = await db.select().from(guardians).where(and(eq(guardians.id, guardianId), eq(guardians.organisationId, orgId))).limit(1);
+export async function provisionGuardianAccount(
+  db: DB,
+  orgId: string,
+  guardianId: string,
+) {
+  const [guardian] = await db
+    .select()
+    .from(guardians)
+    .where(
+      and(eq(guardians.id, guardianId), eq(guardians.organisationId, orgId)),
+    )
+    .limit(1);
   if (!guardian) throw notFound("Guardian not found");
-  const [existing] = await db.select({ id: users.id, username: users.username, email: users.email }).from(users).where(and(eq(users.guardianId, guardianId), eq(users.organisationId, orgId))).limit(1);
-  if (existing) return { created: false, username: existing.username, email: existing.email, temporaryPassword: null };
-  const [role] = await db.select({ id: roles.id }).from(roles).where(and(eq(roles.organisationId, orgId), eq(roles.key, "parent"))).limit(1);
+  const [existing] = await db
+    .select({ id: users.id, username: users.username, email: users.email })
+    .from(users)
+    .where(
+      and(eq(users.guardianId, guardianId), eq(users.organisationId, orgId)),
+    )
+    .limit(1);
+  if (existing)
+    return {
+      created: false,
+      username: existing.username,
+      email: existing.email,
+      temporaryPassword: null,
+    };
+  const [role] = await db
+    .select({ id: roles.id })
+    .from(roles)
+    .where(and(eq(roles.organisationId, orgId), eq(roles.key, "parent")))
+    .limit(1);
   if (!role) throw notFound("Parent role not configured");
   const password = temporaryPassword();
   const username = guardian.email ?? `parent-${guardian.id.slice(0, 8)}`;
-  const [account] = await db.insert(users).values({ organisationId: orgId, name: guardian.fullName, email: guardian.email, username, passwordHash: await hashPassword(password), guardianId, mustChangePassword: true }).returning({ id: users.id, username: users.username, email: users.email });
+  const [account] = await db
+    .insert(users)
+    .values({
+      organisationId: orgId,
+      name: guardian.fullName,
+      email: guardian.email,
+      username,
+      passwordHash: await hashPassword(password),
+      guardianId,
+      mustChangePassword: true,
+    })
+    .returning({ id: users.id, username: users.username, email: users.email });
   await db.insert(userRoles).values({ userId: account.id, roleId: role.id });
-  return { created: true, username: account.username, email: account.email, temporaryPassword: password };
+  return {
+    created: true,
+    username: account.username,
+    email: account.email,
+    temporaryPassword: password,
+  };
 }
 
-export async function updateGuardian(db: DB, orgId: string, id: string, input: Partial<GuardianInput>) {
+export async function updateGuardian(
+  db: DB,
+  orgId: string,
+  id: string,
+  input: Partial<GuardianInput>,
+) {
   const [row] = await db
     .update(guardians)
     .set({
@@ -440,12 +692,18 @@ export async function linkGuardian(
       .returning();
     return row;
   } catch (err) {
-    if ((err as { code?: string }).code === "23505") throw conflict("Already linked");
+    if ((err as { code?: string }).code === "23505")
+      throw conflict("Already linked");
     throw err;
   }
 }
 
-export async function unlinkGuardian(db: DB, orgId: string, studentId: string, guardianId: string) {
+export async function unlinkGuardian(
+  db: DB,
+  orgId: string,
+  studentId: string,
+  guardianId: string,
+) {
   await db
     .delete(studentGuardians)
     .where(
@@ -495,7 +753,10 @@ export async function promoteStudents(
           .set({ promotionStatus: entry.status })
           .where(eq(enrolments.id, source.id));
         if (entry.status === "withdrawn") {
-          await tx.update(students).set({ status: "withdrawn" }).where(eq(students.id, entry.studentId));
+          await tx
+            .update(students)
+            .set({ status: "withdrawn" })
+            .where(eq(students.id, entry.studentId));
         }
       } else {
         // New year = NEW row; the old year's row is never modified (SRS §60).
@@ -516,7 +777,10 @@ export async function promoteStudents(
           .set({ promotionStatus: entry.status })
           .where(eq(enrolments.id, source.id));
         if (entry.status === "graduated") {
-          await tx.update(students).set({ status: "graduated" }).where(eq(students.id, entry.studentId));
+          await tx
+            .update(students)
+            .set({ status: "graduated" })
+            .where(eq(students.id, entry.studentId));
         }
       }
       results.push({ studentId: entry.studentId, status: entry.status });

@@ -20,6 +20,7 @@ export const attendanceRecordSchema = z.object({
   sectionId: z.uuid().nullable(),
   date: dateSchema,
   periodId: z.uuid().nullable(),
+  subjectId: z.uuid().nullable(),
   status: z.enum(ATTENDANCE_STATUSES),
   markedBy: z.uuid().nullable(),
   remarks: z.string().nullable(),
@@ -31,6 +32,7 @@ export const markAttendanceSchema = z.object({
   sectionId: idSchema,
   date: dateSchema,
   periodId: z.uuid().nullable().optional(),
+  subjectId: z.uuid().nullable().optional(),
   records: z
     .array(
       z.object({
@@ -44,6 +46,12 @@ export const markAttendanceSchema = z.object({
 });
 export type MarkAttendanceInput = z.infer<typeof markAttendanceSchema>;
 
+export const attendanceCorrectionSchema = z.object({
+  status: z.enum(ATTENDANCE_STATUSES),
+  remarks: z.string().trim().max(200).nullable().optional(),
+});
+export type AttendanceCorrectionInput = z.infer<typeof attendanceCorrectionSchema>;
+
 export const attendanceListQuerySchema = z.object({
   sectionId: z.uuid().optional(),
   classId: z.uuid().optional(),
@@ -53,6 +61,8 @@ export const attendanceListQuerySchema = z.object({
   to: dateSchema.optional(),
   month: monthSchema.optional(),
   status: z.enum(ATTENDANCE_STATUSES).optional(),
+  periodId: z.uuid().optional(),
+  subjectId: z.uuid().optional(),
 });
 export type AttendanceListQuery = z.infer<typeof attendanceListQuerySchema>;
 
@@ -64,6 +74,7 @@ export const attendanceSummarySchema = z.object({
   late: z.number(),
   leave: z.number(),
   excused: z.number(),
+  sick: z.number(),
   total: z.number(),
   percentage: z.number(),
 });

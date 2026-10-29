@@ -30,3 +30,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() { const value = useContext(AuthContext); if (!value) throw new Error("useAuth must be used inside AuthProvider"); return value; }
 
 export async function mobileToken() { return readStorage(ACCESS_KEY); }
+
+export async function refreshMobileSession() {
+  const refreshToken = await readStorage(REFRESH_KEY);
+  if (!refreshToken) return null;
+  const refreshed = await new EduApiClient(API_URL).post<{ accessToken: string; refreshToken: string; user: MobileUser }>("/auth/refresh", { refreshToken });
+  await writeStorage(ACCESS_KEY, refreshed.accessToken);
+  await writeStorage(REFRESH_KEY, refreshed.refreshToken);
+  await writeStorage(USER_KEY, JSON.stringify(refreshed.user));
+  return refreshed.accessToken;
+}

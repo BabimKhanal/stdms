@@ -14,6 +14,7 @@ import { EduApiClient } from "@edu/api-client";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { CloudinaryUpload } from "./cloudinary-upload";
+import { Alert } from "./ui/alert";
 import { FilePreview } from "./file-preview";
 
 type Homework = {
@@ -119,9 +120,9 @@ export function StudentLearning() {
       </section>
 
       {error && (
-        <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <Alert tone="error" title="My learning" onDismiss={() => setError("")}>
           {error}
-        </p>
+        </Alert>
       )}
 
       {loading ? (

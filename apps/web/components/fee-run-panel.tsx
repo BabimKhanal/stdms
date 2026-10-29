@@ -6,11 +6,14 @@ import { EduApiClient } from "@edu/api-client";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
+import { Alert } from "./ui/alert";
+import { useToast } from "./ui/toast";
 
 type Structure = { id: string; name: string; className?: string; totalAmount?: number };
 
 export function FeeRunPanel({ onComplete }: { onComplete: () => Promise<void> }) {
   const api = new EduApiClient(undefined, () => localStorage.getItem("edu_access_token"));
+  const toast = useToast();
   const [structures, setStructures] = useState<Structure[]>([]);
   const [structureId, setStructureId] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -36,8 +39,11 @@ export function FeeRunPanel({ onComplete }: { onComplete: () => Promise<void> })
       });
       setResult(response);
       await onComplete();
+      toast.success("Invoice run complete", `${response.created} created, ${response.skipped} skipped.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to generate invoices");
+      const message = err instanceof Error ? err.message : "Unable to generate invoices";
+      setError(message);
+      toast.error("Could not generate invoices", message);
     } finally {
       setSaving(false);
     }
@@ -54,5 +60,5 @@ export function FeeRunPanel({ onComplete }: { onComplete: () => Promise<void> })
     windowRef.document.close();
   }
 
-  return <Card className="border-blue-200"><CardHeader><CardTitle className="flex items-center gap-2"><FileText size={18} className="text-blue-600" />Bulk invoice run</CardTitle><p className="text-sm text-slate-500">Generate one invoice per enrolled student from a class fee structure. Repeating the same run is safe.</p></CardHeader><CardContent><form onSubmit={generate} className="grid gap-3 md:grid-cols-[1fr_180px_1fr_auto]"><select value={structureId} onChange={(event) => setStructureId(event.target.value)} required className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">Select fee structure</option>{structures.map((structure) => <option key={structure.id} value={structure.id}>{structure.name}{structure.className ? ` · ${structure.className}` : ""}</option>)}</select><Input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} required aria-label="Invoice due date" /><Input value={sectionId} onChange={(event) => setSectionId(event.target.value)} placeholder="Section ID (optional)" aria-label="Section ID" /><Button disabled={saving}>{saving ? "Generating..." : "Generate invoices"}</Button></form>{error && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}{result && <div className="mt-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-900"><p className="font-semibold">Generated {result.created} invoice{result.created === 1 ? "" : "s"}; skipped {result.skipped} existing.</p>{result.invoiceIds.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{result.invoiceIds.slice(0, 10).map((invoiceId) => <Button key={invoiceId} size="sm" variant="outline" onClick={() => void openReceipt(invoiceId)}><Receipt size={14} />Open receipt</Button>)}</div>}</div>}</CardContent></Card>;
+  return <Card className="border-blue-200"><CardHeader><CardTitle className="flex items-center gap-2"><FileText size={18} className="text-blue-600" />Bulk invoice run</CardTitle><p className="text-sm text-slate-500">Generate one invoice per enrolled student from a class fee structure. Repeating the same run is safe.</p></CardHeader><CardContent><form onSubmit={generate} className="grid gap-3 md:grid-cols-[1fr_180px_1fr_auto]"><select value={structureId} onChange={(event) => setStructureId(event.target.value)} required className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">Select fee structure</option>{structures.map((structure) => <option key={structure.id} value={structure.id}>{structure.name}{structure.className ? ` · ${structure.className}` : ""}</option>)}</select><Input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} required aria-label="Invoice due date" /><Input value={sectionId} onChange={(event) => setSectionId(event.target.value)} placeholder="Section ID (optional)" aria-label="Section ID" /><Button disabled={saving}>{saving ? "Generating..." : "Generate invoices"}</Button></form>{error && <div className="mt-3"><Alert tone="error" onDismiss={() => setError("")}>{error}</Alert></div>}{result && <div className="mt-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-900"><p className="font-semibold">Generated {result.created} invoice{result.created === 1 ? "" : "s"}; skipped {result.skipped} existing.</p>{result.invoiceIds.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{result.invoiceIds.slice(0, 10).map((invoiceId) => <Button key={invoiceId} size="sm" variant="outline" onClick={() => void openReceipt(invoiceId)}><Receipt size={14} />Open receipt</Button>)}</div>}</div>}</CardContent></Card>;
 }

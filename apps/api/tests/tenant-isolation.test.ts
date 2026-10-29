@@ -54,6 +54,8 @@ test("tenant isolation blocks cross-tenant records", { skip: !integrationEnabled
   if (invoiceB) {
     const invoiceFromA = await get<Row>(app, tenantA.accessToken, `/api/v1/fees/invoices/${invoiceB.id}`);
     assert.equal(invoiceFromA.response.status, 404);
+    const refundFromA = await app.request(`/api/v1/fees/payments/not-a-payment/refund`, { method: "POST", headers: { Authorization: `Bearer ${tenantA.accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ amount: 1 }) });
+    assert.ok([403, 404].includes(refundFromA.status));
   }
 
   const homeworkB = await get<Row[]>(app, tenantB.accessToken, "/api/v1/homework");

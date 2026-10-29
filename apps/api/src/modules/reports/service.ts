@@ -1,8 +1,16 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { DB } from "../../lib/types";
-import { students, employees, attendanceRecords, invoices, payments, exams, marks } from "../../db/schema";
+import { students, employees, attendanceRecords, invoices, payments, discounts, exams, marks } from "../../db/schema";
 const tenant = (table: { organisationId: any }, orgId: string) => eq(table.organisationId, orgId);
 export async function overview(db: DB, orgId: string) { const [[student], [employee], [attendance], [invoice], [payment], [exam]] = await Promise.all([db.select({ count: sql<number>`count(*)` }).from(students).where(tenant(students, orgId)), db.select({ count: sql<number>`count(*)` }).from(employees).where(tenant(employees, orgId)), db.select({ count: sql<number>`count(*)` }).from(attendanceRecords).where(tenant(attendanceRecords, orgId)), db.select({ total: sql<number>`coalesce(sum(${invoices.total}),0)`, paid: sql<number>`coalesce(sum(${invoices.paid}),0)` }).from(invoices).where(tenant(invoices, orgId)), db.select({ total: sql<number>`coalesce(sum(${payments.amount}),0)` }).from(payments).where(tenant(payments, orgId)), db.select({ count: sql<number>`count(*)` }).from(exams).where(tenant(exams, orgId))]); return { students: Number(student.count), employees: Number(employee.count), attendanceRecords: Number(attendance.count), invoicesTotal: Number(invoice.total), invoicesPaid: Number(invoice.paid), paymentsTotal: Number(payment.total), exams: Number(exam.count) }; }
 export async function attendance(db: DB, orgId: string, from?: string, to?: string) { const conditions = [tenant(attendanceRecords, orgId)]; if (from) conditions.push(sql`${attendanceRecords.date} >= ${from}` as any); if (to) conditions.push(sql`${attendanceRecords.date} <= ${to}` as any); return db.select({ status: attendanceRecords.status, count: sql<number>`count(*)` }).from(attendanceRecords).where(and(...conditions)).groupBy(attendanceRecords.status); }
 export async function fees(db: DB, orgId: string) { return db.select({ status: invoices.status, count: sql<number>`count(*)`, total: sql<number>`coalesce(sum(${invoices.total}),0)`, paid: sql<number>`coalesce(sum(${invoices.paid}),0)` }).from(invoices).where(tenant(invoices, orgId)).groupBy(invoices.status); }
+export async function feeCollections(db: DB, orgId: string) {
+  const [[summary], byMethod, [discountTotal]] = await Promise.all([
+    db.select({ billed: sql<number>`coalesce(sum(${invoices.total}),0)`, collected: sql<number>`coalesce(sum(${invoices.paid}),0)`, outstanding: sql<number>`coalesce(sum(${invoices.total} - ${invoices.paid}),0)` }).from(invoices).where(tenant(invoices, orgId)),
+    db.select({ method: payments.method, collected: sql<number>`coalesce(sum(${payments.amount}),0)`, count: sql<number>`count(*)` }).from(payments).where(tenant(payments, orgId)).groupBy(payments.method),
+    db.select({ total: sql<number>`coalesce(sum(${discounts.amount}),0)` }).from(discounts).where(tenant(discounts, orgId)),
+  ]);
+  return { billed: Number(summary.billed), collected: Number(summary.collected), outstanding: Number(summary.outstanding), discounts: Number(discountTotal.total), byMethod };
+}
 export async function results(db: DB, orgId: string, examId: string) { return db.select({ average: sql<number>`coalesce(avg(${marks.marksObtained}),0)`, count: sql<number>`count(*)` }).from(marks).innerJoin(exams, sql`${exams.id} = ${examId}`).where(and(tenant(marks, orgId), tenant(exams, orgId))); }

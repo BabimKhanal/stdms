@@ -1,6 +1,7 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
-import { notifications, users } from "../../db/schema";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { employees, guardians, notifications, students, users } from "../../db/schema";
 import type { DB } from "../../db/client";
+import { deliverNotification } from "../../lib/notification-providers";
 
 export type NotificationInput = {
   type: string;
@@ -39,6 +40,9 @@ export async function createForUsers(db: DB, orgId: string, userIds: string[], i
     body: input.body ?? null,
     data: input.data ?? {},
   }))).returning();
+  const recipients = await db.select({ id: users.id, email: users.email, phone: sql<string | null>`coalesce(${employees.phone}, ${students.phone}, ${guardians.phone})` }).from(users).leftJoin(employees, eq(users.employeeId, employees.id)).leftJoin(students, eq(users.studentId, students.id)).leftJoin(guardians, eq(users.guardianId, guardians.id)).where(and(eq(users.organisationId, orgId), inArray(users.id, uniqueUserIds)));
+  const recipientMap = new Map(recipients.map((recipient) => [recipient.id, recipient]));
+  await Promise.all(rows.map((row) => deliverNotification(recipientMap.get(row.userId) ?? { id: row.userId }, { title: input.title, body: input.body ?? "", data: input.data })));
   return rows;
 }
 

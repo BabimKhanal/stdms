@@ -2,41 +2,824 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useState } from "react";
-import { Download, Search, UserPlus, X } from "lucide-react";
+import { Download, KeyRound, Search, UserPlus, Users, X } from "lucide-react";
 import { EduApiClient } from "@edu/api-client";
 import { Badge } from "./ui/badge";
+import { Alert } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 import { CloudinaryUpload } from "./cloudinary-upload";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { useToast } from "./ui/toast";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TablePagination,
+  TableRow,
+} from "./ui/table";
 import { downloadCsv } from "../lib/csv";
 
-type Option = { id: string; name: string; classId?: string; className?: string };
-type StudentRow = { id: string; fullName?: string; studentId?: string; admissionNumber?: string | null; firstName?: string; middleName?: string | null; lastName?: string; photoUrl?: string | null; dateOfBirth?: string | null; gender?: string; bloodGroup?: string | null; nationality?: string | null; address?: string | null; phone?: string | null; email?: string | null; admissionDate?: string | null; className?: string | null; sectionName?: string | null; status?: string; academicYearId?: string | null; classId?: string | null; sectionId?: string | null; rollNumber?: number | null };
-type StudentDetail = StudentRow & { history?: Array<{ yearName: string; className: string; sectionName: string | null; promotionStatus: string | null }>; guardians?: Array<{ id: string; fullName: string; relationship: string; phone: string | null; isPrimary: boolean }> };
+type Option = {
+  id: string;
+  name: string;
+  classId?: string;
+  className?: string;
+};
+type ExamOption = { id: string; name: string; status: string };
+type StudentRow = {
+  id: string;
+  fullName?: string;
+  studentId?: string;
+  admissionNumber?: string | null;
+  firstName?: string;
+  middleName?: string | null;
+  lastName?: string;
+  photoUrl?: string | null;
+  dateOfBirth?: string | null;
+  gender?: string;
+  bloodGroup?: string | null;
+  nationality?: string | null;
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  admissionDate?: string | null;
+  className?: string | null;
+  sectionName?: string | null;
+  status?: string;
+  academicYearId?: string | null;
+  classId?: string | null;
+  sectionId?: string | null;
+  rollNumber?: number | null;
+};
+type StudentDetail = StudentRow & {
+  history?: Array<{
+    yearName: string;
+    className: string;
+    sectionName: string | null;
+    promotionStatus: string | null;
+  }>;
+  guardians?: Array<{
+    id: string;
+    fullName: string;
+    relationship: string;
+    phone: string | null;
+    isPrimary: boolean;
+  }>;
+};
 
-const emptyForm = { studentId: "", admissionNumber: "", firstName: "", middleName: "", lastName: "", photoUrl: "", dateOfBirth: "", gender: "male", status: "active", bloodGroup: "", nationality: "", address: "", phone: "", email: "", admissionDate: "", academicYearId: "", classId: "", sectionId: "", rollNumber: "" };
+const emptyForm = {
+  studentId: "",
+  admissionNumber: "",
+  firstName: "",
+  middleName: "",
+  lastName: "",
+  photoUrl: "",
+  dateOfBirth: "",
+  gender: "male",
+  status: "active",
+  bloodGroup: "",
+  nationality: "",
+  address: "",
+  phone: "",
+  email: "",
+  admissionDate: "",
+  academicYearId: "",
+  classId: "",
+  sectionId: "",
+  rollNumber: "",
+};
 
-function StudentDirectoryContent({ initialStudents }: { initialStudents: Student[] }) {
-  const api = new EduApiClient(undefined, () => localStorage.getItem("edu_access_token")); const [rows, setRows] = useState<StudentRow[]>(initialStudents as StudentRow[]); const [classes, setClasses] = useState<Option[]>([]); const [sections, setSections] = useState<Option[]>([]); const [years, setYears] = useState<Option[]>([]); const [search, setSearch] = useState(""); const [statusFilter, setStatusFilter] = useState("all"); const [classFilter, setClassFilter] = useState(""); const [page, setPage] = useState(1); const [totalPages, setTotalPages] = useState(1); const [selected, setSelected] = useState<StudentDetail | null>(null); const [form, setForm] = useState(emptyForm); const [showForm, setShowForm] = useState(false); const [saving, setSaving] = useState(false); const [error, setError] = useState("");
-  useEffect(() => { void Promise.all([api.get<{ data: Option[] }>("/academics/classes"), api.get<{ data: Option[] }>("/academics/sections"), api.get<{ data: Option[] }>("/academics/years")]).then(([classResult, sectionResult, yearResult]) => { setClasses(classResult.data); setSections(sectionResult.data); setYears(yearResult.data); }).catch(() => undefined); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  async function loadStudents(nextPage = page, query = search, overrides: { classId?: string; status?: string } = {}) { setError(""); try { const nextClass = overrides.classId ?? classFilter; const nextStatus = overrides.status ?? statusFilter; const params = new URLSearchParams({ page: String(nextPage), pageSize: "10", search: query, sort: "createdAt", order: "desc" }); if (nextClass) params.set("classId", nextClass); if (nextStatus !== "all") params.set("status", nextStatus); const result = await api.get<{ data: StudentRow[]; totalPages: number }>(`/students?${params}`); setRows(result.data); setTotalPages(result.totalPages); setPage(nextPage); } catch (err) { setError(err instanceof Error ? err.message : "Unable to load students"); } }
-  async function openStudent(id: string) { try { setSelected(await api.get<StudentDetail>(`/students/${id}`)); } catch (err) { setError(err instanceof Error ? err.message : "Unable to load student"); } }
-  function beginCreate() { setSelected(null); setForm(emptyForm); setShowForm(true); }
-  function beginEdit() { if (!selected) return; setForm({ studentId: selected.studentId ?? "", admissionNumber: selected.admissionNumber ?? "", firstName: selected.firstName ?? "", middleName: selected.middleName ?? "", lastName: selected.lastName ?? "", photoUrl: selected.photoUrl ?? "", dateOfBirth: selected.dateOfBirth ?? "", gender: selected.gender ?? "male", status: selected.status ?? "active", bloodGroup: selected.bloodGroup ?? "", nationality: selected.nationality ?? "", address: selected.address ?? "", phone: selected.phone ?? "", email: selected.email ?? "", admissionDate: selected.admissionDate ?? "", academicYearId: selected.academicYearId ?? "", classId: selected.classId ?? "", sectionId: selected.sectionId ?? "", rollNumber: selected.rollNumber ? String(selected.rollNumber) : "" }); setShowForm(true); }
-  function update(name: string, value: string) { setForm((current) => ({ ...current, [name]: value })); }
-  async function saveStudent(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); setSaving(true); setError(""); const payload = { ...form, admissionNumber: form.admissionNumber || null, middleName: form.middleName || null, photoUrl: form.photoUrl || null, dateOfBirth: form.dateOfBirth || null, bloodGroup: form.bloodGroup || null, nationality: form.nationality || null, address: form.address || null, phone: form.phone || null, email: form.email || null, admissionDate: form.admissionDate || null, academicYearId: form.academicYearId || null, classId: form.classId || null, sectionId: form.sectionId || null, rollNumber: form.rollNumber ? Number(form.rollNumber) : null }; try { if (selected) await api.put(`/students/${selected.id}`, payload); else await api.post("/students", payload); setShowForm(false); setSelected(null); await loadStudents(1); } catch (err) { setError(err instanceof Error ? err.message : "Unable to save student"); } finally { setSaving(false); } }
-  const field = (name: keyof typeof emptyForm, placeholder: string, type = "text") => <Input name={name} value={form[name]} onChange={(event) => update(name, event.target.value)} placeholder={placeholder} type={type} required={name === "studentId" || name === "firstName" || name === "lastName"} />;
-  return <div className="space-y-6"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-sm font-medium text-blue-600">Student information system</p><h2 className="mt-2 text-3xl font-semibold tracking-tight">Students</h2><p className="mt-2 text-sm text-slate-500">Complete learner profiles, enrolment history, and guardians.</p></div><Button onClick={beginCreate}><UserPlus size={16} />Add student</Button></div>{error && <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}{showForm && <Card><CardHeader className="flex flex-row items-center justify-between"><CardTitle>{selected ? "Edit student" : "Add student"}</CardTitle><Button size="sm" variant="ghost" onClick={() => setShowForm(false)}><X size={16} /></Button></CardHeader><CardContent><form onSubmit={saveStudent} className="grid gap-4 sm:grid-cols-2">{field("studentId", "Student ID")}{field("admissionNumber", "Admission number")}{field("firstName", "First name")}{field("middleName", "Middle name")}{field("lastName", "Last name")}<CloudinaryUpload folder="students" accept="image/*" value={form.photoUrl} onChange={(url) => update("photoUrl", url)} label="Upload student photo" />{field("dateOfBirth", "Date of birth", "date")}{field("admissionDate", "Admission date", "date")}{field("bloodGroup", "Blood group")}{field("nationality", "Nationality")}{field("phone", "Phone")}{field("email", "Email", "email")}{field("rollNumber", "Roll number", "number")}<select value={form.gender} onChange={(event) => update("gender", event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select><select value={form.academicYearId} onChange={(event) => update("academicYearId", event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">Academic year</option>{years.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><select value={form.classId} onChange={(event) => update("classId", event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">Class</option>{classes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><select value={form.sectionId} onChange={(event) => update("sectionId", event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">Section</option>{sections.filter((item) => !form.classId || item.classId === form.classId).map((item) => <option key={item.id} value={item.id}>{item.className ? `${item.className} · ` : ""}{item.name}</option>)}</select><textarea value={form.address} onChange={(event) => update("address", event.target.value)} placeholder="Address" className="min-h-24 rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm sm:col-span-2" /><Button disabled={saving}>{saving ? "Saving..." : selected ? "Save changes" : "Create student"}</Button></form></CardContent></Card>}
-    <Card><CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><CardTitle>Student directory</CardTitle><p className="mt-1 text-sm text-slate-500">{rows.length} records on this page</p></div><form onSubmit={(event) => { event.preventDefault(); void loadStudents(1); }} className="flex w-full flex-wrap gap-2 sm:w-auto"><div className="relative min-w-48 flex-1 sm:w-60"><Search className="absolute left-3 top-3 text-slate-400" size={16} /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name or ID" className="pl-9" /></div><select value={classFilter} onChange={(event) => { const value = event.target.value; setClassFilter(value); void loadStudents(1, search, { classId: value }); }} aria-label="Filter by class" className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">All classes</option>{classes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><select value={statusFilter} onChange={(event) => { const value = event.target.value; setStatusFilter(value); void loadStudents(1, search, { status: value }); }} aria-label="Filter by status" className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="all">All statuses</option><option value="active">Active</option><option value="graduated">Graduated</option><option value="suspended">Suspended</option><option value="withdrawn">Withdrawn</option><option value="transferred">Transferred</option><option value="alumni">Alumni</option></select><Button type="submit" variant="outline">Search</Button>{(classFilter || statusFilter !== "all" || search) && <Button type="button" variant="ghost" size="sm" onClick={() => { setSearch(""); setClassFilter(""); setStatusFilter("all"); void loadStudents(1, "", { classId: "", status: "all" }); }}>Reset</Button>}</form></CardHeader><CardContent className="p-0"><Table><TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Class</TableHead><TableHead>Status</TableHead><TableHead>Student ID</TableHead></TableRow></TableHeader><TableBody>{rows.map((student) => <TableRow key={student.id} className="cursor-pointer" onClick={() => void openStudent(student.id)}><TableCell><div className="flex items-center gap-3">{student.photoUrl ? <img src={student.photoUrl} alt="" className="h-9 w-9 rounded-full object-cover" /> : <div className="grid h-9 w-9 place-items-center rounded-full bg-blue-50 text-xs font-bold text-blue-700">{student.firstName?.[0] ?? "S"}</div>}<div><div className="font-medium text-slate-900">{student.fullName ?? "Unknown"}</div><div className="text-xs text-slate-400">{student.admissionNumber ?? "No admission number"}</div></div></div></TableCell><TableCell>{student.className ?? "Not enrolled"}{student.sectionName ? ` · ${student.sectionName}` : ""}</TableCell><TableCell><Badge>{student.status ?? "active"}</Badge></TableCell><TableCell>{student.studentId ?? "-"}</TableCell></TableRow>)}</TableBody></Table>{!rows.length && <p className="p-8 text-center text-sm text-slate-500">No students found.</p>}<div className="flex items-center justify-between border-t border-slate-100 px-5 py-4"><p className="text-sm text-slate-500">Page {page} of {totalPages}</p><div className="flex gap-2"><Button size="sm" variant="outline" disabled={page <= 1} onClick={() => void loadStudents(page - 1)}>Previous</Button><Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => void loadStudents(page + 1)}>Next</Button></div></div></CardContent></Card>
-    {selected && !showForm && <Card><CardHeader className="flex flex-row items-start justify-between"><div className="flex items-center gap-4">{selected.photoUrl ? <img src={selected.photoUrl} alt={selected.fullName ?? "Student"} className="h-16 w-16 rounded-2xl object-cover" /> : <div className="grid h-16 w-16 place-items-center rounded-2xl bg-blue-50 text-xl font-bold text-blue-700">{selected.firstName?.[0] ?? "S"}</div>}<div><CardTitle>{selected.fullName}</CardTitle><p className="mt-1 text-sm text-slate-500">{selected.studentId} · {selected.status} · {selected.className ?? "Not enrolled"}{selected.sectionName ? ` · ${selected.sectionName}` : ""}</p></div></div><div className="flex gap-2"><Button size="sm" variant="outline" onClick={beginEdit}>Edit</Button><Button size="sm" variant="ghost" onClick={() => setSelected(null)}>Close</Button></div></CardHeader><CardContent className="grid gap-6 lg:grid-cols-3"><div><p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Personal details</p><Detail label="Date of birth" value={selected.dateOfBirth} /><Detail label="Gender" value={selected.gender} /><Detail label="Blood group" value={selected.bloodGroup} /><Detail label="Nationality" value={selected.nationality} /></div><div><p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Contact and admission</p><Detail label="Phone" value={selected.phone} /><Detail label="Email" value={selected.email} /><Detail label="Admission date" value={selected.admissionDate} /><Detail label="Address" value={selected.address} /></div><div><p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Academic history</p>{selected.history?.map((item) => <div key={item.yearName} className="border-b border-slate-100 py-2 text-sm"><div className="font-medium">{item.yearName}</div><div className="text-slate-500">{item.className}{item.sectionName ? ` · ${item.sectionName}` : ""} · {item.promotionStatus ?? "current"}</div></div>)}</div><div className="lg:col-span-3"><p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Guardians</p>{selected.guardians?.length ? <div className="grid gap-3 sm:grid-cols-2">{selected.guardians.map((guardian) => <div key={guardian.id} className="rounded-xl border border-slate-100 p-3 text-sm"><div className="font-medium">{guardian.fullName}{guardian.isPrimary ? " · Primary" : ""}</div><div className="text-slate-500">{guardian.relationship} · {guardian.phone ?? "No phone"}</div></div>)}</div> : <p className="text-sm text-slate-500">No guardians linked.</p>}</div></CardContent></Card>}</div>;
+function StudentDirectoryContent({
+  initialStudents,
+}: {
+  initialStudents: Student[];
+}) {
+  const api = new EduApiClient(undefined, () =>
+    localStorage.getItem("edu_access_token"),
+  );
+  const toast = useToast();
+  const [rows, setRows] = useState<StudentRow[]>(
+    initialStudents as StudentRow[],
+  );
+  const [classes, setClasses] = useState<Option[]>([]);
+  const [sections, setSections] = useState<Option[]>([]);
+  const [years, setYears] = useState<Option[]>([]);
+  const [exams, setExams] = useState<ExamOption[]>([]);
+  const [examId, setExamId] = useState("");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [classFilter, setClassFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [selected, setSelected] = useState<StudentDetail | null>(null);
+  const [form, setForm] = useState(emptyForm);
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    void Promise.all([
+      api.get<{ data: Option[] }>("/academics/classes"),
+      api.get<{ data: Option[] }>("/academics/sections"),
+      api.get<{ data: Option[] }>("/academics/years"),
+      api.get<{ data: ExamOption[] }>("/exams"),
+    ])
+      .then(([classResult, sectionResult, yearResult, examResult]) => {
+        setClasses(classResult.data);
+        setSections(sectionResult.data);
+        setYears(yearResult.data);
+        setExams(examResult.data);
+      })
+      .catch(() => undefined);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  async function loadStudents(
+    nextPage = page,
+    query = search,
+    overrides: { classId?: string; status?: string } = {},
+  ) {
+    setError("");
+    try {
+      const nextClass = overrides.classId ?? classFilter;
+      const nextStatus = overrides.status ?? statusFilter;
+      const params = new URLSearchParams({
+        page: String(nextPage),
+        pageSize: "10",
+        search: query,
+        sort: "createdAt",
+        order: "desc",
+      });
+      if (nextClass) params.set("classId", nextClass);
+      if (nextStatus !== "all") params.set("status", nextStatus);
+      const result = await api.get<{ data: StudentRow[]; totalPages: number }>(
+        `/students?${params}`,
+      );
+      setRows(result.data);
+      setTotalPages(result.totalPages);
+      setPage(nextPage);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load students");
+    }
+  }
+  async function openStudent(id: string) {
+    try {
+      setSelected(await api.get<StudentDetail>(`/students/${id}`));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load student");
+    }
+  }
+  async function downloadIdentityCard() {
+    if (!selected) return;
+    try {
+      const token = localStorage.getItem("edu_access_token");
+      const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
+      const response = await fetch(`${base}/students/${selected.id}/document?type=identity_card`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (!response.ok) { const body = await response.json().catch(() => null) as { error?: string } | null; throw new Error(body?.error ?? "Unable to generate identity card"); }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `identity-card-${selected.studentId}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) { setError(err instanceof Error ? err.message : "Unable to generate identity card"); }
+  }
+  async function downloadTranscript() {
+    if (!selected) return;
+    try {
+      const token = localStorage.getItem("edu_access_token");
+      const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
+      const response = await fetch(`${base}/exams/transcript/${selected.id}/export`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (!response.ok) throw new Error("Unable to export transcript");
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a"); link.href = url; link.download = `transcript-${selected.studentId}.csv`; link.click(); URL.revokeObjectURL(url);
+    } catch (err) { setError(err instanceof Error ? err.message : "Unable to export transcript"); }
+  }
+  async function openMarksheet() {
+    if (!selected || !examId) return;
+    try {
+      const token = localStorage.getItem("edu_access_token");
+      const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
+      const response = await fetch(`${base}/exams/${examId}/report-card/${selected.id}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (!response.ok) throw new Error("Unable to generate marksheet");
+      const windowRef = window.open("", "_blank");
+      if (!windowRef) throw new Error("Allow pop-ups to open the marksheet");
+      windowRef.document.write(await response.text()); windowRef.document.close();
+    } catch (err) { setError(err instanceof Error ? err.message : "Unable to generate marksheet"); }
+  }
+  function beginCreate() {
+    setSelected(null);
+    setForm(emptyForm);
+    setShowForm(true);
+  }
+  function beginEdit() {
+    if (!selected) return;
+    setForm({
+      studentId: selected.studentId ?? "",
+      admissionNumber: selected.admissionNumber ?? "",
+      firstName: selected.firstName ?? "",
+      middleName: selected.middleName ?? "",
+      lastName: selected.lastName ?? "",
+      photoUrl: selected.photoUrl ?? "",
+      dateOfBirth: selected.dateOfBirth ?? "",
+      gender: selected.gender ?? "male",
+      status: selected.status ?? "active",
+      bloodGroup: selected.bloodGroup ?? "",
+      nationality: selected.nationality ?? "",
+      address: selected.address ?? "",
+      phone: selected.phone ?? "",
+      email: selected.email ?? "",
+      admissionDate: selected.admissionDate ?? "",
+      academicYearId: selected.academicYearId ?? "",
+      classId: selected.classId ?? "",
+      sectionId: selected.sectionId ?? "",
+      rollNumber: selected.rollNumber ? String(selected.rollNumber) : "",
+    });
+    setShowForm(true);
+  }
+  function update(name: string, value: string) {
+    setForm((current) => ({ ...current, [name]: value }));
+  }
+  async function saveStudent(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    const payload = {
+      ...form,
+      admissionNumber: form.admissionNumber || null,
+      middleName: form.middleName || null,
+      photoUrl: form.photoUrl || null,
+      dateOfBirth: form.dateOfBirth || null,
+      bloodGroup: form.bloodGroup || null,
+      nationality: form.nationality || null,
+      address: form.address || null,
+      phone: form.phone || null,
+      email: form.email || null,
+      admissionDate: form.admissionDate || null,
+      academicYearId: form.academicYearId || null,
+      classId: form.classId || null,
+      sectionId: form.sectionId || null,
+      rollNumber: form.rollNumber ? Number(form.rollNumber) : null,
+    };
+    try {
+      if (selected) await api.put(`/students/${selected.id}`, payload);
+      else await api.post("/students", payload);
+      toast.success(selected ? "Student updated" : "Student created", `${form.firstName} ${form.lastName}`.trim() || "The learner profile has been saved.");
+      setShowForm(false);
+      setSelected(null);
+      await loadStudents(1);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to save student";
+      setError(message);
+      toast.error("Could not save student", message);
+    } finally {
+      setSaving(false);
+    }
+  }
+  const field = (
+    name: keyof typeof emptyForm,
+    placeholder: string,
+    type = "text",
+  ) => (
+    <Input
+      name={name}
+      value={form[name]}
+      onChange={(event) => update(name, event.target.value)}
+      placeholder={placeholder}
+      type={type}
+      required={
+        name === "studentId" || name === "firstName" || name === "lastName"
+      }
+    />
+  );
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div>
+          <p className="text-sm font-medium text-blue-600">
+            Student information system
+          </p>
+          <h2 className="mt-2 text-3xl font-semibold tracking-tight">
+            Students
+          </h2>
+          <p className="mt-2 text-sm text-slate-500">
+            Complete learner profiles, enrolment history, and guardians.
+          </p>
+        </div>
+        <Button onClick={beginCreate}>
+          <UserPlus size={16} />
+          Add student
+        </Button>
+      </div>
+      {error && (
+        <Alert tone="error" title="Student directory" onDismiss={() => setError("")}>
+          {error}
+        </Alert>
+      )}
+      {showForm && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>{selected ? "Edit student" : "Add student"}</CardTitle>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowForm(false)}
+            >
+              <X size={16} />
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={saveStudent} className="grid gap-4 sm:grid-cols-2">
+              {field("studentId", "Student ID")}
+              {field("admissionNumber", "Admission number")}
+              {field("firstName", "First name")}
+              {field("middleName", "Middle name")}
+              {field("lastName", "Last name")}
+              <CloudinaryUpload
+                folder="students"
+                accept="image/*"
+                value={form.photoUrl}
+                onChange={(url) => update("photoUrl", url)}
+                label="Upload student photo"
+              />
+              {field("dateOfBirth", "Date of birth", "date")}
+              {field("admissionDate", "Admission date", "date")}
+              {field("bloodGroup", "Blood group")}
+              {field("nationality", "Nationality")}
+              {field("phone", "Phone")}
+              {field("email", "Email", "email")}
+              {field("rollNumber", "Roll number", "number")}
+              <select
+                value={form.gender}
+                onChange={(event) => update("gender", event.target.value)}
+                className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
+              >
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+              </select>
+              <select
+                value={form.academicYearId}
+                onChange={(event) =>
+                  update("academicYearId", event.target.value)
+                }
+                className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
+              >
+                <option value="">Academic year</option>
+                {years.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={form.classId}
+                onChange={(event) => update("classId", event.target.value)}
+                className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
+              >
+                <option value="">Class</option>
+                {classes.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={form.sectionId}
+                onChange={(event) => update("sectionId", event.target.value)}
+                className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
+              >
+                <option value="">Section</option>
+                {sections
+                  .filter(
+                    (item) => !form.classId || item.classId === form.classId,
+                  )
+                  .map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.className ? `${item.className} · ` : ""}
+                      {item.name}
+                    </option>
+                  ))}
+              </select>
+              <textarea
+                value={form.address}
+                onChange={(event) => update("address", event.target.value)}
+                placeholder="Address"
+                className="min-h-24 rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm sm:col-span-2"
+              />
+              <Button disabled={saving}>
+                {saving
+                  ? "Saving..."
+                  : selected
+                    ? "Save changes"
+                    : "Create student"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+      <Card>
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>Student directory</CardTitle>
+            <p className="mt-1 text-sm text-slate-500">
+              {rows.length} records on this page
+            </p>
+          </div>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void loadStudents(1);
+            }}
+            className="flex w-full flex-wrap gap-2 sm:w-auto"
+          >
+            <div className="relative min-w-48 flex-1 sm:w-60">
+              <Search
+                className="absolute left-3 top-3 text-slate-400"
+                size={16}
+              />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search name or ID"
+                className="pl-9"
+              />
+            </div>
+            <select
+              value={classFilter}
+              onChange={(event) => {
+                const value = event.target.value;
+                setClassFilter(value);
+                void loadStudents(1, search, { classId: value });
+              }}
+              aria-label="Filter by class"
+              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
+            >
+              <option value="">All classes</option>
+              {classes.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+            <select
+              value={statusFilter}
+              onChange={(event) => {
+                const value = event.target.value;
+                setStatusFilter(value);
+                void loadStudents(1, search, { status: value });
+              }}
+              aria-label="Filter by status"
+              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
+            >
+              <option value="all">All statuses</option>
+              <option value="active">Active</option>
+              <option value="graduated">Graduated</option>
+              <option value="suspended">Suspended</option>
+              <option value="withdrawn">Withdrawn</option>
+              <option value="transferred">Transferred</option>
+              <option value="alumni">Alumni</option>
+            </select>
+            <Button type="submit" variant="outline">
+              Search
+            </Button>
+            {(classFilter || statusFilter !== "all" || search) && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSearch("");
+                  setClassFilter("");
+                  setStatusFilter("all");
+                  void loadStudents(1, "", { classId: "", status: "all" });
+                }}
+              >
+                Reset
+              </Button>
+            )}
+          </form>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table stack>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Student</TableHead>
+                <TableHead>Class</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Student ID</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((student) => (
+                <TableRow
+                  key={student.id}
+                  className="cursor-pointer"
+                  onClick={() => void openStudent(student.id)}
+                >
+                  <TableCell label="Student">
+                    <div className="flex items-center gap-3">
+                      {student.photoUrl ? (
+                        <img
+                          src={student.photoUrl}
+                          alt=""
+                          className="h-9 w-9 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="grid h-9 w-9 place-items-center rounded-full bg-blue-50 text-xs font-bold text-blue-700">
+                          {student.firstName?.[0] ?? "S"}
+                        </div>
+                      )}
+                      <div>
+                        <div className="font-medium text-slate-900">
+                          {student.fullName ?? "Unknown"}
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          {student.admissionNumber ?? "No admission number"}
+                        </div>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell label="Class">
+                    {student.className ?? "Not enrolled"}
+                    {student.sectionName ? ` · ${student.sectionName}` : ""}
+                  </TableCell>
+                  <TableCell label="Status">
+                    <Badge>{student.status ?? "active"}</Badge>
+                  </TableCell>
+                  <TableCell label="Student ID">{student.studentId ?? "-"}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {!rows.length && (
+            <p className="p-8 text-center text-sm text-slate-500">
+              No students found.
+            </p>
+          )}
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            onChange={(nextPage) => void loadStudents(nextPage)}
+            summary={`${rows.length} records · Page ${page} of ${totalPages}`}
+          />
+        </CardContent>
+      </Card>
+      {selected && !showForm && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/30 p-4 backdrop-blur-sm sm:p-8"><div className="mx-auto max-w-5xl">
+        <Card>
+          <CardHeader className="flex flex-row items-start justify-between">
+            <div className="flex items-center gap-4">
+              {selected.photoUrl ? (
+                <img
+                  src={selected.photoUrl}
+                  alt={selected.fullName ?? "Student"}
+                  className="h-16 w-16 rounded-2xl object-cover"
+                />
+              ) : (
+                <div className="grid h-16 w-16 place-items-center rounded-2xl bg-blue-50 text-xl font-bold text-blue-700">
+                  {selected.firstName?.[0] ?? "S"}
+                </div>
+              )}
+              <div>
+                <CardTitle>{selected.fullName}</CardTitle>
+                <p className="mt-1 text-sm text-slate-500">
+                  {selected.studentId} · {selected.status} ·{" "}
+                  {selected.className ?? "Not enrolled"}
+                  {selected.sectionName ? ` · ${selected.sectionName}` : ""}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={beginEdit}>
+                Edit
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setSelected(null)}
+              >
+                Close
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="grid gap-6 lg:grid-cols-3">
+            <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 lg:col-span-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">Student documents</p>
+              <p className="mt-1 text-sm text-slate-600">Generate official documents from this student profile.</p>
+              <div className="mt-3 flex flex-wrap gap-2"><Button size="sm" onClick={() => void downloadIdentityCard()}>Download identity card</Button><Button size="sm" variant="outline" onClick={() => void downloadTranscript()}>Download transcript</Button><select value={examId} onChange={(event) => setExamId(event.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs"><option value="">Select marksheet</option>{exams.filter((exam) => exam.status === "published").map((exam) => <option key={exam.id} value={exam.id}>{exam.name}</option>)}</select><Button size="sm" variant="ghost" disabled={!examId} onClick={() => void openMarksheet()}>Print marksheet</Button></div>
+            </div>
+            <div>
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Personal details
+              </p>
+              <Detail label="Date of birth" value={selected.dateOfBirth} />
+              <Detail label="Gender" value={selected.gender} />
+              <Detail label="Blood group" value={selected.bloodGroup} />
+              <Detail label="Nationality" value={selected.nationality} />
+            </div>
+            <div>
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Contact and admission
+              </p>
+              <Detail label="Phone" value={selected.phone} />
+              <Detail label="Email" value={selected.email} />
+              <Detail label="Admission date" value={selected.admissionDate} />
+              <Detail label="Address" value={selected.address} />
+            </div>
+            <div>
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Academic history
+              </p>
+              {selected.history?.map((item) => (
+                <div
+                  key={item.yearName}
+                  className="border-b border-slate-100 py-2 text-sm"
+                >
+                  <div className="font-medium">{item.yearName}</div>
+                  <div className="text-slate-500">
+                    {item.className}
+                    {item.sectionName ? ` · ${item.sectionName}` : ""} ·{" "}
+                    {item.promotionStatus ?? "current"}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="lg:col-span-3">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Guardians
+              </p>
+              {selected.guardians?.length ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {selected.guardians.map((guardian) => (
+                    <div
+                      key={guardian.id}
+                      className="rounded-xl border border-slate-100 p-3 text-sm"
+                    >
+                      <div className="font-medium">
+                        {guardian.fullName}
+                        {guardian.isPrimary ? " · Primary" : ""}
+                      </div>
+                      <div className="text-slate-500">
+                        {guardian.relationship} · {guardian.phone ?? "No phone"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500">No guardians linked.</p>
+              )}
+            </div>
+          </CardContent>
+        </Card></div></div>
+      )}
+    </div>
+  );
 }
 
-function Detail({ label, value }: { label: string; value?: string | null }) { return <div className="border-b border-slate-100 py-2 text-sm"><span className="text-slate-400">{label}</span><p className="mt-1 text-slate-700">{value || "Not provided"}</p></div>; }
-export function StudentDirectory({ initialStudents }: { initialStudents: Student[] }) { return <div className="space-y-6"><div className="flex justify-end"><Button variant="outline" onClick={() => downloadCsv("students.csv", ["Name", "Student ID", "Class", "Section", "Status"], initialStudents.map((student) => [String(student.fullName ?? ""), String(student.studentId ?? ""), String(student.className ?? ""), String(student.sectionName ?? ""), String(student.status ?? "active")]))}><Download size={15} />Export loaded students</Button></div><StudentDirectoryContent initialStudents={initialStudents} /><CredentialProvisioner students={initialStudents} /></div>; }
-function CredentialProvisioner({ students }: { students: Student[] }) { const api = new EduApiClient(undefined, () => localStorage.getItem("edu_access_token")); const [studentId, setStudentId] = useState(""); const [result, setResult] = useState<{ username: string | null; email: string | null; temporaryPassword: string | null } | null>(null); const [error, setError] = useState(""); const [loading, setLoading] = useState(false); const [options, setOptions] = useState<Array<{ id: string; studentId?: string; fullName?: string }>>(students as Array<{ id: string; studentId?: string; fullName?: string }>);
-  useEffect(() => { void api.get<{ data: Array<{ id: string; studentId?: string; fullName?: string }> }>("/students?page=1&pageSize=200").then((response) => setOptions(response.data)).catch(() => undefined); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  async function create() { if (!studentId) return; setLoading(true); setError(""); try { setResult(await api.post(`/students/${studentId}/account`, {})); } catch (err) { setError(err instanceof Error ? err.message : "Unable to provision credentials"); } finally { setLoading(false); } }
-  return <Card><CardHeader><CardTitle>Student login credentials</CardTitle></CardHeader><CardContent><div className="flex flex-col gap-3 sm:flex-row"><select value={studentId} onChange={(event) => setStudentId(event.target.value)} className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">Select a student</option>{options.map((student) => <option key={student.id} value={student.id}>{student.fullName ?? student.studentId ?? student.id}</option>)}</select><Button onClick={() => void create()} disabled={!studentId || loading}>{loading ? "Creating..." : "Create credentials"}</Button></div>{result && <div className="mt-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-900"><p className="font-semibold">{result.temporaryPassword ? "Temporary credentials created" : "Account already exists"}</p><p className="mt-1">Username: <strong>{result.username ?? "-"}</strong></p>{result.email && <p>Email: {result.email}</p>}{result.temporaryPassword && <p>Password: <strong>{result.temporaryPassword}</strong></p>}<p className="mt-2 text-xs">The student must change this password after signing in.</p></div>}{error && <p className="mt-3 text-sm text-rose-600">{error}</p>}</CardContent></Card>; }
+function Detail({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div className="border-b border-slate-100 py-2 text-sm">
+      <span className="text-slate-400">{label}</span>
+      <p className="mt-1 text-slate-700">{value || "Not provided"}</p>
+    </div>
+  );
+}
+export function StudentDirectory({
+  initialStudents,
+}: {
+  initialStudents: Student[];
+}) {
+  return (
+    <Tabs defaultValue="directory" className="space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <TabsList ariaLabel="Student management sections">
+          <TabsTrigger value="directory" icon={<Users size={15} />}>Directory</TabsTrigger>
+          <TabsTrigger value="credentials" icon={<KeyRound size={15} />}>Login credentials</TabsTrigger>
+        </TabsList>
+        <Button
+          variant="outline"
+          onClick={() =>
+            downloadCsv(
+              "students.csv",
+              ["Name", "Student ID", "Class", "Section", "Status"],
+              initialStudents.map((student) => [
+                String(student.fullName ?? ""),
+                String(student.studentId ?? ""),
+                String(student.className ?? ""),
+                String(student.sectionName ?? ""),
+                String(student.status ?? "active"),
+              ]),
+            )
+          }
+        >
+          <Download size={15} />
+          Export loaded students
+        </Button>
+      </div>
+      <TabsContent value="directory" className="mt-0">
+        <StudentDirectoryContent initialStudents={initialStudents} />
+      </TabsContent>
+      <TabsContent value="credentials" className="mt-0">
+        <CredentialProvisioner students={initialStudents} />
+      </TabsContent>
+    </Tabs>
+  );
+}
+function CredentialProvisioner({ students }: { students: Student[] }) {
+  const api = new EduApiClient(undefined, () =>
+    localStorage.getItem("edu_access_token"),
+  );
+  const toast = useToast();
+  const [studentId, setStudentId] = useState("");
+  const [result, setResult] = useState<{
+    username: string | null;
+    email: string | null;
+    temporaryPassword: string | null;
+  } | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [options, setOptions] = useState<
+    Array<{ id: string; studentId?: string; fullName?: string }>
+  >(students as Array<{ id: string; studentId?: string; fullName?: string }>);
+  useEffect(() => {
+    void api
+      .get<{
+        data: Array<{ id: string; studentId?: string; fullName?: string }>;
+      }>("/students?page=1&pageSize=200")
+      .then((response) => setOptions(response.data))
+      .catch(() => undefined);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  async function create() {
+    if (!studentId) return;
+    setLoading(true);
+    setError("");
+    try {
+      const response = await api.post<{ username: string | null; email: string | null; temporaryPassword: string | null }>(`/students/${studentId}/account`, {});
+      setResult(response);
+      toast.success(
+        response.temporaryPassword ? "Login credentials created" : "Account already exists",
+        response.temporaryPassword ? "Share the temporary password securely with the learner." : "The learner already has a login account.",
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to provision credentials";
+      setError(message);
+      toast.error("Could not create credentials", message);
+    } finally {
+      setLoading(false);
+    }
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Student login credentials</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <select
+            value={studentId}
+            onChange={(event) => setStudentId(event.target.value)}
+            className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm"
+          >
+            <option value="">Select a student</option>
+            {options.map((student) => (
+              <option key={student.id} value={student.id}>
+                {student.fullName ?? student.studentId ?? student.id}
+              </option>
+            ))}
+          </select>
+          <Button
+            onClick={() => void create()}
+            disabled={!studentId || loading}
+          >
+            {loading ? "Creating..." : "Create credentials"}
+          </Button>
+        </div>
+        {result && (
+          <div className="mt-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-900">
+            <p className="font-semibold">
+              {result.temporaryPassword
+                ? "Temporary credentials created"
+                : "Account already exists"}
+            </p>
+            <p className="mt-1">
+              Username: <strong>{result.username ?? "-"}</strong>
+            </p>
+            {result.email && <p>Email: {result.email}</p>}
+            {result.temporaryPassword && (
+              <p>
+                Password: <strong>{result.temporaryPassword}</strong>
+              </p>
+            )}
+            <p className="mt-2 text-xs">
+              The student must change this password after signing in.
+            </p>
+          </div>
+        )}
+        {error && <Alert tone="error" className="mt-3" onDismiss={() => setError("")}>{error}</Alert>}
+      </CardContent>
+    </Card>
+  );
+}
 type Student = Record<string, unknown>;

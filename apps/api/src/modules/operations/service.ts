@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, ilike, inArray, lte, sql } from "drizzle-orm";
 import type { DB } from "../../lib/types";
-import { attendanceRecords, events, homework, homeworkSubmissions, leaveRequests, noticeAudiences, notices, studentGuardians, students, sections, classes, subjects, timetablePeriods, employees, enrolments, users } from "../../db/schema";
+import { attendanceRecords, attendanceSettings, events, homework, homeworkSubmissions, leaveRequests, noticeAudiences, notices, studentGuardians, students, sections, classes, subjects, timetablePeriods, employees, enrolments, users } from "../../db/schema";
 import { createForUsers, organisationUserIds } from "../notifications/service";
 import { publishNotification } from "../notifications/socket";
 import type { HomeworkInput, LeaveInput, MarkAttendanceInput, NoticeInput } from "@edu/shared";
@@ -36,26 +36,62 @@ export async function listAttendance(db: DB, orgId: string, q: Record<string, st
     conditions.push(sql`${attendanceRecords.date} < ${nextMonth}`);
   }
   if (q.status) conditions.push(eq(attendanceRecords.status, q.status as never));
+  if (q.periodId) conditions.push(eq(attendanceRecords.periodId, q.periodId));
+  if (q.subjectId) conditions.push(eq(attendanceRecords.subjectId, q.subjectId));
   if (principal) { const scope = teacherScope(principal, sql`${attendanceRecords.classId}`, sql`${attendanceRecords.sectionId}`); if (scope) conditions.push(scope as never); }
-  return db.select({ ...(attendanceRecords as any), studentName: sql<string>`concat(${students.firstName}, ' ', ${students.lastName})`, studentCode: students.studentId }).from(attendanceRecords).innerJoin(students, eq(attendanceRecords.studentId, students.id)).where(and(...conditions)).orderBy(desc(attendanceRecords.date));
+  return db.select({ ...(attendanceRecords as any), studentName: sql<string>`concat(${students.firstName}, ' ', ${students.lastName})`, studentCode: students.studentId, subjectName: subjects.name, periodName: timetablePeriods.name }).from(attendanceRecords).innerJoin(students, eq(attendanceRecords.studentId, students.id)).leftJoin(subjects, eq(attendanceRecords.subjectId, subjects.id)).leftJoin(timetablePeriods, eq(attendanceRecords.periodId, timetablePeriods.id)).where(and(...conditions)).orderBy(desc(attendanceRecords.date));
 }
 export async function markAttendance(db: DB, orgId: string, userId: string, input: MarkAttendanceInput, principal?: AuthUser) {
   const section = await db.select({ classId: sections.classId }).from(sections).where(and(eq(sections.id, input.sectionId), tenant(sections, orgId))).limit(1);
   if (!section[0]) throw notFound("Section not found");
   if (principal) await assertAssigned(db, principal, orgId, section[0].classId, input.sectionId);
-  return db.transaction(async (tx) => {
+  if (input.subjectId && principal) await assertClassSubjectAssigned(db, principal, orgId, section[0].classId, input.subjectId);
+  const saved = await db.transaction(async (tx) => {
     for (const record of input.records) {
-      await tx.insert(attendanceRecords).values({ organisationId: orgId, studentId: record.studentId, sectionId: input.sectionId, classId: section[0].classId, date: input.date, periodId: input.periodId ?? null, status: record.status, remarks: record.remarks ?? null, markedBy: userId }).onConflictDoUpdate({ target: [attendanceRecords.organisationId, attendanceRecords.studentId, attendanceRecords.date, attendanceRecords.periodId], set: { status: record.status, remarks: record.remarks ?? null, markedBy: userId } });
+      await tx.insert(attendanceRecords).values({ organisationId: orgId, studentId: record.studentId, sectionId: input.sectionId, classId: section[0].classId, date: input.date, periodId: input.periodId ?? null, subjectId: input.subjectId ?? null, status: record.status, remarks: record.remarks ?? null, markedBy: userId }).onConflictDoUpdate({ target: [attendanceRecords.organisationId, attendanceRecords.studentId, attendanceRecords.date, attendanceRecords.periodId, attendanceRecords.subjectId], set: { status: record.status, remarks: record.remarks ?? null, markedBy: userId } });
     }
     return input.records.length;
   });
+  const alertStudentIds = input.records.filter((record) => record.status === "absent" || record.status === "sick").map((record) => record.studentId);
+  if (alertStudentIds.length) {
+    const guardianRows = await db.select({ guardianId: studentGuardians.guardianId }).from(studentGuardians).where(and(tenant(studentGuardians, orgId), inArray(studentGuardians.studentId, alertStudentIds)));
+    const guardianIds = [...new Set(guardianRows.map((row) => row.guardianId))];
+    const recipientRows = await db.select({ id: users.id }).from(users).where(and(tenant(users, orgId), inArray(users.guardianId, guardianIds)));
+    const statusLabel = input.records.some((record) => record.status === "sick") ? "sick or absent" : "absent";
+    const notifications = await createForUsers(db, orgId, recipientRows.map((row) => row.id), { type: "attendance_alert", title: "Attendance alert", body: `A linked learner was marked ${statusLabel} on ${input.date}.`, data: { date: input.date, studentIds: alertStudentIds } });
+    notifications.forEach(publishNotification);
+  }
+  const lowRows = await lowAttendance(db, orgId, { sectionId: input.sectionId }, principal);
+  const lowStudentIds = lowRows.filter((row) => input.records.some((record) => record.studentId === row.studentId)).map((row) => row.studentId);
+  if (lowStudentIds.length) {
+    const guardianRows = await db.select({ guardianId: studentGuardians.guardianId }).from(studentGuardians).where(and(tenant(studentGuardians, orgId), inArray(studentGuardians.studentId, lowStudentIds)));
+    const guardianIds = [...new Set(guardianRows.map((row) => row.guardianId))];
+    const recipientRows = await db.select({ id: users.id }).from(users).where(and(tenant(users, orgId), inArray(users.guardianId, guardianIds)));
+    const notifications = await createForUsers(db, orgId, recipientRows.map((row) => row.id), { type: "low_attendance", title: "Low attendance warning", body: "A linked learner is below the school's minimum attendance percentage.", data: { studentIds: lowStudentIds } });
+    notifications.forEach(publishNotification);
+  }
+  return saved;
+}
+export async function correctAttendance(db: DB, orgId: string, userId: string, id: string, input: { status: string; remarks?: string | null }, principal: AuthUser) {
+  const [record] = await db.select({ classId: attendanceRecords.classId, sectionId: attendanceRecords.sectionId }).from(attendanceRecords).where(and(eq(attendanceRecords.id, id), tenant(attendanceRecords, orgId))).limit(1);
+  if (!record) throw notFound("Attendance record not found");
+  if (!record.classId || !record.sectionId) throw forbidden("Attendance record is not assigned to a class section");
+  await assertAssigned(db, principal, orgId, record.classId, record.sectionId);
+  const [row] = await db.update(attendanceRecords).set({ status: input.status as never, remarks: input.remarks ?? null, markedBy: userId }).where(and(eq(attendanceRecords.id, id), tenant(attendanceRecords, orgId))).returning();
+  return row;
 }
 export async function attendanceSummary(db: DB, orgId: string, q: { from?: string; to?: string; sectionId?: string }, principal?: AuthUser) {
   const conditions = [tenant(attendanceRecords, orgId)]; const learnerIds = principal ? await learnerStudentIds(db, orgId, principal) : null; if (learnerIds) conditions.push(learnerIds.length ? inArray(attendanceRecords.studentId, learnerIds) : sql`false`); if (q.from) conditions.push(gte(attendanceRecords.date, q.from)); if (q.to) conditions.push(lte(attendanceRecords.date, q.to)); if (q.sectionId) conditions.push(eq(attendanceRecords.sectionId, q.sectionId));
   if (principal) { const scope = teacherScope(principal, sql`${attendanceRecords.classId}`, sql`${attendanceRecords.sectionId}`); if (scope) conditions.push(scope as never); }
   const rows = await db.select({ studentId: students.id, studentName: sql<string>`concat(${students.firstName}, ' ', ${students.lastName})`, status: attendanceRecords.status, count: sql<number>`count(*)` }).from(attendanceRecords).innerJoin(students, eq(attendanceRecords.studentId, students.id)).where(and(...conditions)).groupBy(students.id, attendanceRecords.status);
-  return [...new Set(rows.map((r) => r.studentId))].map((id) => { const own = rows.filter((r) => r.studentId === id); const count = (s: string) => Number(own.find((r) => r.status === s)?.count ?? 0); const total = own.reduce((n, r) => n + Number(r.count), 0); return { studentId: id, studentName: own[0]?.studentName, present: count("present"), absent: count("absent"), late: count("late"), leave: count("leave"), excused: count("excused"), total, percentage: total ? Math.round((count("present") + count("late")) * 10000 / total) / 100 : 0 }; });
+  const [settings] = await db.select().from(attendanceSettings).where(tenant(attendanceSettings, orgId)).limit(1);
+  const excluded = new Set([...(settings?.excludeLeave ? ["leave"] : []), ...(settings?.excludeExcused ? ["excused"] : []), ...(settings?.excludeSick ? ["sick"] : [])]);
+  return [...new Set(rows.map((r) => r.studentId))].map((id) => { const own = rows.filter((r) => r.studentId === id); const count = (s: string) => Number(own.find((r) => r.status === s)?.count ?? 0); const total = own.filter((r) => !excluded.has(r.status)).reduce((n, r) => n + Number(r.count), 0); const credited = count("present") + (settings?.countLateAsPresent ? count("late") : 0); return { studentId: id, studentName: own[0]?.studentName, present: count("present"), absent: count("absent"), late: count("late"), leave: count("leave"), excused: count("excused"), sick: count("sick"), total, percentage: total ? Math.round(credited * 10000 / total) / 100 : 0 }; });
 }
+
+export async function getAttendanceSettings(db: DB, orgId: string) { const [row] = await db.select().from(attendanceSettings).where(tenant(attendanceSettings, orgId)).limit(1); return row ?? { minimumPercentage: 75, countLateAsPresent: 1, excludeLeave: 1, excludeExcused: 1, excludeSick: 1 }; }
+export async function saveAttendanceSettings(db: DB, orgId: string, input: { minimumPercentage: number; countLateAsPresent: boolean; excludeLeave: boolean; excludeExcused: boolean; excludeSick: boolean }) { const existing = await getAttendanceSettings(db, orgId); const values = { organisationId: orgId, minimumPercentage: input.minimumPercentage, countLateAsPresent: input.countLateAsPresent ? 1 : 0, excludeLeave: input.excludeLeave ? 1 : 0, excludeExcused: input.excludeExcused ? 1 : 0, excludeSick: input.excludeSick ? 1 : 0 }; if ("id" in existing) { const [row] = await db.update(attendanceSettings).set(values).where(and(eq(attendanceSettings.id, existing.id), tenant(attendanceSettings, orgId))).returning(); return row; } const [row] = await db.insert(attendanceSettings).values(values).returning(); return row; }
+export async function lowAttendance(db: DB, orgId: string, q: { from?: string; to?: string; sectionId?: string; threshold?: number }, principal?: AuthUser) { const [settings] = await db.select({ minimumPercentage: attendanceSettings.minimumPercentage }).from(attendanceSettings).where(tenant(attendanceSettings, orgId)).limit(1); const threshold = q.threshold ?? settings?.minimumPercentage ?? 75; return (await attendanceSummary(db, orgId, q, principal)).filter((row) => row.total > 0 && row.percentage < threshold).map((row) => ({ ...row, threshold })); }
 
 export async function listLeave(db: DB, orgId: string, principal?: AuthUser) { const conditions = [tenant(leaveRequests, orgId)]; const learnerIds = principal ? await learnerStudentIds(db, orgId, principal) : null; if (learnerIds) conditions.push(learnerIds.length ? inArray(leaveRequests.studentId, learnerIds) : sql`false`); return db.select({ ...(leaveRequests as any), applicantName: sql<string>`coalesce(${students.firstName} || ' ' || ${students.lastName}, ${employees.fullName})` }).from(leaveRequests).leftJoin(students, eq(leaveRequests.studentId, students.id)).leftJoin(employees, eq(leaveRequests.employeeId, employees.id)).where(and(...conditions)).orderBy(desc(leaveRequests.createdAt)); }
 export async function createLeave(db: DB, orgId: string, userId: string, input: LeaveInput, principal?: AuthUser) { let studentId = input.studentId ?? null; let employeeId = input.employeeId ?? null; let applicantType = input.applicantType; if (principal) { if (principal.studentId) { studentId = principal.studentId; employeeId = null; applicantType = "student"; } else if (principal.roles.some((role) => role === "parent" || role === "guardian")) { const children = await guardianStudentIds(db, orgId, principal.guardianIds); if (!studentId || !children.includes(studentId)) throw forbidden("Choose one of your children for this leave request"); employeeId = null; applicantType = "student"; } else if (principal.employeeId) { employeeId = principal.employeeId; studentId = null; applicantType = "employee"; } } const [row] = await db.insert(leaveRequests).values({ ...input, applicantType, organisationId: orgId, studentId, employeeId, createdBy: userId }).returning(); return row; }
