@@ -258,6 +258,15 @@ export function TemplateBuilder({
     setSelectedId(element.id);
   }
 
+  function applyMedia(url: string) {
+    if (!selected || (selected.type !== "image" && selected.type !== "photo")) {
+      setNotice("Select an image or photo layer first.");
+      return;
+    }
+    updateSelected({ src: url });
+    setNotice("Image applied to the selected layer.");
+  }
+
   function addText(content = "Your text here", size = 24, weight: number | string = 400) {
     const page = design.page;
     addElement({
@@ -348,6 +357,7 @@ export function TemplateBuilder({
   function applyPreset(presetDesign: TemplateDesign, ask = true) {
     if (ask && !window.confirm("Replace the current design with this template? This can be undone.")) return;
     mutate(() => JSON.parse(JSON.stringify(presetDesign)) as TemplateDesign);
+    setMediaUrls(Array.from(new Set(presetDesign.elements.filter((element) => element.type === "image" || element.type === "photo").map((element) => element.src).filter((src): src is string => Boolean(src)))));
     setZoom(clamp(640 / presetDesign.page.height, 0.35, 1));
     setSelectedId(null);
   }
@@ -480,8 +490,8 @@ export function TemplateBuilder({
 
       <div className="flex min-h-0 flex-1">
         <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
-          <div className="grid grid-cols-3 border-b border-slate-200 text-xs font-medium">
-            {([["templates", "Templates", LayoutTemplate], ["elements", "Add", Plus], ["layers", "Layers", Layers]] as const).map(([key, label, Icon]) => (
+          <div className="grid grid-cols-4 border-b border-slate-200 text-xs font-medium">
+            {([["templates", "Templates", LayoutTemplate], ["elements", "Add", Plus], ["media", "Media", ImageIcon], ["layers", "Layers", Layers]] as const).map(([key, label, Icon]) => (
               <button key={key} type="button" onClick={() => setTab(key)} className={cn("flex flex-col items-center gap-1 py-2.5 text-slate-500", tab === key && "bg-blue-50 text-blue-700")}>
                 <Icon size={15} />{label}
               </button>
@@ -517,7 +527,8 @@ export function TemplateBuilder({
                     <ElementButton label="Text" icon={<Type size={14} />} onClick={() => addText("Your text here", 20)} />
                     <ElementButton label="Box" icon={<Square size={14} />} onClick={() => addElement({ type: "shape", x: 80, y: 80, width: 220, height: 120, fill: "#e2e8f0", radius: 8 })} />
                     <ElementButton label="Line" icon={<Minus size={14} />} onClick={() => addElement({ type: "line", x: 80, y: 240, width: 320, height: 2, stroke: "#94a3b8", strokeWidth: 2 })} />
-                    <ElementButton label="Photo" icon={<ImageIcon size={14} />} onClick={() => addElement({ type: "photo", x: 80, y: 120, width: 180, height: 220, radius: 8, stroke: "#cbd5e1", strokeWidth: 2 })} />
+                    <ElementButton label="Photo" icon={<ImageIcon size={14} />} onClick={() => addElement({ type: "photo", field: "photoUrl", x: 80, y: 120, width: 180, height: 220, radius: 8, stroke: "#cbd5e1", strokeWidth: 2 })} />
+                    <ElementButton label="Image / logo" icon={<ImageIcon size={14} />} onClick={() => addElement({ type: "image", x: 80, y: 120, width: 180, height: 120, radius: 8, stroke: "#cbd5e1", strokeWidth: 1 })} />
                     <ElementButton label="QR code" icon={<QrCode size={14} />} onClick={() => addElement({ type: "qr", x: 640, y: 80, width: 96, height: 96, field: "qrCode" })} />
                     <ElementButton label="Table" icon={<TableIcon size={14} />} onClick={() => addElement({ type: "table", x: 48, y: 380, width: 698, height: 300, table: SUBJECT_TABLE, name: "Subject table" })} />
                   </div>
@@ -537,6 +548,45 @@ export function TemplateBuilder({
                     </details>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {tab === "media" && (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Media library</p>
+                  <p className="mt-1 text-xs text-slate-500">Upload logos and images once, then apply them to any image layer.</p>
+                </div>
+                <CloudinaryMultiUpload
+                  values={mediaUrls}
+                  onChange={(urls) => setMediaUrls(Array.from(new Set(urls)))}
+                  folder="documents"
+                  accept="image/*"
+                  label="Upload images"
+                />
+                <div className="space-y-2">
+                  <Label>Image URL</Label>
+                  <div className="flex gap-2">
+                    <Input value={mediaUrl} onChange={(event) => setMediaUrl(event.target.value)} placeholder="https://..." className="h-9 min-w-0 text-xs" />
+                    <Button type="button" size="sm" variant="outline" disabled={!mediaUrl.trim()} onClick={() => { const url = mediaUrl.trim(); setMediaUrls((current) => Array.from(new Set([...current, url]))); setMediaUrl(""); }}>Add</Button>
+                  </div>
+                </div>
+                {mediaUrls.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    {mediaUrls.map((url) => (
+                      <div key={url} className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={url} alt="Uploaded template asset" className="h-20 w-full object-contain bg-slate-50 p-1" />
+                        <div className="flex gap-1 p-1">
+                          <button type="button" onClick={() => applyMedia(url)} className="min-w-0 flex-1 truncate rounded bg-blue-50 px-1.5 py-1 text-[10px] font-semibold text-blue-700 hover:bg-blue-100">Use</button>
+                          <button type="button" onClick={() => setMediaUrls((current) => current.filter((item) => item !== url))} className="rounded px-1.5 py-1 text-[10px] font-semibold text-rose-600 hover:bg-rose-50">Remove</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="rounded-lg border border-dashed border-slate-300 p-4 text-center text-xs text-slate-500">No media uploaded yet.</p>
+                )}
               </div>
             )}
 
