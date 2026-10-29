@@ -1,51 +1,421 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Copy,
+  Download,
+  Eye,
+  FileText,
+  LayoutTemplate,
+  Pencil,
+  Plus,
+  Printer,
+  Search,
+  Star,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import { EduApiClient } from "@edu/api-client";
+import {
+  DOCUMENT_TYPES,
+  DOCUMENT_TYPE_LABELS,
+  type DocumentType,
+  type TemplateDesign,
+} from "@edu/shared";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 import { Modal } from "./ui/modal";
+import { TemplatePageView, TemplateThumbnail } from "./template-preview";
+import { TemplateBuilder, type TemplateDraft } from "./template-builder";
+import {
+  PRESET_CATEGORIES,
+  TEMPLATE_PRESETS,
+  blankDesign,
+  normalizeDesign,
+  type TemplatePreset,
+} from "../lib/template-presets";
+import { cn } from "../lib/utils";
 
-type DocumentType = "identity_card" | "transcript" | "marksheet" | "certificate" | "custom";
-type Design = { background: string; primary: string; accent: string; title: string; subtitle: string; logoUrl: string; fields: string[]; fontFamily: string; layout: string; borderStyle: string; showWatermark: boolean; showQr: boolean; signatureLabels: string[] };
-type Template = { id: string; name: string; documentType: DocumentType; design: Design; isDefault: number };
-const fieldLabels: Record<string, string> = { fullName: "Name", studentId: "Student ID", dateOfBirth: "D.O.B", className: "Class", sectionName: "Section", address: "Address", photoUrl: "Photo", grade: "Grade", gpa: "GPA", percentage: "Percentage", rank: "Rank", academicYear: "Academic year", issueDate: "Issue date", qrCode: "Verification QR", session: "Session", fatherName: "Father name", motherName: "Mother name", phone: "Phone", email: "Email", admissionNumber: "Admission no.", principal: "Principal" };
-const types: { value: DocumentType; label: string }[] = [{ value: "identity_card", label: "Identity card" }, { value: "transcript", label: "Transcript" }, { value: "marksheet", label: "Marksheet" }, { value: "certificate", label: "Certificate" }, { value: "custom", label: "Custom document" }];
-const presets: { id: string; name: string; description: string; type: DocumentType; design: Design }[] = [
-  { id: "heritage-certificate", name: "Heritage Award", description: "Formal framed certificate with centered recognition and signatures.", type: "certificate", design: { background: "#fffaf0", primary: "#b88728", accent: "#263238", title: "CERTIFICATE OF ACHIEVEMENT", subtitle: "Institution name", logoUrl: "", fields: ["fullName", "academicYear", "issueDate"], fontFamily: "Georgia", layout: "a4-landscape", borderStyle: "double", showWatermark: true, showQr: true, signatureLabels: ["Principal", "Class teacher"] } },
-  { id: "modern-certificate", name: "Modern Merit", description: "Clean contemporary certificate for awards, participation, and completion.", type: "certificate", design: { background: "#f4f7fb", primary: "#2563eb", accent: "#172554", title: "CERTIFICATE OF EXCELLENCE", subtitle: "Institution name", logoUrl: "", fields: ["fullName", "grade", "issueDate"], fontFamily: "Inter", layout: "a4-landscape", borderStyle: "accent", showWatermark: false, showQr: true, signatureLabels: ["Authorized signatory"] } },
-  { id: "academic-transcript", name: "Academic Transcript", description: "A4 academic record with student identity, subject rows, GPA, and verification.", type: "transcript", design: { background: "#ffffff", primary: "#0f766e", accent: "#134e4a", title: "ACADEMIC TRANSCRIPT", subtitle: "Institution name", logoUrl: "", fields: ["fullName", "studentId", "academicYear", "gpa", "rank", "qrCode"], fontFamily: "Inter", layout: "a4-portrait", borderStyle: "thin", showWatermark: true, showQr: true, signatureLabels: ["Registrar", "Principal"] } },
-  { id: "classic-marksheet", name: "Classic Marksheet", description: "Structured result sheet with clear totals, percentage, grade, and rank.", type: "marksheet", design: { background: "#fbfcfe", primary: "#475569", accent: "#0f172a", title: "STATEMENT OF MARKS", subtitle: "Institution name", logoUrl: "", fields: ["fullName", "studentId", "className", "academicYear", "percentage", "grade", "rank"], fontFamily: "Inter", layout: "a4-portrait", borderStyle: "thin", showWatermark: false, showQr: true, signatureLabels: ["Class teacher", "Principal"] } },
-  { id: "campus-id", name: "Campus ID", description: "Compact portrait ID card with photo, essential identity, and QR verification.", type: "identity_card", design: { background: "#eff6ff", primary: "#1d4ed8", accent: "#172554", title: "STUDENT ID CARD", subtitle: "Institution name", logoUrl: "", fields: ["photoUrl", "fullName", "studentId", "className", "sectionName", "dateOfBirth", "qrCode"], fontFamily: "Inter", layout: "id-portrait", borderStyle: "accent", showWatermark: false, showQr: true, signatureLabels: [] } },
-  { id: "minimal-id", name: "Minimal ID", description: "Neutral two-tone identity card designed for simple school branding.", type: "identity_card", design: { background: "#f8fafc", primary: "#64748b", accent: "#0f172a", title: "STUDENT IDENTITY", subtitle: "Institution name", logoUrl: "", fields: ["photoUrl", "fullName", "studentId", "className", "academicYear"], fontFamily: "Inter", layout: "id-landscape", borderStyle: "thin", showWatermark: false, showQr: true, signatureLabels: [] } },
-  { id: "schoolhouse-red-id", name: "Schoolhouse Red", description: "Classic school card with a bold red header, session ribbon, portrait, contact details, and principal footer.", type: "identity_card", design: { background: "#e7f5f6", primary: "#c62828", accent: "#263238", title: "STUDENT IDENTITY CARD", subtitle: "Your institution name", logoUrl: "", fields: ["session", "fullName", "fatherName", "motherName", "className", "phone", "dateOfBirth", "admissionNumber", "address", "email", "photoUrl", "principal"], fontFamily: "Arial", layout: "id-classic-red", borderStyle: "accent", showWatermark: false, showQr: false, signatureLabels: [] } },
-  { id: "crimson-campus-id", name: "Crimson Campus", description: "A sharper red-and-cream variation for schools that need a compact official identity card.", type: "identity_card", design: { background: "#fff7ed", primary: "#b91c1c", accent: "#450a0a", title: "STUDENT CARD", subtitle: "Your institution name", logoUrl: "", fields: ["session", "fullName", "studentId", "className", "sectionName", "dateOfBirth", "phone", "address", "photoUrl", "principal"], fontFamily: "Arial", layout: "id-classic-red", borderStyle: "double", showWatermark: false, showQr: true, signatureLabels: [] } },
-];
-const defaultDesign = presets[4].design;
-const sampleValue = (field: string) => ({ fullName: "Juliana Silva", studentId: "123-456-7890", gpa: "3.80", percentage: "86.5%", grade: "A", rank: "04", session: "2026-27", fatherName: "Rafael Silva", motherName: "Maria Silva", phone: "+91 98765 43210", email: "office@school.edu", admissionNumber: "ADM-173/16", dateOfBirth: "20 Jun 2014", address: "School campus address" }[field] ?? "Sample value");
+type Template = {
+  id: string;
+  name: string;
+  documentType: DocumentType;
+  design: unknown;
+  isDefault: number;
+};
+
+type PreviewState = { name: string; documentType: DocumentType; design: TemplateDesign; id?: string };
 
 export function DocumentTemplateWorkspace() {
-  const api = new EduApiClient(undefined, () => localStorage.getItem("edu_access_token"));
+  const api = useMemo(() => new EduApiClient(undefined, () => localStorage.getItem("edu_access_token")), []);
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [selected, setSelected] = useState<Template | null>(null);
-  const [name, setName] = useState("Campus ID");
-  const [documentType, setDocumentType] = useState<DocumentType>("identity_card");
-  const [design, setDesign] = useState<Design>(defaultDesign);
-  const [message, setMessage] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [editorOpen, setEditorOpen] = useState(false);
+  const [message, setMessage] = useState<{ kind: "info" | "error"; text: string } | null>(null);
+  const [category, setCategory] = useState<DocumentType | "all">("all");
+  const [search, setSearch] = useState("");
+  const [draft, setDraft] = useState<TemplateDraft | null>(null);
+  const [preview, setPreview] = useState<PreviewState | null>(null);
+  const [importing, setImporting] = useState(false);
+  const importRef = useRef<HTMLInputElement>(null);
 
-  async function load() { try { const result = await api.get<{ data: Template[] }>("/organisation/document-templates"); setTemplates(result.data); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to load document templates"); } }
-  // Loading persisted templates is the external synchronization this effect owns.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  function choosePreset(preset: typeof presets[number]) { setSelected(null); setName(preset.name); setDocumentType(preset.type); setDesign({ ...preset.design, fields: [...preset.design.fields], signatureLabels: [...preset.design.signatureLabels] }); setEditorOpen(true); }
-  function edit(template: Template) { setSelected(template); setName(template.name); setDocumentType(template.documentType); setDesign({ ...defaultDesign, ...template.design }); setEditorOpen(true); }
-  function reset() { setSelected(null); setName("Campus ID"); setDocumentType("identity_card"); setDesign(defaultDesign); setEditorOpen(false); }
-  function toggleField(field: string) { setDesign((current) => ({ ...current, fields: current.fields.includes(field) ? current.fields.filter((item) => item !== field) : [...current.fields, field] })); }
-  async function save() { setSaving(true); setMessage(""); try { await (selected ? api.put(`/organisation/document-templates/${selected.id}`, { name, documentType, design, isDefault: !templates.some((template) => template.isDefault && template.id !== selected.id) }) : api.post("/organisation/document-templates", { name, documentType, design, isDefault: templates.length === 0 })); await load(); reset(); setMessage("Document template saved."); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to save document template"); } finally { setSaving(false); } }
-  async function remove(template: Template) { if (!window.confirm(`Delete ${template.name}?`)) return; try { await api.delete(`/organisation/document-templates/${template.id}`); await load(); if (selected?.id === template.id) reset(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to delete template"); } }
-  const updateDesign = (patch: Partial<Design>) => setDesign((current) => ({ ...current, ...patch }));
-  return <div className="space-y-6"><div><p className="text-sm font-medium text-blue-600">Document studio</p><h2 className="mt-2 text-3xl font-semibold tracking-tight">Templates that feel made, not filled in</h2><p className="mt-2 max-w-3xl text-sm text-slate-500">Start from a polished education preset, then customize your colors, typography, fields, verification, and signatures before generating official documents.</p></div>{message && <p className="rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-700">{message}</p>}<section><div className="mb-3 flex items-end justify-between gap-3"><div><h3 className="text-lg font-semibold">Start with a preset</h3><p className="text-sm text-slate-500">Original layouts for common school and college documents.</p></div><Button size="sm" onClick={() => setEditorOpen(true)}>Blank template</Button></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{presets.map((preset) => <button key={preset.id} onClick={() => choosePreset(preset)} className="group overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-lg"><div className="h-32 p-4" style={{ backgroundColor: preset.design.background }}><div className="h-full rounded-xl border-2 p-3" style={{ borderColor: preset.design.primary, borderStyle: preset.design.borderStyle === "double" ? "double" : "solid" }}><p className="text-[9px] font-bold uppercase tracking-widest" style={{ color: preset.design.primary }}>{preset.design.subtitle}</p><p className="mt-3 text-center text-xs font-black" style={{ color: preset.design.accent }}>{preset.design.title}</p><div className="mt-3 h-1 rounded-full" style={{ backgroundColor: preset.design.primary, opacity: 0.35 }} /></div></div><div className="p-3"><div className="flex items-center justify-between"><span className="text-sm font-semibold">{preset.name}</span><span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] uppercase tracking-wide text-slate-500">{types.find((type) => type.value === preset.type)?.label}</span></div><p className="mt-1 text-xs leading-5 text-slate-500">{preset.description}</p></div></button>)}</div></section><Card><CardHeader><CardTitle>Saved templates</CardTitle></CardHeader><CardContent className="space-y-2">{templates.length ? templates.map((template) => <div key={template.id} className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 p-3"><button className="min-w-0 flex-1 text-left" onClick={() => edit(template)}><span className="block truncate text-sm font-medium">{template.name}</span><span className="text-xs text-slate-500">{types.find((type) => type.value === template.documentType)?.label ?? template.documentType}{template.isDefault ? " · Default" : ""}</span></button><Button size="sm" variant="ghost" onClick={() => void remove(template)}>Delete</Button></div>) : <p className="text-sm text-slate-500">No saved templates yet. Choose a preset to create one.</p>}</CardContent></Card><Modal open={editorOpen} title={selected ? "Edit template" : "Customize template"} description="Adjust the design, data fields, and trust signals. The preview updates as you work." onClose={reset}><div className="grid gap-6 lg:grid-cols-[1fr_0.9fr]"><div className="space-y-4"><div className="grid gap-3 sm:grid-cols-2"><Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Template name" /><select value={documentType} onChange={(event) => setDocumentType(event.target.value as DocumentType)} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm">{types.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select><Input value={design.subtitle} onChange={(event) => updateDesign({ subtitle: event.target.value })} placeholder="Institution heading" /><Input value={design.title} onChange={(event) => updateDesign({ title: event.target.value })} placeholder="Document title" /><Input value={design.logoUrl} onChange={(event) => updateDesign({ logoUrl: event.target.value })} placeholder="Logo URL (optional)" /><select value={design.fontFamily} onChange={(event) => updateDesign({ fontFamily: event.target.value })} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option>Inter</option><option>Georgia</option><option>Arial</option><option>Times New Roman</option></select><select value={design.layout} onChange={(event) => updateDesign({ layout: event.target.value })} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="a4-portrait">A4 portrait</option><option value="a4-landscape">A4 landscape</option><option value="id-portrait">ID portrait</option><option value="id-landscape">ID landscape</option></select><select value={design.borderStyle} onChange={(event) => updateDesign({ borderStyle: event.target.value })} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="thin">Thin border</option><option value="accent">Accent border</option><option value="double">Double border</option><option value="none">No border</option></select></div><div className="flex flex-wrap gap-4 rounded-xl bg-slate-50 p-3"><label className="flex items-center gap-2 text-sm">Background <input type="color" value={design.background} onChange={(event) => updateDesign({ background: event.target.value })} /></label><label className="flex items-center gap-2 text-sm">Brand color <input type="color" value={design.primary} onChange={(event) => updateDesign({ primary: event.target.value })} /></label><label className="flex items-center gap-2 text-sm">Text color <input type="color" value={design.accent} onChange={(event) => updateDesign({ accent: event.target.value })} /></label></div><div><p className="mb-2 text-sm font-medium">Data fields</p><div className="flex flex-wrap gap-2">{Object.keys(fieldLabels).map((field) => <button type="button" key={field} onClick={() => toggleField(field)} className={`rounded-lg border px-2.5 py-1.5 text-xs ${design.fields.includes(field) ? "border-blue-500 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-500"}`}>{fieldLabels[field]}</button>)}</div></div><div className="flex flex-wrap gap-4 text-sm"><label className="flex items-center gap-2"><input type="checkbox" checked={design.showWatermark} onChange={(event) => updateDesign({ showWatermark: event.target.checked })} /> Watermark</label><label className="flex items-center gap-2"><input type="checkbox" checked={design.showQr} onChange={(event) => updateDesign({ showQr: event.target.checked })} /> Verification QR</label></div><div className="flex gap-2"><Button disabled={saving || !name.trim()} onClick={() => void save()}>{saving ? "Saving..." : selected ? "Save changes" : "Save template"}</Button><Button variant="outline" onClick={reset}>Cancel</Button></div></div><div className="rounded-2xl bg-slate-100 p-3 sm:p-5"><p className="mb-2 text-xs font-medium uppercase tracking-widest text-slate-500">Live preview</p><div className="overflow-hidden rounded-xl border p-4 shadow-sm" style={{ backgroundColor: design.background, borderColor: design.primary, borderStyle: design.borderStyle === "none" ? "solid" : design.borderStyle, fontFamily: design.fontFamily }}><div className="text-center"><p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: design.primary }}>{design.subtitle}</p><h3 className="mt-3 text-lg font-black" style={{ color: design.accent }}>{design.title}</h3></div>{design.showWatermark && <p className="pointer-events-none my-5 text-center text-4xl font-black uppercase tracking-widest opacity-10" style={{ color: design.primary }}>Official</p>}<div className="mt-5 space-y-2 rounded-xl bg-white/70 p-3">{design.fields.map((field) => <div key={field} className="flex justify-between gap-3 border-b border-slate-200/70 py-1 text-xs"><span className="text-slate-500">{fieldLabels[field]}</span><strong className="text-right text-slate-800">{field === "qrCode" && design.showQr ? "[ QR verified ]" : sampleValue(field)}</strong></div>)}</div>{design.signatureLabels.length > 0 && <div className="mt-7 grid grid-cols-2 gap-4 text-center text-[10px] text-slate-500">{design.signatureLabels.map((label) => <div key={label} className="border-t border-slate-400 pt-1">{label}</div>)}</div>}</div></div></div></Modal></div>;
+  async function load() {
+    try {
+      const result = await api.get<{ data: Template[] }>("/organisation/document-templates");
+      setTemplates(result.data);
+    } catch (error) {
+      setMessage({ kind: "error", text: error instanceof Error ? error.message : "Unable to load document templates" });
+    }
+  }
+
+  useEffect(() => {
+    // Loading persisted templates is the external synchronization this effect owns.
+    void api
+      .get<{ data: Template[] }>("/organisation/document-templates")
+      .then((result) => setTemplates(result.data))
+      .catch((error: unknown) => setMessage({ kind: "error", text: error instanceof Error ? error.message : "Unable to load document templates" }));
+  }, [api]);
+
+  const normalized = useMemo(
+    () => templates.map((template) => ({ ...template, design: normalizeDesign(template.design) })),
+    [templates],
+  );
+
+  const visibleTemplates = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return normalized.filter((template) => {
+      const matchesCategory = category === "all" || template.documentType === category;
+      const matchesSearch = !term || template.name.toLowerCase().includes(term);
+      return matchesCategory && matchesSearch;
+    });
+  }, [normalized, category, search]);
+
+  const visiblePresets = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return TEMPLATE_PRESETS.filter((preset) => {
+      const matchesCategory = category === "all" || preset.documentType === category;
+      const matchesSearch = !term || preset.name.toLowerCase().includes(term) || preset.description.toLowerCase().includes(term);
+      return matchesCategory && matchesSearch;
+    });
+  }, [category, search]);
+
+  function openPreset(preset: TemplatePreset) {
+    setDraft({ name: preset.name, documentType: preset.documentType, design: structuredClone(preset.design) });
+  }
+
+  function openBlank() {
+    setDraft({ name: "Untitled template", documentType: category === "all" ? "custom" : category, design: blankDesign() });
+  }
+
+  function openTemplate(template: Template, design: TemplateDesign) {
+    setDraft({ id: template.id, name: template.name, documentType: template.documentType, design: structuredClone(design), isDefault: Boolean(template.isDefault) });
+  }
+
+  async function persist(draftValue: TemplateDraft, makeDefault: boolean) {
+    const payload = {
+      name: draftValue.name,
+      documentType: draftValue.documentType,
+      design: draftValue.design,
+      isDefault: makeDefault,
+    };
+    const saved = draftValue.id
+      ? await api.put<{ id: string }>(`/organisation/document-templates/${draftValue.id}`, payload)
+      : await api.post<{ id: string }>("/organisation/document-templates", payload);
+    setMessage({ kind: "info", text: "Template saved." });
+    await load();
+    return saved.id;
+  }
+
+  async function duplicate(template: Template, design: TemplateDesign) {
+    try {
+      await api.post("/organisation/document-templates", {
+        name: `${template.name} copy`.slice(0, 100),
+        documentType: template.documentType,
+        design,
+        isDefault: false,
+      });
+      setMessage({ kind: "info", text: "Template duplicated." });
+      await load();
+    } catch (error) {
+      setMessage({ kind: "error", text: error instanceof Error ? error.message : "Unable to duplicate template" });
+    }
+  }
+
+  async function makeDefault(template: Template, design: TemplateDesign) {
+    try {
+      await api.put(`/organisation/document-templates/${template.id}`, {
+        name: template.name,
+        documentType: template.documentType,
+        design,
+        isDefault: true,
+      });
+      setMessage({ kind: "info", text: `${template.name} is now the default ${DOCUMENT_TYPE_LABELS[template.documentType].toLowerCase()}.` });
+      await load();
+    } catch (error) {
+      setMessage({ kind: "error", text: error instanceof Error ? error.message : "Unable to set default template" });
+    }
+  }
+
+  async function remove(template: Template) {
+    if (!window.confirm(`Delete ${template.name}? This cannot be undone.`)) return;
+    try {
+      await api.delete(`/organisation/document-templates/${template.id}`);
+      setMessage({ kind: "info", text: "Template deleted." });
+      await load();
+    } catch (error) {
+      setMessage({ kind: "error", text: error instanceof Error ? error.message : "Unable to delete template" });
+    }
+  }
+
+  function exportOne(template: Template, design: TemplateDesign) {
+    downloadJson(
+      `${template.name.replace(/\s+/g, "-").toLowerCase() || "template"}.json`,
+      { name: template.name, documentType: template.documentType, design },
+    );
+  }
+
+  function exportAll() {
+    downloadJson("document-templates.json", {
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      templates: normalized.map((template) => ({ name: template.name, documentType: template.documentType, design: template.design })),
+    });
+  }
+
+  async function importFile(file: File) {
+    setImporting(true);
+    setMessage(null);
+    try {
+      const parsed = JSON.parse(await file.text()) as unknown;
+      const entries = collectImports(parsed);
+      if (!entries.length) throw new Error("No templates found in the file");
+      const payload = entries.map((entry, index) => {
+        const design = normalizeDesign(entry.design ?? entry);
+        const name = typeof entry.name === "string" && entry.name.trim() ? entry.name.trim().slice(0, 100) : `Imported template ${index + 1}`;
+        const documentType = DOCUMENT_TYPES.includes(entry.documentType as DocumentType) ? (entry.documentType as DocumentType) : "custom";
+        return { name, documentType, design, isDefault: Boolean(entry.isDefault) };
+      });
+      const result = await api.post<{ imported: number; failed: { name: string; reason: string }[] }>("/organisation/document-templates/import", { templates: payload });
+      setMessage({
+        kind: result.failed.length ? "error" : "info",
+        text: result.failed.length
+          ? `Imported ${result.imported} template(s). ${result.failed.length} failed: ${result.failed.map((item) => `${item.name} (${item.reason})`).join("; ")}`
+          : `Imported ${result.imported} template(s).`,
+      });
+      await load();
+    } catch (error) {
+      setMessage({ kind: "error", text: error instanceof Error ? error.message : "Unable to import templates" });
+    } finally {
+      setImporting(false);
+      if (importRef.current) importRef.current.value = "";
+    }
+  }
+
+  async function printTemplate(template: Template) {
+    try {
+      const token = localStorage.getItem("edu_access_token");
+      const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
+      const response = await fetch(`${base}/organisation/document-templates/${template.id}/preview`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) throw new Error("Unable to open document preview");
+      const windowRef = window.open("", "_blank");
+      if (!windowRef) throw new Error("Allow pop-ups to print documents");
+      windowRef.document.write(await response.text());
+      windowRef.document.close();
+    } catch (error) {
+      setMessage({ kind: "error", text: error instanceof Error ? error.message : "Unable to open document preview" });
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium text-blue-600">Document studio</p>
+          <h2 className="mt-2 text-3xl font-semibold tracking-tight">Design every document your school issues</h2>
+          <p className="mt-2 max-w-3xl text-sm text-slate-500">
+            Start from {TEMPLATE_PRESETS.length} professionally designed templates, then customize layouts, typography, colours, fields, tables and verification marks in a canvas editor.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => importRef.current?.click()} disabled={importing}>
+            <Upload size={15} />{importing ? "Importing..." : "Import"}
+          </Button>
+          <Button variant="outline" onClick={exportAll} disabled={!normalized.length}>
+            <Download size={15} />Export all
+          </Button>
+          <Button onClick={openBlank}><Plus size={15} />New template</Button>
+          <input
+            ref={importRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void importFile(file);
+            }}
+          />
+        </div>
+      </div>
+
+      {message && (
+        <div className={cn("flex items-start justify-between gap-3 rounded-xl px-4 py-3 text-sm", message.kind === "error" ? "bg-rose-50 text-rose-700" : "bg-blue-50 text-blue-700")}>
+          <span>{message.text}</span>
+          <button type="button" onClick={() => setMessage(null)} aria-label="Dismiss"><X size={15} /></button>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
+          {PRESET_CATEGORIES.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setCategory(item.key)}
+              className={cn("rounded-lg px-3 py-1.5 text-xs font-medium text-slate-600", category === item.key && "bg-white text-slate-900 shadow-sm")}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <label className="relative ml-auto w-full max-w-xs">
+          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search templates" className="h-9 pl-9 text-sm" />
+        </label>
+      </div>
+
+      <section className="space-y-3">
+        <div className="flex items-end justify-between">
+          <div>
+            <h3 className="text-lg font-semibold">Ready-made templates</h3>
+            <p className="text-sm text-slate-500">Click a template to open it in the visual builder.</p>
+          </div>
+          <span className="text-xs text-slate-400">{visiblePresets.length} templates</span>
+        </div>
+        {visiblePresets.length ? (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {visiblePresets.map((preset) => (
+              <div key={preset.id} className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-lg">
+                <button type="button" className="block w-full text-left" onClick={() => openPreset(preset)}>
+                  <TemplateThumbnail design={preset.design} width={360} />
+                </button>
+                <div className="space-y-2 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-sm font-semibold">{preset.name}</p>
+                    <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-500">
+                      {DOCUMENT_TYPE_LABELS[preset.documentType]}
+                    </span>
+                  </div>
+                  <p className="line-clamp-2 text-xs text-slate-500">{preset.description}</p>
+                  <div className="flex items-center gap-1.5">
+                    <Button size="sm" onClick={() => openPreset(preset)}><Pencil size={13} />Customize</Button>
+                    <Button size="sm" variant="outline" onClick={() => setPreview({ name: preset.name, documentType: preset.documentType, design: preset.design })}><Eye size={13} />Preview</Button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">No templates match this filter.</p>
+        )}
+      </section>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Saved templates</CardTitle>
+          <span className="text-xs text-slate-400">{visibleTemplates.length} saved</span>
+        </CardHeader>
+        <CardContent>
+          {visibleTemplates.length ? (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {visibleTemplates.map((template) => (
+                <div key={template.id} className="space-y-2 rounded-2xl border border-slate-200 p-3">
+                  <button type="button" className="block w-full" onClick={() => openTemplate(template, template.design)}>
+                    <TemplateThumbnail design={template.design} width={260} />
+                  </button>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{template.name}</p>
+                      <p className="text-xs text-slate-500">{DOCUMENT_TYPE_LABELS[template.documentType]}</p>
+                    </div>
+                    {template.isDefault ? <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700"><Star size={10} />Default</span> : null}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <Button size="sm" variant="outline" onClick={() => openTemplate(template, template.design)}><Pencil size={13} />Edit</Button>
+                    <Button size="sm" variant="outline" onClick={() => setPreview({ id: template.id, name: template.name, documentType: template.documentType, design: template.design })}><Eye size={13} />View</Button>
+                    <Button size="sm" variant="ghost" onClick={() => void printTemplate(template)} title="Print"><Printer size={13} /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => void duplicate(template, template.design)} title="Duplicate"><Copy size={13} /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => exportOne(template, template.design)} title="Export JSON"><Download size={13} /></Button>
+                    {!template.isDefault && <Button size="sm" variant="ghost" onClick={() => void makeDefault(template, template.design)} title="Set as default"><Star size={13} /></Button>}
+                    <Button size="sm" variant="ghost" onClick={() => void remove(template)} title="Delete"><Trash2 size={13} /></Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-300 p-8 text-center">
+              <FileText size={24} className="text-slate-300" />
+              <p className="text-sm text-slate-500">No saved templates yet. Customize a ready-made template or start from a blank page.</p>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => importRef.current?.click()}><Upload size={13} />Import</Button>
+                <Button size="sm" onClick={openBlank}><Plus size={13} />New template</Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {draft && (
+        <TemplateBuilder
+          initial={draft}
+          onClose={() => setDraft(null)}
+          onSave={persist}
+        />
+      )}
+
+      {preview && (
+        <Modal open title={preview.name} description={`${DOCUMENT_TYPE_LABELS[preview.documentType]} preview`} onClose={() => setPreview(null)}>
+          <div className="space-y-4">
+            <div className="flex max-h-[70vh] justify-center overflow-auto rounded-xl bg-slate-100 p-4">
+              <div className="shadow-lg">
+                <TemplatePageView design={preview.design} scale={Math.min(660 / preview.design.page.width, 640 / preview.design.page.height)} />
+              </div>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button variant="outline" onClick={() => setPreview(null)}>Close</Button>
+              <Button onClick={() => openTemplateFromPreview(preview)}><LayoutTemplate size={15} />Customize</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+
+  function openTemplateFromPreview(state: PreviewState) {
+    setDraft({ id: state.id, name: state.name, documentType: state.documentType, design: structuredClone(state.design) });
+    setPreview(null);
+  }
+}
+
+function downloadJson(filename: string, payload: unknown) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+type ImportEntry = Record<string, unknown>;
+
+function collectImports(parsed: unknown): ImportEntry[] {
+  if (Array.isArray(parsed)) return parsed.filter((item): item is ImportEntry => Boolean(item) && typeof item === "object");
+  if (parsed && typeof parsed === "object") {
+    const record = parsed as Record<string, unknown>;
+    if (Array.isArray(record.templates)) return record.templates.filter((item): item is ImportEntry => Boolean(item) && typeof item === "object");
+    if (record.template && typeof record.template === "object") return [record.template as ImportEntry];
+    return [record];
+  }
+  return [];
 }

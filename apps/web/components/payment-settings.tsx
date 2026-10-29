@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { EduApiClient } from "@edu/api-client";
 import { Button } from "./ui/button";
+import { Alert } from "./ui/alert";
+import { useToast } from "./ui/toast";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 import { CloudinaryUpload } from "./cloudinary-upload";
@@ -13,6 +15,7 @@ const emptyForm: Form = { label: "Bank transfer", method: "bank", bankName: "", 
 
 export function PaymentSettings() {
   const api = new EduApiClient(undefined, () => localStorage.getItem("edu_access_token"));
+  const toast = useToast();
   const [methods, setMethods] = useState<Method[]>([]);
   const [form, setForm] = useState<Form>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -51,8 +54,11 @@ export function PaymentSettings() {
       else await api.post("/fees/payment-methods", payload);
       cancelEdit();
       await load();
+      toast.success(editingId ? "Payment method updated" : "Payment method created", form.label);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to save payment method");
+      const message = err instanceof Error ? err.message : "Unable to save payment method";
+      setError(message);
+      toast.error("Could not save payment method", message);
     } finally {
       setSaving(false);
     }
@@ -61,9 +67,12 @@ export function PaymentSettings() {
   async function toggle(method: Method) {
     try {
       await api.put(`/fees/payment-methods/${method.id}`, { enabled: !method.enabled });
+      toast.success(method.enabled ? "Payment method disabled" : "Payment method enabled", method.label);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to update payment method");
+      const message = err instanceof Error ? err.message : "Unable to update payment method";
+      setError(message);
+      toast.error("Could not update payment method", message);
     }
   }
 
@@ -71,7 +80,7 @@ export function PaymentSettings() {
 
   return <div className="space-y-6">
     <div><p className="text-sm font-medium text-blue-600">Finance configuration</p><h2 className="mt-2 text-3xl font-semibold tracking-tight">Payment methods</h2><p className="mt-2 text-sm text-slate-500">Add, edit, and enable the bank, QR, and manual payment instructions families see on their invoices.</p></div>
-    {error && <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}
+    {error && <Alert tone="error" title="Payment methods" onDismiss={() => setError("")}>{error}</Alert>}
     <Card>
       <CardHeader><CardTitle>{editingId ? "Edit payment method" : "Create payment method"}</CardTitle><p className="text-sm text-slate-500">Use one method for each bank account or wallet QR code.</p></CardHeader>
       <CardContent><form onSubmit={save} className="grid gap-3 sm:grid-cols-2">

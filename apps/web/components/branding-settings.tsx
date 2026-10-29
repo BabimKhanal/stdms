@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { Check, Palette } from "lucide-react";
+import { Palette } from "lucide-react";
 import { EduApiClient } from "@edu/api-client";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { CloudinaryUpload } from "./cloudinary-upload";
+import { Alert } from "./ui/alert";
+import { useToast } from "./ui/toast";
 
 export type OrganisationBranding = {
   name: string;
@@ -25,6 +27,7 @@ export function BrandingSettings({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const toast = useToast();
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -43,8 +46,11 @@ export function BrandingSettings({
       setForm(updated);
       onSaved(updated);
       setSaved(true);
+      toast.success("Branding saved", "Your workspace now reflects the new identity.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to save branding");
+      const message = err instanceof Error ? err.message : "Unable to save branding";
+      setError(message);
+      toast.error("Could not save branding", message);
     } finally {
       setSaving(false);
     }
@@ -156,15 +162,14 @@ export function BrandingSettings({
             </div>
 
             {error && (
-              <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700 md:col-span-2">
-                {error}
-              </p>
+              <div className="md:col-span-2">
+                <Alert tone="error" title="Branding" onDismiss={() => setError("")}>{error}</Alert>
+              </div>
             )}
             {saved && (
-              <p className="flex items-center gap-2 text-sm font-medium text-emerald-700 md:col-span-2">
-                <Check size={16} />
-                Branding saved.
-              </p>
+              <div className="md:col-span-2">
+                <Alert tone="success" title="Branding saved" onDismiss={() => setSaved(false)}>Your workspace has been updated.</Alert>
+              </div>
             )}
             <div className="md:col-span-2">
               <Button disabled={saving}>

@@ -20,6 +20,8 @@ import { hashPassword } from "../../lib/password";
 import { randomBytes } from "node:crypto";
 import type { AuthUser } from "../../lib/context";
 import { assertStudentAssigned, teacherScope } from "../../lib/teacher-scope";
+import { buildDocumentData } from "../../lib/document-data";
+import { renderTemplateHtml } from "../../lib/document-template-renderer";
 
 type StudentRow = typeof students.$inferSelect;
 
@@ -285,6 +287,13 @@ export async function identityCardHtml(
   const [organisation] = await db.select({ name: organisations.name, logoUrl: organisations.logoUrl, address: organisations.address, phone: organisations.phone, email: organisations.email, primaryColor: organisations.primaryColor }).from(organisations).where(eq(organisations.id, orgId)).limit(1);
   const [template] = await db.select({ design: documentTemplates.design }).from(documentTemplates).where(and(eq(documentTemplates.organisationId, orgId), eq(documentTemplates.documentType, "identity_card"), eq(documentTemplates.isDefault, 1))).limit(1);
   const design = (template?.design ?? {}) as Record<string, unknown>;
+  if (design.version === 2 && Array.isArray(design.elements) && design.page) {
+    return renderTemplateHtml(
+      design as unknown as Parameters<typeof renderTemplateHtml>[0],
+      buildDocumentData(student, organisation),
+      { title: `${student.fullName} — identity card` },
+    );
+  }
   const primary = cardEscape(typeof design.primary === "string" ? design.primary : organisation?.primaryColor ?? "#2563eb");
   const background = cardEscape(typeof design.background === "string" ? design.background : "#ffffff");
   const title = cardEscape(typeof design.title === "string" ? design.title : "STUDENT IDENTITY CARD");

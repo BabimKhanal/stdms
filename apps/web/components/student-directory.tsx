@@ -2,19 +2,23 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useState } from "react";
-import { Download, Search, UserPlus, X } from "lucide-react";
+import { Download, KeyRound, Search, UserPlus, Users, X } from "lucide-react";
 import { EduApiClient } from "@edu/api-client";
 import { Badge } from "./ui/badge";
+import { Alert } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 import { CloudinaryUpload } from "./cloudinary-upload";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { useToast } from "./ui/toast";
 import {
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
+  TablePagination,
   TableRow,
 } from "./ui/table";
 import { downloadCsv } from "../lib/csv";
@@ -97,6 +101,7 @@ function StudentDirectoryContent({
   const api = new EduApiClient(undefined, () =>
     localStorage.getItem("edu_access_token"),
   );
+  const toast = useToast();
   const [rows, setRows] = useState<StudentRow[]>(
     initialStudents as StudentRow[],
   );
@@ -258,11 +263,14 @@ function StudentDirectoryContent({
     try {
       if (selected) await api.put(`/students/${selected.id}`, payload);
       else await api.post("/students", payload);
+      toast.success(selected ? "Student updated" : "Student created", `${form.firstName} ${form.lastName}`.trim() || "The learner profile has been saved.");
       setShowForm(false);
       setSelected(null);
       await loadStudents(1);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to save student");
+      const message = err instanceof Error ? err.message : "Unable to save student";
+      setError(message);
+      toast.error("Could not save student", message);
     } finally {
       setSaving(false);
     }
@@ -303,9 +311,9 @@ function StudentDirectoryContent({
         </Button>
       </div>
       {error && (
-        <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <Alert tone="error" title="Student directory" onDismiss={() => setError("")}>
           {error}
-        </p>
+        </Alert>
       )}
       {showForm && (
         <Card>
@@ -492,7 +500,7 @@ function StudentDirectoryContent({
           </form>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
+          <Table stack>
             <TableHeader>
               <TableRow>
                 <TableHead>Student</TableHead>
@@ -508,7 +516,7 @@ function StudentDirectoryContent({
                   className="cursor-pointer"
                   onClick={() => void openStudent(student.id)}
                 >
-                  <TableCell>
+                  <TableCell label="Student">
                     <div className="flex items-center gap-3">
                       {student.photoUrl ? (
                         <img
@@ -531,14 +539,14 @@ function StudentDirectoryContent({
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell label="Class">
                     {student.className ?? "Not enrolled"}
                     {student.sectionName ? ` · ${student.sectionName}` : ""}
                   </TableCell>
-                  <TableCell>
+                  <TableCell label="Status">
                     <Badge>{student.status ?? "active"}</Badge>
                   </TableCell>
-                  <TableCell>{student.studentId ?? "-"}</TableCell>
+                  <TableCell label="Student ID">{student.studentId ?? "-"}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -548,29 +556,12 @@ function StudentDirectoryContent({
               No students found.
             </p>
           )}
-          <div className="flex items-center justify-between border-t border-slate-100 px-5 py-4">
-            <p className="text-sm text-slate-500">
-              Page {page} of {totalPages}
-            </p>
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={page <= 1}
-                onClick={() => void loadStudents(page - 1)}
-              >
-                Previous
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={page >= totalPages}
-                onClick={() => void loadStudents(page + 1)}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            onChange={(nextPage) => void loadStudents(nextPage)}
+            summary={`${rows.length} records · Page ${page} of ${totalPages}`}
+          />
         </CardContent>
       </Card>
       {selected && !showForm && (
@@ -699,8 +690,12 @@ export function StudentDirectory({
   initialStudents: Student[];
 }) {
   return (
-    <div className="space-y-6">
-      <div className="flex justify-end">
+    <Tabs defaultValue="directory" className="space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <TabsList ariaLabel="Student management sections">
+          <TabsTrigger value="directory" icon={<Users size={15} />}>Directory</TabsTrigger>
+          <TabsTrigger value="credentials" icon={<KeyRound size={15} />}>Login credentials</TabsTrigger>
+        </TabsList>
         <Button
           variant="outline"
           onClick={() =>
@@ -721,15 +716,20 @@ export function StudentDirectory({
           Export loaded students
         </Button>
       </div>
-      <StudentDirectoryContent initialStudents={initialStudents} />
-      <CredentialProvisioner students={initialStudents} />
-    </div>
+      <TabsContent value="directory" className="mt-0">
+        <StudentDirectoryContent initialStudents={initialStudents} />
+      </TabsContent>
+      <TabsContent value="credentials" className="mt-0">
+        <CredentialProvisioner students={initialStudents} />
+      </TabsContent>
+    </Tabs>
   );
 }
 function CredentialProvisioner({ students }: { students: Student[] }) {
   const api = new EduApiClient(undefined, () =>
     localStorage.getItem("edu_access_token"),
   );
+  const toast = useToast();
   const [studentId, setStudentId] = useState("");
   const [result, setResult] = useState<{
     username: string | null;
@@ -754,11 +754,16 @@ function CredentialProvisioner({ students }: { students: Student[] }) {
     setLoading(true);
     setError("");
     try {
-      setResult(await api.post(`/students/${studentId}/account`, {}));
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Unable to provision credentials",
+      const response = await api.post<{ username: string | null; email: string | null; temporaryPassword: string | null }>(`/students/${studentId}/account`, {});
+      setResult(response);
+      toast.success(
+        response.temporaryPassword ? "Login credentials created" : "Account already exists",
+        response.temporaryPassword ? "Share the temporary password securely with the learner." : "The learner already has a login account.",
       );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to provision credentials";
+      setError(message);
+      toast.error("Could not create credentials", message);
     } finally {
       setLoading(false);
     }
@@ -810,7 +815,7 @@ function CredentialProvisioner({ students }: { students: Student[] }) {
             </p>
           </div>
         )}
-        {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
+        {error && <Alert tone="error" className="mt-3" onDismiss={() => setError("")}>{error}</Alert>}
       </CardContent>
     </Card>
   );

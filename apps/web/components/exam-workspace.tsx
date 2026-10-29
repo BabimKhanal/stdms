@@ -7,6 +7,9 @@ import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
+import { Alert } from "./ui/alert";
+import { useToast } from "./ui/toast";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 type Exam = {
   id: string;
   name: string;
@@ -40,6 +43,7 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
   const api = new EduApiClient(undefined, () =>
     localStorage.getItem("edu_access_token"),
   );
+  const toast = useToast();
   const [exams, setExams] = useState<Exam[]>([]);
   const [years, setYears] = useState<Option[]>([]);
   const [classes, setClasses] = useState<Option[]>([]);
@@ -78,7 +82,7 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
     // Initial data load synchronizes the workspace with the API.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
-  }, []); // eslint-disable-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   async function openExam(exam: Exam) {
     setSelected(exam);
     setMarksSubject(null);
@@ -113,6 +117,7 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
       setShowExamForm(false);
       event.currentTarget.reset();
       await load();
+      toast.success("Examination created", "Add subjects and enter marks when you are ready.");
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Unable to create examination",
@@ -178,6 +183,7 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
       setSelected(updated);
       await load();
       await openExam(updated);
+      toast.success("Results published", "Learners and guardians can now view this exam.");
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Unable to publish results",
@@ -244,6 +250,7 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
       });
       if (selected) await openExam(selected);
       setMarksSubject(null);
+      toast.success("Marks saved", "The student results have been recalculated.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to save marks");
     } finally {
@@ -284,9 +291,9 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
         )}
       </header>
       {error && (
-        <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <Alert tone="error" title="Examinations" onDismiss={() => setError("")}>
           {error}
-        </p>
+        </Alert>
       )}
       {canManage && showExamForm && (
         <Card>
@@ -374,37 +381,35 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-400">
-                  <tr>
-                    <th className="px-5 py-3">Examination</th>
-                    <th className="px-5 py-3">Status</th>
-                    <th className="px-5 py-3">Subjects</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {visible.map((exam) => (
-                    <tr
-                      key={exam.id}
-                      onClick={() => void openExam(exam)}
-                      className={`cursor-pointer hover:bg-slate-50 ${selected?.id === exam.id ? "bg-blue-50" : ""}`}
-                    >
-                      <td className="px-5 py-4 font-medium">
-                        {exam.name}
-                        <span className="block text-xs font-normal text-slate-400">
-                          {exam.type}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4">
-                        <Badge>{exam.status}</Badge>
-                      </td>
-                      <td className="px-5 py-4">{exam.subjectCount ?? 0}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <Table stack>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Examination</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Subjects</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visible.map((exam) => (
+                  <TableRow
+                    key={exam.id}
+                    onClick={() => void openExam(exam)}
+                    className={`cursor-pointer ${selected?.id === exam.id ? "bg-blue-50" : ""}`}
+                  >
+                    <TableCell label="Examination" className="font-medium">
+                      {exam.name}
+                      <span className="block text-xs font-normal capitalize text-slate-400">
+                        {exam.type.replace(/_/g, " ")}
+                      </span>
+                    </TableCell>
+                    <TableCell label="Status">
+                      <Badge tone={exam.status === "published" ? "green" : exam.status === "completed" ? "violet" : "amber"}>{exam.status}</Badge>
+                    </TableCell>
+                    <TableCell label="Subjects">{exam.subjectCount ?? 0}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
             {!visible.length && (
               <p className="p-8 text-center text-sm text-slate-500">
                 No examinations found.
@@ -547,7 +552,7 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
                     ))}
                   </form>
                 ) : (
-                  <table className="w-full text-left text-sm">
+                  <div className="table-scroll overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm">
                     <thead className="border-b border-slate-100 text-xs text-slate-400">
                       <tr>
                         <th className="py-2">Student</th>
@@ -578,7 +583,7 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </table></div>
                 )}
               </>
             ) : (
@@ -646,7 +651,7 @@ function GradingScalePanel({ canManage }: { canManage: boolean }) {
     // Initial data load synchronizes the workspace with the API.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
-  }, []); // eslint-disable-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!scales.length && !error) return null;
   return (
@@ -659,9 +664,9 @@ function GradingScalePanel({ canManage }: { canManage: boolean }) {
       </CardHeader>
       <CardContent className="space-y-3">
         {error && (
-          <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <Alert tone="error" title="Grading scale" onDismiss={() => setError("")}>
             {error}
-          </p>
+          </Alert>
         )}
         {scales.map((scale) => (
           <div

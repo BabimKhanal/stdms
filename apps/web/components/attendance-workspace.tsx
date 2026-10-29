@@ -5,6 +5,7 @@ import { CalendarDays, Check, Download, Search, Users } from "lucide-react";
 import { EduApiClient } from "@edu/api-client";
 import { downloadCsv } from "../lib/csv";
 import { Badge } from "./ui/badge";
+import { Alert } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
@@ -273,14 +274,14 @@ export function AttendanceWorkspace() {
         </Button>
       </header>
       {error && (
-        <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <Alert tone="error" title="Attendance" onDismiss={() => setError("")}>
           {error}
-        </p>
+        </Alert>
       )}
       {message && (
-        <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+        <Alert tone="success" onDismiss={() => setMessage("")}>
           {message}
-        </p>
+        </Alert>
       )}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
@@ -372,7 +373,7 @@ export function AttendanceWorkspace() {
           </div>
           {students.length > 0 && (
             <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
-              <Table>
+              <Table stack>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Student</TableHead>
@@ -383,13 +384,13 @@ export function AttendanceWorkspace() {
                 <TableBody>
                   {studentsToMark.map((student) => (
                     <TableRow key={student.id}>
-                      <TableCell className="font-medium">
+                      <TableCell label="Student" className="font-medium">
                         {student.fullName ?? "Student"}
                       </TableCell>
-                      <TableCell className="text-slate-500">
+                      <TableCell label="Student ID" className="text-slate-500">
                         {student.studentId ?? "-"}
                       </TableCell>
-                      <TableCell>
+                      <TableCell label="Status">
                         <select
                           value={marks[student.id] ?? "present"}
                           onChange={(event) =>
@@ -533,7 +534,7 @@ export function AttendanceWorkspace() {
             />
           </div>
           <div className="overflow-x-auto">
-            <Table>
+            <Table stack>
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
@@ -548,20 +549,20 @@ export function AttendanceWorkspace() {
               <TableBody>
                 {visible.map((record) => (
                   <TableRow key={record.id}>
-                    <TableCell>{record.date}</TableCell>
-                    <TableCell className="font-medium">
+                    <TableCell label="Date">{record.date}</TableCell>
+                    <TableCell label="Student" className="font-medium">
                       {record.studentName ?? "-"}
                     </TableCell>
-                    <TableCell>{record.studentCode ?? "-"}</TableCell>
-                    <TableCell>
+                    <TableCell label="Student ID">{record.studentCode ?? "-"}</TableCell>
+                    <TableCell label="Class">
                       {classes.find((item) => item.id === record.classId)
                         ?.name ?? "-"}
                     </TableCell>
-                    <TableCell>
+                    <TableCell label="Subject / period">
                       <span className="font-medium">{record.subjectName ?? "Whole day"}</span>
                       <span className="block text-xs text-slate-500">{record.periodName ?? "Daily register"}</span>
                     </TableCell>
-                    <TableCell>
+                    <TableCell label="Status">
                       <Badge
                         tone={
                           record.status === "present"
@@ -576,7 +577,7 @@ export function AttendanceWorkspace() {
                         {record.status}
                       </Badge>
                     </TableCell>
-                    <TableCell>{record.remarks ?? "-"}</TableCell>
+                    <TableCell label="Remarks">{record.remarks ?? "-"}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

@@ -7,6 +7,7 @@ import Image from "next/image";
 import {
   BarChart3,
   BookOpen,
+  BriefcaseBusiness,
   CalendarCheck,
   ChevronDown,
   CreditCard,
@@ -20,10 +21,12 @@ import {
   Megaphone,
   Palette,
   RefreshCw,
+  ShieldCheck,
   UserCog,
   Users,
   X,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { EduApiClient } from "@edu/api-client";
 import { BrandingSettings, type OrganisationBranding } from "./branding-settings";
 import { StudentDirectory } from "./student-directory";
@@ -48,6 +51,8 @@ import { ExamApprovalPanel } from "./exam-approval-panel";
 import { GatewaySettings } from "./gateway-settings";
 import { FeeAccessSettings } from "./fee-access-settings";
 import { DocumentTemplateWorkspace } from "./document-template-workspace";
+import { Alert } from "./ui/alert";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
 type User = { name: string; email?: string | null; orgName?: string | null; roles: string[]; permissions?: string[]; isPlatformAdmin?: boolean; studentId?: string | null };
 type Notice = { id: string; title: string; body?: string | null; priority?: string; publishAt?: string };
@@ -61,23 +66,54 @@ type Dashboard = {
   upcomingEvents?: CalendarEvent[];
 };
 type Student = Record<string, unknown>;
-const nav = [
-  ["Overview", LayoutDashboard, "dashboard"],
-  ["Students", Users, "students"],
-  ["Parents & guardians", HeartHandshake, "guardians"],
-  ["Academics", GraduationCap, "academics"],
-  ["Attendance", CalendarCheck, "attendance"],
-  ["Learning", BookOpen, "learning"],
-  ["Fees & invoices", CreditCard, "fees"],
-  ["Exams & results", BarChart3, "exams"],
-  ["Reports", LineChart, "reports"],
-  ["Notices & events", Megaphone, "communication"],
-  ["User management", UserCog, "users"],
-  ["Staff profiles", UserCog, "employees"],
-  ["Branding", Palette, "branding"],
-  ["Payment settings", CreditCard, "payment-settings"],
-  ["Document templates", FileText, "document-templates"],
-] as const;
+type NavItem = readonly [label: string, icon: LucideIcon, key: string];
+type NavGroup = { title: string; items: NavItem[] };
+
+const navGroups: NavGroup[] = [
+  {
+    title: "Workspace",
+    items: [["Overview", LayoutDashboard, "dashboard"]],
+  },
+  {
+    title: "People",
+    items: [
+      ["Students", Users, "students"],
+      ["Parents & guardians", HeartHandshake, "guardians"],
+      ["Staff profiles", BriefcaseBusiness, "employees"],
+      ["User management", UserCog, "users"],
+    ],
+  },
+  {
+    title: "Academics",
+    items: [
+      ["Academics", GraduationCap, "academics"],
+      ["Attendance", CalendarCheck, "attendance"],
+      ["Learning", BookOpen, "learning"],
+      ["Exams & results", BarChart3, "exams"],
+      ["Reports", LineChart, "reports"],
+    ],
+  },
+  {
+    title: "Finance",
+    items: [
+      ["Fees & invoices", CreditCard, "fees"],
+      ["Payment settings", CreditCard, "payment-settings"],
+    ],
+  },
+  {
+    title: "Community",
+    items: [["Notices & events", Megaphone, "communication"]],
+  },
+  {
+    title: "Settings",
+    items: [
+      ["Branding", Palette, "branding"],
+      ["Document templates", FileText, "document-templates"],
+    ],
+  },
+];
+
+const nav = navGroups.flatMap((group) => group.items);
 
 export function Portal() {
   const [user, setUser] = useState<User | null>(null);
@@ -171,116 +207,187 @@ export function Portal() {
           className="fixed inset-0 z-20 bg-slate-950/30 backdrop-blur-sm lg:hidden"
         />
       )}
-      <aside className={`${mobileNav ? "translate-x-0" : "-translate-x-full lg:translate-x-0"} fixed inset-y-0 left-0 z-30 flex w-[260px] flex-col border-r border-slate-200 bg-white transition-transform`}>
-        <div className="flex h-20 items-center justify-between border-b border-slate-100 px-6">
+      <aside className={`${mobileNav ? "translate-x-0" : "-translate-x-full lg:translate-x-0"} fixed inset-y-0 left-0 z-30 flex w-[272px] flex-col border-r border-slate-200/80 bg-white/95 backdrop-blur transition-transform duration-300 ease-out`}>
+        <div className="flex h-16 items-center justify-between border-b border-slate-100 px-5 sm:h-20">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl bg-blue-600 text-white">
+            <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-600/30">
               {branding?.logoUrl ? <Image src={branding.logoUrl} alt="" width={36} height={36} unoptimized className="h-full w-full object-contain" /> : <GraduationCap size={20} />}
             </span>
             <span className="truncate text-lg font-semibold tracking-tight">{branding?.name ?? user?.orgName ?? "Nucleus"}</span>
           </div>
-          <button aria-label="Close navigation" className="lg:hidden" onClick={() => setMobileNav(false)}><X size={18} /></button>
+          <button aria-label="Close navigation" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 lg:hidden" onClick={() => setMobileNav(false)}><X size={18} /></button>
         </div>
-        <div className="px-4 py-5">
-          <div className="rounded-2xl bg-slate-950 p-4 text-white">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-blue-300">Institution</p>
-            <p className="mt-2 truncate text-sm font-semibold">{branding?.name ?? user?.orgName ?? "Institution"}</p>
+        <div className="px-4 pb-2 pt-4">
+          <div className="rounded-2xl bg-slate-950 p-4 text-white shadow-lg shadow-slate-900/10">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-blue-300">Institution</p>
+            <p className="mt-1.5 truncate text-sm font-semibold">{branding?.name ?? user?.orgName ?? "Institution"}</p>
             <p className="mt-1 text-xs text-slate-400">2026 / 27 · Term 1</p>
           </div>
         </div>
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-4">
-          {visibleNav.map(([label, ItemIcon, key]) => (
-            <button
-              key={key}
-              onClick={() => navigate(key)}
-              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition ${section === key ? "bg-blue-50 font-semibold text-blue-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"}`}
-            >
-              <ItemIcon size={18} />
-              {label}
-            </button>
-          ))}
+        <nav className="flex-1 overflow-y-auto px-3 pb-4">
+          {navGroups.map((group) => {
+            const items = group.items.filter((item) => canViewNav(item[2], user));
+            if (!items.length) return null;
+            return (
+              <div key={group.title} className="pt-4 first:pt-2">
+                <p className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{group.title}</p>
+                <div className="space-y-0.5">
+                  {items.map(([label, ItemIcon, key]) => {
+                    const active = section === key;
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => navigate(key)}
+                        aria-current={active ? "page" : undefined}
+                        className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-all duration-200 ${active ? "bg-slate-900 font-semibold text-white shadow-sm" : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"}`}
+                      >
+                        <ItemIcon size={17} className={active ? "text-blue-300" : "text-slate-400 transition group-hover:text-slate-600"} />
+                        <span className="truncate">{label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
         </nav>
         <div className="border-t border-slate-100 p-3">
-          <button onClick={logout} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-500 hover:bg-rose-50 hover:text-rose-600">
-            <LogOut size={18} />
+          <button onClick={logout} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-500 transition hover:bg-rose-50 hover:text-rose-600">
+            <LogOut size={17} />
             Sign out
           </button>
         </div>
       </aside>
 
-      <div className="lg:pl-[260px]">
-        <header className="sticky top-0 z-20 flex h-20 items-center justify-between border-b border-slate-200/80 bg-[#f6f8fc]/90 px-5 backdrop-blur-xl sm:px-8">
-          <div className="flex items-center gap-3">
-            <button aria-label="Open navigation" className="lg:hidden" onClick={() => setMobileNav(true)}><Menu size={20} /></button>
-            <Icon size={18} className="text-blue-600" />
-            <span className="font-medium">{current?.[0] ?? "Overview"}</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <NotificationBell />
-            <div className="relative">
-              <button
-                aria-label="Account menu"
-                aria-expanded={userMenu}
-                onClick={() => setUserMenu((value) => !value)}
-                className="flex items-center gap-2 rounded-full bg-white py-1 pl-1 pr-2.5 text-sm shadow-sm ring-1 ring-slate-200 hover:text-blue-600"
-              >
-                <span className="grid h-8 w-8 place-items-center rounded-full bg-blue-100 text-sm font-semibold text-blue-700">{user?.name?.charAt(0) ?? "U"}</span>
-                <ChevronDown size={15} className={`text-slate-400 transition ${userMenu ? "rotate-180" : ""}`} />
-              </button>
-              {userMenu && (
-                <>
-                  <button aria-label="Close account menu" className="fixed inset-0 z-40 cursor-default" onClick={() => setUserMenu(false)} />
-                  <div className="absolute right-0 top-12 z-50 w-64 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
-                    <div className="rounded-xl bg-slate-50 p-3">
-                      <p className="truncate text-sm font-semibold">{user?.name ?? "User"}</p>
-                      <p className="mt-1 truncate text-xs text-slate-500">{user?.email ?? user?.orgName ?? "Institution account"}</p>
-                      <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-blue-600">{user?.roles?.join(" · ") ?? "Member"}</p>
+      <div className="lg:pl-[272px]">
+        <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-[#f6f8fc]/85 backdrop-blur-xl">
+          <div className="flex h-16 items-center justify-between gap-3 px-4 sm:h-20 sm:px-8">
+            <div className="flex min-w-0 items-center gap-3">
+              <button aria-label="Open navigation" className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 shadow-sm transition hover:text-blue-600 lg:hidden" onClick={() => setMobileNav(true)}><Menu size={18} /></button>
+              <span className="hidden max-w-[110px] truncate rounded-lg bg-white px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400 ring-1 ring-slate-200 sm:block">Workspace</span>
+              <div className="flex min-w-0 items-center gap-2">
+                <Icon size={18} className="shrink-0 text-blue-600" />
+                <span className="truncate font-semibold tracking-tight">{current?.[0] ?? "Overview"}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <NotificationBell />
+              <div className="relative">
+                <button
+                  aria-label="Account menu"
+                  aria-expanded={userMenu}
+                  onClick={() => setUserMenu((value) => !value)}
+                  className="flex items-center gap-2 rounded-full bg-white py-1 pl-1 pr-2.5 text-sm shadow-sm ring-1 ring-slate-200 transition hover:ring-blue-200"
+                >
+                  <span className="grid h-8 w-8 place-items-center rounded-full bg-blue-100 text-sm font-semibold text-blue-700">{user?.name?.charAt(0) ?? "U"}</span>
+                  <ChevronDown size={15} className={`text-slate-400 transition-transform duration-200 ${userMenu ? "rotate-180" : ""}`} />
+                </button>
+                {userMenu && (
+                  <>
+                    <button aria-label="Close account menu" className="fixed inset-0 z-40 cursor-default" onClick={() => setUserMenu(false)} />
+                    <div className="animate-alert-in absolute right-0 top-12 z-50 w-64 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/10">
+                      <div className="rounded-xl bg-slate-50 p-3">
+                        <p className="truncate text-sm font-semibold">{user?.name ?? "User"}</p>
+                        <p className="mt-1 truncate text-xs text-slate-500">{user?.email ?? user?.orgName ?? "Institution account"}</p>
+                        <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-blue-600">{user?.roles?.join(" · ") ?? "Member"}</p>
+                      </div>
+                      <button onClick={logout} className="mt-1 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-rose-600 transition hover:bg-rose-50">
+                        <LogOut size={16} />
+                        Sign out
+                      </button>
                     </div>
-                    <button onClick={logout} className="mt-1 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-rose-600 hover:bg-rose-50">
-                      <LogOut size={16} />
-                      Sign out
-                    </button>
-                  </div>
-                </>
-              )}
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </header>
-        <main className="mx-auto max-w-[1500px] p-5 sm:p-8">
-          {brandingError && <p role="status" className="mb-5 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">Institution branding could not be loaded: {brandingError}</p>}
-          {dashboardError && section === "dashboard" && (
-            <div role="alert" className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">
-              <span>{dashboardError}</span>
-              <Button size="sm" variant="outline" onClick={() => setDashboardVersion((value) => value + 1)}>Retry</Button>
+        <main className="mx-auto max-w-[1500px] px-4 py-5 sm:px-8 sm:py-8">
+          {(brandingError || (dashboardError && section === "dashboard")) && (
+            <div className="mb-5 space-y-3">
+              {brandingError && (
+                <Alert tone="warning" title="Institution branding could not be loaded" onDismiss={() => setBrandingError("")}>
+                  {brandingError}
+                </Alert>
+              )}
+              {dashboardError && section === "dashboard" && (
+                <Alert
+                  tone="error"
+                  title="We couldn't load your dashboard"
+                  onDismiss={() => setDashboardError("")}
+                  action={<Button size="sm" variant="outline" onClick={() => setDashboardVersion((value) => value + 1)}>Retry</Button>}
+                >
+                  {dashboardError}
+                </Alert>
+              )}
             </div>
           )}
-          {section === "dashboard" ? (
-            <DashboardView
-              dashboard={dashboard}
-              students={students}
-              setSection={navigate}
-              loading={dashboardLoading}
-              onRefresh={() => setDashboardVersion((value) => value + 1)}
-              user={user}
-            />
-          ) : section === "students" ? <StudentDirectory initialStudents={students} />
-            : section === "guardians" ? <GuardianWorkspace />
-            : section === "academics" ? <AcademicWorkspace />
-            : section === "attendance" ? <AttendanceWorkspace />
-            : section === "fees" ? <FeeWorkspace canManage={Boolean(user?.permissions?.includes("invoice.create"))} role={user?.roles?.[0]} />
-            : section === "exams" ? <div className="space-y-6"><ExamWorkspace canManage={Boolean(user?.isPlatformAdmin || user?.permissions?.includes("exam.create") || user?.permissions?.includes("exam.edit"))} />{user?.isPlatformAdmin || user?.permissions?.includes("result.approve") ? <ExamApprovalPanel /> : null}</div>
-            : section === "learning" ? (user?.studentId ? <StudentLearning /> : <LearningWorkspace canManage={Boolean(user?.isPlatformAdmin || user?.permissions?.includes("homework.create"))} />)
-            : section === "reports" ? <ReportsWorkspace />
-            : section === "communication" ? <CommunicationWorkspace />
-            : section === "users" ? <UserManagement />
-            : section === "employees" ? <EmployeeDirectory />
-            : section === "branding" && branding && user?.permissions?.includes("organisation.edit") ? <BrandingSettings branding={branding} onSaved={(updated) => { setBranding(updated); setBrandingError(""); }} />
-            : section === "payment-settings" && user?.permissions?.includes("payment.edit") ? <div className="space-y-6"><PaymentSettings /><GatewaySettings /><FeeAccessSettings /></div>
-            : section === "document-templates" && user?.permissions?.includes("organisation.edit") ? <DocumentTemplateWorkspace />
-            : <PlaceholderView section={section} />}
+          <div key={section} className="animate-panel-in">
+            {section === "dashboard" ? (
+              <DashboardView
+                dashboard={dashboard}
+                students={students}
+                setSection={navigate}
+                loading={dashboardLoading}
+                onRefresh={() => setDashboardVersion((value) => value + 1)}
+                user={user}
+              />
+            ) : section === "students" ? <StudentDirectory initialStudents={students} />
+              : section === "guardians" ? <GuardianWorkspace />
+              : section === "academics" ? <AcademicWorkspace />
+              : section === "attendance" ? <AttendanceWorkspace />
+              : section === "fees" ? <FeeWorkspace canManage={Boolean(user?.permissions?.includes("invoice.create"))} role={user?.roles?.[0]} />
+              : section === "exams" ? (
+                <ExamsSection
+                  canManage={Boolean(user?.isPlatformAdmin || user?.permissions?.includes("exam.create") || user?.permissions?.includes("exam.edit"))}
+                  canApprove={Boolean(user?.isPlatformAdmin || user?.permissions?.includes("result.approve"))}
+                />
+              )
+              : section === "learning" ? (user?.studentId ? <StudentLearning /> : <LearningWorkspace canManage={Boolean(user?.isPlatformAdmin || user?.permissions?.includes("homework.create"))} />)
+              : section === "reports" ? <ReportsWorkspace />
+              : section === "communication" ? <CommunicationWorkspace />
+              : section === "users" ? <UserManagement />
+              : section === "employees" ? <EmployeeDirectory />
+              : section === "branding" && branding && user?.permissions?.includes("organisation.edit") ? <BrandingSettings branding={branding} onSaved={(updated) => { setBranding(updated); setBrandingError(""); }} />
+              : section === "payment-settings" && user?.permissions?.includes("payment.edit") ? (
+                <div className="space-y-5">
+                  <div>
+                    <p className="text-sm font-medium text-blue-600">Finance configuration</p>
+                    <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Payment settings</h2>
+                    <p className="mt-2 text-sm text-slate-500">Connect gateways, publish manual payment instructions, and control family fee access.</p>
+                  </div>
+                  <Tabs defaultValue="gateways">
+                    <TabsList ariaLabel="Payment settings sections">
+                      <TabsTrigger value="gateways" icon={<CreditCard size={15} />}>Online gateways</TabsTrigger>
+                      <TabsTrigger value="manual" icon={<CreditCard size={15} />}>Manual payments</TabsTrigger>
+                      <TabsTrigger value="access" icon={<ShieldCheck size={15} />}>Fee access</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="gateways"><GatewaySettings /></TabsContent>
+                    <TabsContent value="manual"><PaymentSettings /></TabsContent>
+                    <TabsContent value="access"><FeeAccessSettings /></TabsContent>
+                  </Tabs>
+                </div>
+              )
+              : section === "document-templates" && user?.permissions?.includes("organisation.edit") ? <DocumentTemplateWorkspace />
+              : <PlaceholderView section={section} />}
+          </div>
         </main>
       </div>
     </div>
+  );
+}
+
+function ExamsSection({ canManage, canApprove }: { canManage: boolean; canApprove: boolean }) {
+  if (!canApprove) return <ExamWorkspace canManage={canManage} />;
+  return (
+    <Tabs defaultValue="exams">
+      <TabsList ariaLabel="Examination sections">
+        <TabsTrigger value="exams" icon={<BarChart3 size={15} />}>Examinations</TabsTrigger>
+        <TabsTrigger value="approvals" icon={<ShieldCheck size={15} />}>Approvals & publishing</TabsTrigger>
+      </TabsList>
+      <TabsContent value="exams"><ExamWorkspace canManage={canManage} /></TabsContent>
+      <TabsContent value="approvals"><ExamApprovalPanel /></TabsContent>
+    </Tabs>
   );
 }
 
