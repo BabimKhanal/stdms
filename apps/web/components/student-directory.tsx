@@ -170,17 +170,19 @@ function StudentDirectoryContent({
       setError(err instanceof Error ? err.message : "Unable to load student");
     }
   }
-  async function printIdentityCard() {
+  async function downloadIdentityCard() {
     if (!selected) return;
     try {
       const token = localStorage.getItem("edu_access_token");
       const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
-      const response = await fetch(`${base}/students/${selected.id}/identity-card`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const response = await fetch(`${base}/students/${selected.id}/document?type=identity_card`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (!response.ok) { const body = await response.json().catch(() => null) as { error?: string } | null; throw new Error(body?.error ?? "Unable to generate identity card"); }
-      const windowRef = window.open("", "_blank");
-      if (!windowRef) throw new Error("Allow pop-ups to print the identity card");
-      windowRef.document.write(await response.text());
-      windowRef.document.close();
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `identity-card-${selected.studentId}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
     } catch (err) { setError(err instanceof Error ? err.message : "Unable to generate identity card"); }
   }
   async function downloadTranscript() {
@@ -606,7 +608,7 @@ function StudentDirectoryContent({
             <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 lg:col-span-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">Student documents</p>
               <p className="mt-1 text-sm text-slate-600">Generate official documents from this student profile.</p>
-              <div className="mt-3 flex flex-wrap gap-2"><Button size="sm" onClick={() => void printIdentityCard()}>Print identity card</Button><Button size="sm" variant="outline" onClick={() => void downloadTranscript()}>Download transcript</Button><select value={examId} onChange={(event) => setExamId(event.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs"><option value="">Select marksheet</option>{exams.filter((exam) => exam.status === "published").map((exam) => <option key={exam.id} value={exam.id}>{exam.name}</option>)}</select><Button size="sm" variant="ghost" disabled={!examId} onClick={() => void openMarksheet()}>Print marksheet</Button></div>
+              <div className="mt-3 flex flex-wrap gap-2"><Button size="sm" onClick={() => void downloadIdentityCard()}>Download identity card</Button><Button size="sm" variant="outline" onClick={() => void downloadTranscript()}>Download transcript</Button><select value={examId} onChange={(event) => setExamId(event.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs"><option value="">Select marksheet</option>{exams.filter((exam) => exam.status === "published").map((exam) => <option key={exam.id} value={exam.id}>{exam.name}</option>)}</select><Button size="sm" variant="ghost" disabled={!examId} onClick={() => void openMarksheet()}>Print marksheet</Button></div>
             </div>
             <div>
               <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">

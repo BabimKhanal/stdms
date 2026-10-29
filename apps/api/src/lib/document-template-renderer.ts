@@ -3,6 +3,12 @@ import type { TemplateDesign, TemplateElement, TemplateElementStyle } from "@edu
 
 export type DocumentRenderData = Record<string, string>;
 
+export type DocumentRenderOptions = {
+  title: string;
+  showPrintButton?: boolean;
+  subjectRows?: Array<Record<string, string>>;
+};
+
 function escapeHtml(value: unknown): string {
   return String(value ?? "").replace(
     /[&<>"']/g,
@@ -71,10 +77,13 @@ async function qrMarkup(element: TemplateElement, data: DocumentRenderData) {
   }
 }
 
-function tableMarkup(element: TemplateElement) {
+function tableMarkup(element: TemplateElement, subjectRows?: Array<Record<string, string>>) {
   const config = element.table;
   if (!config) return "";
-  const rows = config.rows ?? [];
+  const rows =
+    config.source === "subjects" && subjectRows?.length
+      ? subjectRows.map((subject) => config.columns.map((column) => subject[column.key] ?? ""))
+      : config.rows ?? [];
   const totalWeight = config.columns.reduce((sum, column) => sum + column.width, 0) || 1;
   const fontSize = config.fontSize ?? 13;
   const head = config.columns
@@ -97,7 +106,11 @@ function tableMarkup(element: TemplateElement) {
   return `<div style="${baseCss(element)};border:1px solid ${escapeHtml(element.stroke ?? "#e2e8f0")};box-sizing:border-box"><table style="width:100%;border-collapse:collapse;font-size:${fontSize}px;font-family:${escapeHtml(element.style?.fontFamily ?? "Inter")},Arial,sans-serif"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
-async function renderElement(element: TemplateElement, data: DocumentRenderData) {
+async function renderElement(
+  element: TemplateElement,
+  data: DocumentRenderData,
+  options: DocumentRenderOptions,
+) {
   if (element.hidden) return "";
   if (element.type === "text" || element.type === "field") {
     const value = element.type === "field" ? data[element.field ?? ""] ?? "" : element.text ?? "";
@@ -110,22 +123,25 @@ async function renderElement(element: TemplateElement, data: DocumentRenderData)
     return `<div style="${baseCss(element)};border-top:${element.strokeWidth ?? 1}px ${element.borderStyle ?? "solid"} ${escapeHtml(element.stroke ?? "#cbd5e1")};height:0"></div>`;
   }
   if (element.type === "image" || element.type === "photo") {
-    if (element.src) {
-      return `<div style="${baseCss(element)};border:${element.stroke ? `${element.strokeWidth ?? 1}px solid ${escapeHtml(element.stroke)}` : "none"};box-sizing:border-box"><img src="${escapeHtml(element.src)}" alt="" style="width:100%;height:100%;object-fit:${element.type === "photo" ? "cover" : "contain"}"></div>`;
+    const imageSource = element.src || (element.field ? data[element.field] : "") || (element.type === "photo" ? data.photoUrl : "");
+    if (imageSource) {
+      return `<div style="${baseCss(element)};border:${element.stroke ? `${element.strokeWidth ?? 1}px solid ${escapeHtml(element.stroke)}` : "none"};box-sizing:border-box"><img src="${escapeHtml(imageSource)}" alt="" style="width:100%;height:100%;object-fit:${element.type === "photo" ? "cover" : "contain"}"></div>`;
     }
     return `<div style="${baseCss(element)};border:${element.strokeWidth ?? 1}px dashed ${escapeHtml(element.stroke ?? "#94a3b8")};background:${element.type === "photo" ? "#e2e8f0" : "#f8fafc"};display:grid;place-items:center;color:#64748b;font:600 ${Math.max(10, Math.min(element.width, element.height) * 0.14)}px Arial;box-sizing:border-box">${element.type === "photo" ? "PHOTO" : "IMAGE"}</div>`;
   }
   if (element.type === "qr") return qrMarkup(element, data);
-  if (element.type === "table") return tableMarkup(element);
+  if (element.type === "table") return tableMarkup(element, options.subjectRows);
   return "";
 }
 
 export async function renderTemplateHtml(
   design: TemplateDesign,
   data: DocumentRenderData,
-  options: { title: string; showPrintButton?: boolean },
+  options: DocumentRenderOptions,
 ) {
-  const elements = await Promise.all(design.elements.map((element) => renderElement(element, data)));
+  const elements = await Promise.all(
+    design.elements.map((element) => renderElement(element, data, options)),
+  );
   const { width, height, background } = design.page;
   const pageSize = `${Math.round((width * 25.4) / 96)}mm ${Math.round((height * 25.4) / 96)}mm`;
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(options.title)}</title><style>

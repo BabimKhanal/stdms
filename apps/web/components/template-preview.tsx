@@ -123,11 +123,12 @@ export function TemplateElementView({ element, overrides }: { element: TemplateE
   }
 
   if (element.type === "image" || element.type === "photo") {
-    if (element.src) {
+    const imageSource = element.src || (element.field ? resolveFieldValue(element.field, overrides) : "") || (element.type === "photo" ? resolveFieldValue("photoUrl", overrides) : "");
+    if (imageSource) {
       return (
         <div style={{ ...style, overflow: "hidden", borderRadius: radius, border: element.stroke ? `${element.strokeWidth ?? 1}px solid ${element.stroke}` : undefined }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={element.src} alt={element.name ?? "Template image"} style={{ width: "100%", height: "100%", objectFit: element.type === "photo" ? "cover" : "contain" }} />
+          <img src={imageSource} alt={element.name ?? "Template image"} style={{ width: "100%", height: "100%", objectFit: element.type === "photo" ? "cover" : "contain" }} />
         </div>
       );
     }

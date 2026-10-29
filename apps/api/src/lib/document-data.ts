@@ -39,6 +39,19 @@ export type DocumentOrganisation = {
   logoUrl?: string | null;
 };
 
+export type DocumentAcademicSummary = {
+  examName?: string;
+  result?: string;
+  totalMarks?: string;
+  obtainedMarks?: string;
+  grade?: string;
+  gpa?: string;
+  percentage?: string;
+  rank?: string;
+  attendance?: string;
+  remarks?: string;
+};
+
 function verificationBase() {
   return (process.env.PUBLIC_WEB_URL ?? "https://stdms.onrender.com").replace(/\/$/, "");
 }
@@ -47,9 +60,18 @@ function today() {
   return new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+function displayDate(value: string | null | undefined) {
+  if (!value) return "";
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
 export function buildDocumentData(
   student: DocumentStudent,
   organisation: DocumentOrganisation | undefined,
+  academic?: DocumentAcademicSummary,
 ): Record<string, string> {
   const guardians = student.guardians ?? [];
   const findGuardian = (pattern: RegExp) => guardians.find((guardian) => pattern.test(guardian.relationship));
@@ -64,7 +86,7 @@ export function buildDocumentData(
     rollNumber: student.rollNumber == null ? "" : String(student.rollNumber),
     className: student.className ?? "",
     sectionName: student.sectionName ?? "",
-    dateOfBirth: student.dateOfBirth ?? "",
+    dateOfBirth: displayDate(student.dateOfBirth),
     gender: student.gender ?? "",
     bloodGroup: student.bloodGroup ?? "",
     nationality: student.nationality ?? "",
@@ -77,16 +99,16 @@ export function buildDocumentData(
     academicYear: session,
     session,
     issueDate: today(),
-    grade: "",
-    gpa: "",
-    percentage: "",
-    rank: "",
-    attendance: "",
-    examName: "",
-    result: "",
-    totalMarks: "",
-    obtainedMarks: "",
-    remarks: "",
+    grade: academic?.grade ?? "",
+    gpa: academic?.gpa ?? "",
+    percentage: academic?.percentage ?? "",
+    rank: academic?.rank ?? "",
+    attendance: academic?.attendance ?? "",
+    examName: academic?.examName ?? "",
+    result: academic?.result ?? "",
+    totalMarks: academic?.totalMarks ?? "",
+    obtainedMarks: academic?.obtainedMarks ?? "",
+    remarks: academic?.remarks ?? "",
     principal: "Principal",
     schoolName: organisation?.name ?? "",
     schoolAddress: organisation?.address ?? "",

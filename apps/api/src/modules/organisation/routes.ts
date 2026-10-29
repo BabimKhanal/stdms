@@ -1,15 +1,19 @@
 import { Hono } from "hono";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { DOCUMENT_SAMPLE_VALUES, DOCUMENT_TYPES, isTemplateDesign, idSchema } from "@edu/shared";
 import type { AppEnv, DB } from "../../lib/types";
-import { badRequest } from "../../lib/errors";
+import { attendanceRecords, attendanceSettings } from "../../db/schema";
+import { badRequest, forbidden } from "../../lib/errors";
 import { ok, okList, parse } from "../../lib/http";
 import { writeAudit } from "../../lib/audit";
 import { requireAuth, requireOrg, requirePermission } from "../../middleware/guards";
-import { buildDocumentData } from "../../lib/document-data";
+import { buildDocumentData, type DocumentAcademicSummary } from "../../lib/document-data";
 import { renderTemplateHtml } from "../../lib/document-template-renderer";
+import { renderTemplatePdf } from "../../lib/document-pdf";
 import * as svc from "./service";
 import * as studentSvc from "../students/service";
+import * as examSvc from "../exams/service";
 
 export const organisationRoutes = new Hono<AppEnv>();
 organisationRoutes.use("*", requireAuth, requireOrg);
@@ -67,21 +71,17 @@ async function previewData(db: DB, orgId: string, studentId?: string) {
     schoolLogoUrl: organisation.logoUrl ?? "",
   } as Record<string, string>;
   if (!studentId) return base;
-  try {
-    const student = await studentSvc.getStudent(db, orgId, studentId);
-    return {
-      ...base,
-      ...buildDocumentData(student, {
-        name: organisation.name,
-        address: organisation.address,
-        phone: organisation.phone,
-        email: organisation.email,
-        logoUrl: organisation.logoUrl,
-      }),
-    };
-  } catch {
-    return base;
-  }
+  const student = await studentSvc.getStudent(db, orgId, studentId);
+  return {
+    ...base,
+    ...buildDocumentData(student, {
+      name: organisation.name,
+      address: organisation.address,
+      phone: organisation.phone,
+      email: organisation.email,
+      logoUrl: organisation.logoUrl,
+    }),
+  };
 }
 
 organisationRoutes.get("/document-templates", requirePermission("organisation.view"), async (c) => okList(c, await svc.listDocumentTemplates(c.get("db"), c.get("orgId")!), 0, 1, 1000));

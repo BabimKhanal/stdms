@@ -65,7 +65,7 @@ function line(
 }
 
 function photo(x: number, y: number, width: number, height: number, extra: Partial<TemplateElement> = {}): TemplateElement {
-  return el({ type: "photo", x, y, width, height, ...extra });
+  return el({ type: "photo", x, y, width, height, field: "photoUrl", ...extra });
 }
 
 function qr(x: number, y: number, size: number, extra: Partial<TemplateElement> = {}): TemplateElement {

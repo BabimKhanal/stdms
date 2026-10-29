@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import { and, eq } from "drizzle-orm";
 import {
+  DOCUMENT_TYPES,
   guardianInputSchema,
+  isTemplateDesign,
   linkGuardianSchema,
   studentInputSchema,
   studentListQuerySchema,
@@ -16,6 +19,10 @@ import {
 import { writeAudit } from "../../lib/audit";
 import * as svc from "./service";
 import { getCurrentYearId } from "../academics/service";
+import { documentTemplates, organisations } from "../../db/schema";
+import { badRequest, notFound } from "../../lib/errors";
+import { buildDocumentData } from "../../lib/document-data";
+import { renderTemplatePdf } from "../../lib/document-pdf";
 
 export const studentRoutes = new Hono<AppEnv>();
 
@@ -50,6 +57,56 @@ studentRoutes.get(
         c.get("user")!,
       ),
     ),
+);
+
+studentRoutes.get(
+  "/:id/document",
+  requirePermission("student.view"),
+  async (c) => {
+    const db = c.get("db");
+    const orgId = c.get("orgId")!;
+    const studentId = c.req.param("id");
+    const documentType = c.req.query("type") ?? "identity_card";
+    if (!DOCUMENT_TYPES.includes(documentType as (typeof DOCUMENT_TYPES)[number])) {
+      throw badRequest("Unsupported document type", "validation");
+    }
+    const student = await svc.getStudent(db, orgId, studentId, c.get("user")!);
+    const [template] = await db
+      .select({ name: documentTemplates.name, design: documentTemplates.design })
+      .from(documentTemplates)
+      .where(
+        and(
+          eq(documentTemplates.organisationId, orgId),
+          eq(documentTemplates.documentType, documentType),
+          eq(documentTemplates.isDefault, 1),
+        ),
+      )
+      .limit(1);
+    if (!template) throw notFound(`No default ${documentType} template is configured`);
+    if (!isTemplateDesign(template.design)) throw badRequest("The configured document template is invalid", "validation");
+
+    const [organisation] = await db
+      .select({ name: organisations.name, address: organisations.address, phone: organisations.phone, email: organisations.email, logoUrl: organisations.logoUrl })
+      .from(organisations)
+      .where(eq(organisations.id, orgId))
+      .limit(1);
+    const data = buildDocumentData(student, organisation);
+    const pdf = await renderTemplatePdf(template.design, [{ data }], { title: `${student.fullName} - ${template.name}` });
+    await writeAudit(c, {
+      action: "generate",
+      entity: "student_document",
+      entityId: student.id,
+      newValue: { documentType, templateName: template.name },
+    });
+    const filename = `${documentType}-${student.studentId}`.replace(/[^a-zA-Z0-9._-]+/g, "-").toLowerCase();
+    return new Response(pdf, {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${filename}.pdf"`,
+        "Cache-Control": "no-store",
+      },
+    });
+  },
 );
 studentRoutes.get("/:id", requirePermission("student.view"), async (c) => {
   return ok(

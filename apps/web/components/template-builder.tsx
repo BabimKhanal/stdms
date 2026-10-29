@@ -46,6 +46,7 @@ import {
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { TemplatePageView } from "./template-preview";
+import { CloudinaryMultiUpload } from "./cloudinary-upload";
 import { PRESET_CATEGORIES, SUBJECT_TABLE, TEMPLATE_PRESETS, blankDesign } from "../lib/template-presets";
 import { cn } from "../lib/utils";
 
@@ -87,7 +88,7 @@ export function TemplateBuilder({
   const [design, setDesign] = useState<TemplateDesign>(initial.design);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(() => clamp(640 / initial.design.page.height, 0.35, 1));
-  const [tab, setTab] = useState<"templates" | "elements" | "layers">("elements");
+  const [tab, setTab] = useState<"templates" | "elements" | "media" | "layers">("elements");
   const [presetCategory, setPresetCategory] = useState<DocumentType | "all">(initial.documentType);
   const [history, setHistory] = useState<TemplateDesign[]>([]);
   const [, setFuture] = useState<TemplateDesign[]>([]);
@@ -95,6 +96,13 @@ export function TemplateBuilder({
   const [makeDefault, setMakeDefault] = useState(initial.isDefault ?? false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [mediaUrls, setMediaUrls] = useState<string[]>(() =>
+    initial.design.elements
+      .filter((element) => element.type === "image" || element.type === "photo")
+      .map((element) => element.src)
+      .filter((src): src is string => Boolean(src)),
+  );
+  const [mediaUrl, setMediaUrl] = useState("");
 
   const zoomRef = useRef(zoom);
   const pageRef = useRef(design.page);
@@ -265,6 +273,20 @@ export function TemplateBuilder({
 
   function addField(key: string) {
     const page = design.page;
+    if (key === "photoUrl") {
+      addElement({
+        type: "photo",
+        field: "photoUrl",
+        x: Math.round(page.width / 2 - 120),
+        y: Math.round(page.height / 3),
+        width: 240,
+        height: 300,
+        radius: 6,
+        stroke: "#cbd5e1",
+        strokeWidth: 2,
+      });
+      return;
+    }
     addElement({
       type: "field",
       field: key,
