@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import type { DB } from "../../lib/types";
-import { auditLogs, documentTemplates, featureFlags, organisations } from "../../db/schema";
+import { auditLogs, documentTemplates, emailSettings, featureFlags, organisations } from "../../db/schema";
 import { notFound } from "../../lib/errors";
 
 export async function get(db: DB, orgId: string) {
@@ -41,6 +41,16 @@ export async function updateBranding(
       primaryColor: organisations.primaryColor,
     });
   if (!row) throw notFound("Organisation not found");
+  return row;
+}
+export async function getEmailSettings(db: DB, orgId: string) {
+  const [row] = await db.select().from(emailSettings).where(eq(emailSettings.organisationId, orgId)).limit(1);
+  if (row) return row;
+  const organisation = await get(db, orgId);
+  return { id: null, organisationId: orgId, provider: "resend", enabled: true, fromName: organisation.name, fromEmail: organisation.email ?? "no-reply@example.com", replyTo: organisation.email, footer: null, dailyLimit: 1000 };
+}
+export async function saveEmailSettings(db: DB, orgId: string, input: Omit<typeof emailSettings.$inferInsert, "organisationId">) {
+  const [row] = await db.insert(emailSettings).values({ ...input, organisationId: orgId }).onConflictDoUpdate({ target: emailSettings.organisationId, set: { ...input, updatedAt: new Date() } }).returning();
   return row;
 }
 export async function listFeatures(db: DB, orgId: string) { return db.select().from(featureFlags).where(eq(featureFlags.organisationId, orgId)); }

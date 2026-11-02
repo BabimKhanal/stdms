@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm";
-import { bigint, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigint, boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAtCol, idCol, orgIdCol, updatedAtCol } from "./tenant";
 import { organisations, users } from "./tenant";
 
@@ -37,6 +37,25 @@ export const documentTemplates = pgTable(
     updatedAt: updatedAtCol(),
   },
   (t) => [uniqueIndex("document_templates_org_name_uq").on(t.organisationId, t.name), index("document_templates_org_type_idx").on(t.organisationId, t.documentType)],
+);
+
+/** Tenant-owned outbound email identity and delivery preferences. */
+export const emailSettings = pgTable(
+  "email_settings",
+  {
+    id: idCol(),
+    organisationId: orgIdCol(),
+    provider: text("provider").notNull().default("resend"),
+    enabled: boolean("enabled").notNull().default(true),
+    fromName: text("from_name").notNull(),
+    fromEmail: text("from_email").notNull(),
+    replyTo: text("reply_to"),
+    footer: text("footer"),
+    dailyLimit: integer("daily_limit").notNull().default(1000),
+    createdAt: createdAtCol(),
+    updatedAt: updatedAtCol(),
+  },
+  (t) => [uniqueIndex("email_settings_org_uq").on(t.organisationId)],
 );
 
 /** Central notification feed (SRS §52) — channels (push/email/SMS) fan out from here. */
