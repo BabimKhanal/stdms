@@ -28,7 +28,7 @@ import {
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { EduApiClient } from "@edu/api-client";
+import { ApiError, EduApiClient } from "@edu/api-client";
 import { BrandingSettings, type OrganisationBranding } from "./branding-settings";
 import { StudentDirectory } from "./student-directory";
 import { FeeWorkspace } from "./fee-workspace";
@@ -168,11 +168,7 @@ export function Portal() {
       })
       .catch((error: unknown) => {
         if (!active) return;
-        if (error instanceof Error && error.message === "Authentication required") {
-          localStorage.clear();
-          router.replace("/login");
-          return;
-        }
+        if (error instanceof ApiError && error.status === 401) return;
         setDashboardError(error instanceof Error ? error.message : "Unable to load the dashboard");
       })
       .finally(() => { if (active) setDashboardLoading(false); });
