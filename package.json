@@ -16,6 +16,8 @@
     "ci": "npm run typecheck && npm run lint && npm run test && npm run build",
     "db:generate": "npm run db:generate -w @edu/api",
     "db:migrate": "npm run db:migrate -w @edu/api",
+    "db:backup": "npm run db:backup -w @edu/api",
+    "db:backup:check": "npm run db:backup:check -w @edu/api",
     "db:seed": "npm run db:seed -w @edu/api",
     "db:setup": "npm run db:setup -w @edu/api"
   },

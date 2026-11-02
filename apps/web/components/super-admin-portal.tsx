@@ -65,6 +65,21 @@ type PlatformAudit = {
   entityId?: string | null;
   createdAt: string;
 };
+type BackupRun = {
+  id: string;
+  status: string;
+  provider: string;
+  objectKey?: string | null;
+  sizeBytes?: number | null;
+  error?: string | null;
+  startedAt: string;
+  finishedAt?: string | null;
+};
+type BackupStatus = {
+  schedule: string;
+  retention: { daily: number; monthly: number };
+  runs: BackupRun[];
+};
 type FeatureFlag = { id: string; flag: string; enabled: boolean };
 type TenantOperation = {
   id: string;
@@ -188,6 +203,9 @@ export function SuperAdminPortal({
   const [health, setHealth] = useState<PlatformHealth | null>(null);
   const [activity, setActivity] = useState<PlatformAudit[]>([]);
   const [activityError, setActivityError] = useState("");
+  const [backupStatus, setBackupStatus] = useState<BackupStatus | null>(null);
+  const [backupError, setBackupError] = useState("");
+  const [backupLoading, setBackupLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
@@ -306,6 +324,32 @@ export function SuperAdminPortal({
       active = false;
     };
   }, [panel, refreshKey, selectedTenant]);
+
+  useEffect(() => {
+    if (panel !== "backups") return;
+    let active = true;
+    setBackupLoading(true);
+    setBackupError("");
+    client()
+      .get<BackupStatus>("/super/backups")
+      .then((status) => {
+        if (active) setBackupStatus(status);
+      })
+      .catch((cause: unknown) => {
+        if (active)
+          setBackupError(
+            cause instanceof Error
+              ? cause.message
+              : "Backup history is unavailable",
+          );
+      })
+      .finally(() => {
+        if (active) setBackupLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [panel, refreshKey]);
 
   const activeTenants = organisations.filter(
     (organisation) => organisation.status === "active",
@@ -1135,58 +1179,163 @@ export function SuperAdminPortal({
 
           {panel === "backups" && (
             <section className="space-y-6">
-              <div>
-                <p className="text-sm font-medium text-emerald-800">
-                  Data protection
-                </p>
-                <h2 className="mt-1 text-3xl font-semibold tracking-tight">
-                  Backups and recovery
-                </h2>
-                <p className="mt-2 text-sm text-slate-600">
-                  Backup operations must be connected to the hosting provider
-                  before they can be managed here.
-                </p>
-              </div>
-              <div className="max-w-3xl border-y border-slate-200 py-7">
-                <div className="flex items-start gap-4">
-                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-amber-100 text-amber-800">
-                    <Archive size={20} />
-                  </span>
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-semibold">
-                        Application backup integration
-                      </h3>
-                      <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
-                        Not configured
-                      </span>
-                    </div>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">
-                      No backup provider, schedule, or restore-job API is
-                      configured in this application. Backup and restore actions
-                      are unavailable until an encrypted storage target,
-                      retention policy, and recovery workflow are provisioned.
-                    </p>
-                    <div className="mt-4 grid gap-2 text-sm text-slate-700 sm:grid-cols-2">
-                      <p className="flex items-center gap-2">
-                        <X size={15} className="text-amber-700" />
-                        Scheduled snapshots
-                      </p>
-                      <p className="flex items-center gap-2">
-                        <X size={15} className="text-amber-700" />
-                        Verified restore history
-                      </p>
-                      <p className="flex items-center gap-2">
-                        <X size={15} className="text-amber-700" />
-                        Per-tenant exports
-                      </p>
-                      <p className="flex items-center gap-2">
-                        <ShieldCheck size={15} className="text-emerald-700" />
-                        Restore actions remain disabled
-                      </p>
-                    </div>
-                  </div>
+              <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+                <div>
+                  <p className="text-sm font-medium text-emerald-800">
+                    Data protection
+                  </p>
+                  <h2 className="mt-1 text-3xl font-semibold tracking-tight">
+                    Backups and recovery
+                  </h2>
+                  <p className="mt-2 text-sm text-slate-600">
+                    Encrypted full-database backups to S3-compatible storage.
+                  </p>
                 </div>
+                <Button
+                  variant="outline"
+                  onClick={refresh}
+                  disabled={backupLoading}
+                >
+                  <RefreshCw
+                    size={15}
+                    className={backupLoading ? "animate-spin" : ""}
+                  />
+                  Refresh status
+                </Button>
+              </div>
+              {backupError && (
+                <div
+                  role="status"
+                  className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"
+                >
+                  <AlertTriangle size={17} className="mt-0.5 shrink-0" />
+                  <p>
+                    Backup history could not be loaded. Confirm the
+                    backup-history migration is deployed and the API is healthy.{" "}
+                    <span className="text-amber-800">{backupError}</span>
+                  </p>
+                </div>
+              )}
+              {!backupError && !backupLoading && !backupStatus?.runs.length && (
+                <div
+                  role="status"
+                  className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"
+                >
+                  <AlertTriangle size={17} className="mt-0.5 shrink-0" />
+                  <p>
+                    The nightly schedule is declared in the Render Blueprint. It
+                    becomes active after the Blueprint is synced and the Cron
+                    service has its database and R2 secrets. No successful
+                    backup is recorded yet.
+                  </p>
+                </div>
+              )}
+              <div className="grid gap-3 sm:grid-cols-3">
+                <ProfileMetric
+                  label="Schedule"
+                  value={
+                    backupStatus?.schedule === "0 2 * * *"
+                      ? "Daily · 02:00 UTC"
+                      : (backupStatus?.schedule ?? "Loading")
+                  }
+                  detail="Declared in Render Blueprint; reusable on VPS"
+                  icon={RefreshCw}
+                />
+                <ProfileMetric
+                  label="Latest run"
+                  value={
+                    backupStatus?.runs[0]?.status.replaceAll("_", " ") ??
+                    (backupLoading ? "Loading" : "No runs yet")
+                  }
+                  detail={
+                    backupStatus?.runs[0]?.startedAt
+                      ? new Date(
+                          backupStatus.runs[0].startedAt,
+                        ).toLocaleString()
+                      : "Waiting for the first scheduled run"
+                  }
+                  icon={Archive}
+                />
+                <ProfileMetric
+                  label="Retention"
+                  value={`${backupStatus?.retention.daily ?? 35} daily · ${backupStatus?.retention.monthly ?? 12} monthly`}
+                  detail="Older backups are pruned from the backup prefix"
+                  icon={ShieldCheck}
+                />
+              </div>
+              <section>
+                <div className="mb-3">
+                  <h3 className="text-base font-semibold">
+                    Recent backup runs
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Run outcome, encrypted object, and duration metadata.
+                  </p>
+                </div>
+                {backupStatus?.runs.length ? (
+                  <div className="overflow-x-auto border-y border-slate-200">
+                    <table className="w-full min-w-190 border-collapse text-left">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          <th className="px-3 py-3">Started</th>
+                          <th className="px-3 py-3">Result</th>
+                          <th className="px-3 py-3">Size</th>
+                          <th className="px-3 py-3">Backup object</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {backupStatus.runs.map((run) => (
+                          <tr key={run.id}>
+                            <td className="px-3 py-3 text-sm text-slate-600">
+                              {new Date(run.startedAt).toLocaleString()}
+                            </td>
+                            <td className="px-3 py-3">
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${run.status === "completed" ? "bg-emerald-50 text-emerald-800" : run.status === "failed" ? "bg-rose-50 text-rose-800" : "bg-amber-50 text-amber-800"}`}
+                              >
+                                {run.status.replaceAll("_", " ")}
+                              </span>
+                              {run.error && (
+                                <p className="mt-1 max-w-sm text-xs text-amber-800">
+                                  {run.error}
+                                </p>
+                              )}
+                            </td>
+                            <td className="px-3 py-3 text-sm text-slate-600">
+                              {run.sizeBytes
+                                ? formatStorage(run.sizeBytes)
+                                : "—"}
+                            </td>
+                            <td
+                              className="max-w-90 truncate px-3 py-3 font-mono text-xs text-slate-600"
+                              title={run.objectKey ?? undefined}
+                            >
+                              {run.objectKey ?? "No object uploaded"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="border-y border-slate-200 py-10 text-center text-sm text-slate-500">
+                    {backupLoading
+                      ? "Loading backup history…"
+                      : "No backup runs recorded yet."}
+                  </p>
+                )}
+              </section>
+              <div className="flex items-start gap-3 border-t border-slate-200 pt-4 text-sm text-slate-600">
+                <CircleHelp
+                  size={17}
+                  className="mt-0.5 shrink-0 text-slate-500"
+                />
+                <p>
+                  Backups are encrypted with AES-256-GCM before upload. The
+                  decryption key must be retained securely outside this
+                  database. Restore remains a manual, isolated recovery
+                  procedure; a successful upload is not a verified restore.
+                </p>
               </div>
             </section>
           )}

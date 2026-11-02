@@ -21,6 +21,19 @@ The CI security gate audits deployed API/web production dependencies. Audit the 
 - Target RPO: 24 hours without PITR, 15 minutes with PITR. Target RTO: 4 hours.
 - Backup success must alert an accountable operator; a backup that has not been restored is not considered verified.
 
+### Render and Cloudflare R2 setup
+
+The Render Blueprint defines a daily 02:00 UTC Docker Cron job with PostgreSQL 18 `pg_dump`, AES-256-GCM client-side encryption, and 35 daily plus 12 monthly restore points. It uploads the encrypted custom-format dump and a decryption manifest to the `database/` prefix of a dedicated S3-compatible bucket.
+
+1. Create a private Cloudflare R2 bucket and an access key limited to that bucket.
+2. Set `BACKUP_DATABASE_URL` on the Cron service to the direct Neon PostgreSQL URL with a role that can dump the complete database. Do not use the transaction pooler URL.
+3. Set `BACKUP_S3_ENDPOINT`, `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY_ID`, and `BACKUP_S3_SECRET_ACCESS_KEY` on the Cron service.
+4. Preserve the generated `BACKUP_ENCRYPTION_KEY` in an approved secrets vault. It is required to decrypt backups after moving the runner to a VPS; never store it in the database or commit it.
+5. Configure `BACKUP_ALERT_WEBHOOK_URL` to an operator-owned endpoint that accepts JSON run events.
+6. Validate local or VPS settings without connecting to the database using `npm run db:backup:check -w @edu/api`.
+7. Deploy the migration and Blueprint, inspect the first Cron run, and verify the encrypted object and manifest exist in R2.
+8. Complete an isolated restore drill before treating backups as production-ready. During a VPS move, reuse the same storage prefix, key, database history, and schedule intent; replace only the Render Cron runner.
+
 ## Restore drill
 
 Run before the first pilot and quarterly:

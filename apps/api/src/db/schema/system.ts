@@ -1,5 +1,16 @@
 import { relations } from "drizzle-orm";
-import { bigint, boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { createdAtCol, idCol, orgIdCol, updatedAtCol } from "./tenant";
 import { organisations, users } from "./tenant";
 
@@ -17,10 +28,32 @@ export const files = pgTable(
     mimeType: text("mime_type"),
     size: bigint("size", { mode: "number" }),
     url: text("url"),
-    uploadedBy: uuid("uploaded_by").references(() => users.id, { onDelete: "set null" }),
+    uploadedBy: uuid("uploaded_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
     createdAt: createdAtCol(),
   },
   (t) => [uniqueIndex("files_org_key_uq").on(t.organisationId, t.key)],
+);
+
+/** Global execution history for encrypted full-database backups. */
+export const backupJobs = pgTable(
+  "backup_jobs",
+  {
+    id: idCol(),
+    status: text("status").notNull(),
+    provider: text("provider").notNull(),
+    objectKey: text("object_key"),
+    sizeBytes: bigint("size_bytes", { mode: "number" }),
+    sha256: text("sha256"),
+    error: text("error"),
+    startedAt: timestamp("started_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    createdAt: createdAtCol(),
+  },
+  (table) => [index("backup_jobs_started_at_idx").on(table.startedAt)],
 );
 
 export const documentTemplates = pgTable(
@@ -32,11 +65,19 @@ export const documentTemplates = pgTable(
     documentType: text("document_type").notNull(),
     design: jsonb("design").$type<Record<string, unknown>>().notNull(),
     isDefault: integer("is_default").notNull().default(0),
-    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdBy: uuid("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
     createdAt: createdAtCol(),
     updatedAt: updatedAtCol(),
   },
-  (t) => [uniqueIndex("document_templates_org_name_uq").on(t.organisationId, t.name), index("document_templates_org_type_idx").on(t.organisationId, t.documentType)],
+  (t) => [
+    uniqueIndex("document_templates_org_name_uq").on(t.organisationId, t.name),
+    index("document_templates_org_type_idx").on(
+      t.organisationId,
+      t.documentType,
+    ),
+  ],
 );
 
 /** Tenant-owned outbound email identity and delivery preferences. */
@@ -78,11 +119,16 @@ export const emailTemplates = pgTable(
     htmlBody: text("html_body").notNull(),
     textBody: text("text_body"),
     isActive: boolean("is_active").notNull().default(true),
-    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdBy: uuid("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
     createdAt: createdAtCol(),
     updatedAt: updatedAtCol(),
   },
-  (t) => [uniqueIndex("email_templates_org_key_uq").on(t.organisationId, t.key), index("email_templates_org_idx").on(t.organisationId)],
+  (t) => [
+    uniqueIndex("email_templates_org_key_uq").on(t.organisationId, t.key),
+    index("email_templates_org_idx").on(t.organisationId),
+  ],
 );
 
 /** Immutable per-recipient email delivery history for support and retry. */
@@ -98,11 +144,16 @@ export const emailDeliveries = pgTable(
     provider: text("provider").notNull(),
     status: text("status").notNull().default("queued"),
     error: text("error"),
-    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdBy: uuid("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     createdAt: createdAtCol(),
   },
-  (t) => [index("email_deliveries_org_created_idx").on(t.organisationId, t.createdAt), index("email_deliveries_status_idx").on(t.organisationId, t.status)],
+  (t) => [
+    index("email_deliveries_org_created_idx").on(t.organisationId, t.createdAt),
+    index("email_deliveries_status_idx").on(t.organisationId, t.status),
+  ],
 );
 
 /** Central notification feed (SRS §52) — channels (push/email/SMS) fan out from here. */
@@ -134,7 +185,9 @@ export const pushTokens = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     token: text("token").notNull(),
     platform: text("platform").notNull().default("unknown"),
-    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
     createdAt: createdAtCol(),
   },
   (t) => [uniqueIndex("push_tokens_uq").on(t.token)],

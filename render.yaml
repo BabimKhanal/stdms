@@ -63,3 +63,33 @@ services:
         value: https://rc-epay.esewa.com.np/api/epay/main/v2/form
       - key: PAYMENT_CALLBACK_URL
         sync: false
+      - key: BACKUP_SCHEDULE
+        value: "0 2 * * *"
+  - type: cron
+    name: nucleus-database-backup
+    runtime: docker
+    dockerfilePath: ./apps/api/Dockerfile.backup
+    dockerContext: .
+    plan: 0.5c-1g
+    schedule: "0 2 * * *"
+    envVars:
+      - key: BACKUP_DATABASE_URL
+        sync: false
+      - key: BACKUP_S3_ENDPOINT
+        sync: false
+      - key: BACKUP_S3_REGION
+        value: auto
+      - key: BACKUP_S3_BUCKET
+        sync: false
+      - key: BACKUP_S3_ACCESS_KEY_ID
+        sync: false
+      - key: BACKUP_S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: BACKUP_ENCRYPTION_KEY
+        generateValue: true
+      - key: BACKUP_ALERT_WEBHOOK_URL
+        sync: false
+      - key: BACKUP_RETENTION_DAILY
+        value: "35"
+      - key: BACKUP_RETENTION_MONTHLY
+        value: "12"

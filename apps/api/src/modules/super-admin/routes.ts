@@ -4,6 +4,7 @@ import type { AppEnv } from "../../lib/types";
 import { ok, okList, parse } from "../../lib/http";
 import { forbidden, unauthorized } from "../../lib/errors";
 import { readiness } from "../../lib/health";
+import { env } from "../../env";
 import * as svc from "./service";
 export const superAdminRoutes = new Hono<AppEnv>();
 superAdminRoutes.use("*", async (c, next) => {
@@ -148,4 +149,14 @@ superAdminRoutes.get("/stats", async (c) =>
 superAdminRoutes.get("/health", async (c) => ok(c, await readiness()));
 superAdminRoutes.get("/audit", async (c) =>
   ok(c, await svc.listPlatformAudit(c.get("db"))),
+);
+superAdminRoutes.get("/backups", async (c) =>
+  ok(c, {
+    schedule: env.BACKUP_SCHEDULE,
+    retention: {
+      daily: env.BACKUP_RETENTION_DAILY,
+      monthly: env.BACKUP_RETENTION_MONTHLY,
+    },
+    runs: await svc.listBackupJobs(c.get("db")),
+  }),
 );

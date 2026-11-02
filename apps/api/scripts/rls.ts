@@ -27,6 +27,7 @@ const EXCLUDED = new Set([
   "organisations",
   "permissions",
   "platform_audit_logs",
+  "backup_jobs",
 ]);
 
 /** Tables without an organisation_id column — policy goes through a lookup. */

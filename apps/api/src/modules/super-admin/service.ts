@@ -2,6 +2,7 @@ import { and, count, desc, eq, isNotNull, sum } from "drizzle-orm";
 import type { DB } from "../../lib/types";
 import {
   auditLogs,
+  backupJobs,
   files,
   featureFlags,
   organisations,
@@ -187,5 +188,13 @@ export async function listPlatformAudit(db: DB) {
     .select()
     .from(platformAuditLogs)
     .orderBy(desc(platformAuditLogs.createdAt))
+    .limit(50);
+}
+
+export async function listBackupJobs(db: DB) {
+  return db
+    .select()
+    .from(backupJobs)
+    .orderBy(desc(backupJobs.startedAt))
     .limit(50);
 }
