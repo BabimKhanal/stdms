@@ -56,7 +56,7 @@ services:
       - key: ESEWA_ENABLED
         value: false
       - key: ESEWA_MERCHANT_CODE
-        value: EPAYTEST
+        sync: false
       - key: ESEWA_SECRET_KEY
         sync: false
       - key: ESEWA_FORM_URL
