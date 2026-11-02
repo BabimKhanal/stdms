@@ -8,6 +8,7 @@ CREATE TABLE "email_settings" (
   "reply_to" text,
   "footer" text,
   "daily_limit" integer DEFAULT 1000 NOT NULL,
+  "credentials_encrypted" text,
   "created_at" timestamp with time zone DEFAULT now() NOT NULL,
   "updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );--> statement-breakpoint

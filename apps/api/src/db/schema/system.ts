@@ -52,6 +52,7 @@ export const emailSettings = pgTable(
     replyTo: text("reply_to"),
     footer: text("footer"),
     dailyLimit: integer("daily_limit").notNull().default(1000),
+    credentialsEncrypted: text("credentials_encrypted"),
     createdAt: createdAtCol(),
     updatedAt: updatedAtCol(),
   },

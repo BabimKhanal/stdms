@@ -2,6 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import type { DB } from "../../lib/types";
 import { auditLogs, documentTemplates, emailSettings, featureFlags, organisations } from "../../db/schema";
 import { notFound } from "../../lib/errors";
+import { decryptEmailCredential, encryptEmailCredential } from "../../lib/email-credentials";
 
 export async function get(db: DB, orgId: string) {
   const [row] = await db.select().from(organisations).where(eq(organisations.id, orgId)).limit(1);
@@ -45,13 +46,24 @@ export async function updateBranding(
 }
 export async function getEmailSettings(db: DB, orgId: string) {
   const [row] = await db.select().from(emailSettings).where(eq(emailSettings.organisationId, orgId)).limit(1);
-  if (row) return row;
+  if (row) {
+    const { credentialsEncrypted, ...publicSettings } = row;
+    return { ...publicSettings, hasCredentials: Boolean(credentialsEncrypted) };
+  }
   const organisation = await get(db, orgId);
-  return { id: null, organisationId: orgId, provider: "resend", enabled: true, fromName: organisation.name, fromEmail: organisation.email ?? "no-reply@example.com", replyTo: organisation.email, footer: null, dailyLimit: 1000 };
+  return { id: null, organisationId: orgId, provider: "resend", enabled: true, fromName: organisation.name, fromEmail: organisation.email ?? "no-reply@example.com", replyTo: organisation.email, footer: null, dailyLimit: 1000, hasCredentials: false };
 }
-export async function saveEmailSettings(db: DB, orgId: string, input: Omit<typeof emailSettings.$inferInsert, "organisationId">) {
-  const [row] = await db.insert(emailSettings).values({ ...input, organisationId: orgId }).onConflictDoUpdate({ target: emailSettings.organisationId, set: { ...input, updatedAt: new Date() } }).returning();
-  return row;
+export async function saveEmailSettings(db: DB, orgId: string, input: { provider: string; enabled: boolean; fromName: string; fromEmail: string; replyTo: string | null; footer: string | null; dailyLimit: number; apiKey?: string }) {
+  const [existing] = await db.select({ credentialsEncrypted: emailSettings.credentialsEncrypted }).from(emailSettings).where(eq(emailSettings.organisationId, orgId)).limit(1);
+  const credentialsEncrypted = input.apiKey ? encryptEmailCredential(input.apiKey) : existing?.credentialsEncrypted ?? null;
+  const values = { provider: input.provider, enabled: input.enabled, fromName: input.fromName, fromEmail: input.fromEmail, replyTo: input.replyTo, footer: input.footer, dailyLimit: input.dailyLimit, credentialsEncrypted };
+  await db.insert(emailSettings).values({ ...values, organisationId: orgId }).onConflictDoUpdate({ target: emailSettings.organisationId, set: { ...values, updatedAt: new Date() } });
+  return getEmailSettings(db, orgId);
+}
+export async function getEmailDeliverySettings(db: DB, orgId: string) {
+  const [row] = await db.select().from(emailSettings).where(eq(emailSettings.organisationId, orgId)).limit(1);
+  if (!row) return undefined;
+  return { provider: row.provider as "console" | "resend", enabled: row.enabled, fromName: row.fromName, fromEmail: row.fromEmail, replyTo: row.replyTo, footer: row.footer, apiKey: row.credentialsEncrypted ? decryptEmailCredential(row.credentialsEncrypted) : undefined };
 }
 export async function listFeatures(db: DB, orgId: string) { return db.select().from(featureFlags).where(eq(featureFlags.organisationId, orgId)); }
 export async function listAudit(db: DB, orgId: string) { return db.select().from(auditLogs).where(eq(auditLogs.organisationId, orgId)).orderBy(desc(auditLogs.createdAt)); }

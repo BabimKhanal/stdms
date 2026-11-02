@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { emailSettings, employees, guardians, notifications, students, users } from "../../db/schema";
 import type { DB } from "../../db/client";
 import { deliverNotification } from "../../lib/notification-providers";
+import { decryptEmailCredential } from "../../lib/email-credentials";
 
 export type NotificationInput = {
   type: string;
@@ -42,8 +43,9 @@ export async function createForUsers(db: DB, orgId: string, userIds: string[], i
   }))).returning();
   const recipients = await db.select({ id: users.id, email: users.email, phone: sql<string | null>`coalesce(${employees.phone}, ${students.phone}, ${guardians.phone})` }).from(users).leftJoin(employees, eq(users.employeeId, employees.id)).leftJoin(students, eq(users.studentId, students.id)).leftJoin(guardians, eq(users.guardianId, guardians.id)).where(and(eq(users.organisationId, orgId), inArray(users.id, uniqueUserIds)));
   const recipientMap = new Map(recipients.map((recipient) => [recipient.id, recipient]));
-  const [settings] = await db.select({ provider: emailSettings.provider, enabled: emailSettings.enabled, fromName: emailSettings.fromName, fromEmail: emailSettings.fromEmail, replyTo: emailSettings.replyTo, footer: emailSettings.footer }).from(emailSettings).where(eq(emailSettings.organisationId, orgId)).limit(1);
-  await Promise.all(rows.map((row) => deliverNotification(recipientMap.get(row.userId) ?? { id: row.userId }, { title: input.title, body: input.body ?? "", data: input.data }, settings ? { ...settings, provider: settings.provider as "console" | "resend" } : undefined)));
+  const [settings] = await db.select({ provider: emailSettings.provider, enabled: emailSettings.enabled, fromName: emailSettings.fromName, fromEmail: emailSettings.fromEmail, replyTo: emailSettings.replyTo, footer: emailSettings.footer, credentialsEncrypted: emailSettings.credentialsEncrypted }).from(emailSettings).where(eq(emailSettings.organisationId, orgId)).limit(1);
+  const mailConfig = settings ? { ...settings, provider: settings.provider as "console" | "resend", apiKey: settings.credentialsEncrypted ? decryptEmailCredential(settings.credentialsEncrypted) : undefined } : undefined;
+  await Promise.all(rows.map((row) => deliverNotification(recipientMap.get(row.userId) ?? { id: row.userId }, { title: input.title, body: input.body ?? "", data: input.data }, mailConfig)));
   return rows;
 }
 

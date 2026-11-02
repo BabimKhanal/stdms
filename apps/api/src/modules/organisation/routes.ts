@@ -36,18 +36,20 @@ const emailSettingsInput = z.object({
   replyTo: z.string().email().nullable(),
   footer: z.string().max(2000).nullable(),
   dailyLimit: z.number().int().min(1).max(100000),
+  apiKey: z.string().max(500).optional(),
 }).strict();
 organisationRoutes.get("/email-settings", requirePermission("organisation.view"), async (c) => ok(c, await svc.getEmailSettings(c.get("db"), c.get("orgId")!)));
 organisationRoutes.put("/email-settings", requirePermission("organisation.edit"), async (c) => {
   const input = parse(emailSettingsInput, await c.req.json());
   const row = await svc.saveEmailSettings(c.get("db"), c.get("orgId")!, input);
-  await writeAudit(c, { action: "update", entity: "email_settings", entityId: row.id, newValue: { ...input, enabled: input.enabled, provider: input.provider } });
+  await writeAudit(c, { action: "update", entity: "email_settings", entityId: row.id, newValue: { provider: input.provider, enabled: input.enabled, fromName: input.fromName, fromEmail: input.fromEmail, replyTo: input.replyTo, dailyLimit: input.dailyLimit, hasCredentials: Boolean(input.apiKey) || row.hasCredentials } });
   return ok(c, row);
 });
 organisationRoutes.post("/email-settings/test", requirePermission("organisation.edit"), async (c) => {
   const body = z.object({ to: z.string().email() }).parse(await c.req.json());
   const settings = await svc.getEmailSettings(c.get("db"), c.get("orgId")!);
-  await sendMail({ to: body.to, subject: "Email configuration test", html: `<p>Your institution email configuration is working.</p>` }, { provider: settings.provider as "console" | "resend", enabled: settings.enabled, fromName: settings.fromName, fromEmail: settings.fromEmail, replyTo: settings.replyTo, footer: settings.footer });
+  const deliverySettings = await svc.getEmailDeliverySettings(c.get("db"), c.get("orgId")!);
+  await sendMail({ to: body.to, subject: "Email configuration test", html: `<p>Your institution email configuration is working.</p>` }, deliverySettings ?? { provider: settings.provider as "console" | "resend", enabled: settings.enabled, fromName: settings.fromName, fromEmail: settings.fromEmail, replyTo: settings.replyTo, footer: settings.footer });
   return ok(c, { sent: true, to: body.to });
 });
 organisationRoutes.get("/features", requirePermission("organisation.view"), async (c) => okList(c, await svc.listFeatures(c.get("db"), c.get("orgId")!), 0, 1, 1000));

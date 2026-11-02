@@ -17,6 +17,7 @@ type EmailSettings = {
   replyTo: string | null;
   footer: string | null;
   dailyLimit: number;
+  hasCredentials: boolean;
 };
 
 const defaults: EmailSettings = {
@@ -27,6 +28,7 @@ const defaults: EmailSettings = {
   replyTo: null,
   footer: null,
   dailyLimit: 1000,
+  hasCredentials: false,
 };
 
 export function EmailSettings() {
@@ -34,6 +36,7 @@ export function EmailSettings() {
   const toast = useToast();
   const [form, setForm] = useState<EmailSettings>(defaults);
   const [testAddress, setTestAddress] = useState("");
+  const [apiKey, setApiKey] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -57,8 +60,9 @@ export function EmailSettings() {
     setSaving(true);
     setError("");
     try {
-      const saved = await api.put<EmailSettings>("/organisation/email-settings", form);
+      const saved = await api.put<EmailSettings>("/organisation/email-settings", { ...form, apiKey: apiKey || undefined });
       setForm(saved);
+      setApiKey("");
       toast.success("Email settings saved", "This tenant's outbound email identity has been updated.");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to save email settings";
@@ -97,6 +101,7 @@ export function EmailSettings() {
         <CardContent>
           <form onSubmit={save} className="grid gap-5 md:grid-cols-2">
             <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Provider</span><select value={form.provider} onChange={(event) => update("provider", event.target.value as EmailSettings["provider"])} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="resend">Resend</option><option value="console">Console / development</option></select></label>
+            <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Resend API key</span><Input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={form.hasCredentials ? "Configured; enter a new key to replace" : "re_..."} autoComplete="new-password" /><span className="mt-1 block text-xs text-slate-500">{form.hasCredentials ? "A tenant key is encrypted and configured." : "No tenant key configured; the platform fallback will be used."}</span></label>
             <label className="flex items-center gap-3 self-end rounded-xl border border-slate-200 px-3 py-3 text-sm"><input type="checkbox" checked={form.enabled} onChange={(event) => update("enabled", event.target.checked)} /> Enable outbound email for this tenant</label>
             <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">From name</span><Input value={form.fromName} onChange={(event) => update("fromName", event.target.value)} maxLength={120} required /></label>
             <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">From email</span><Input type="email" value={form.fromEmail} onChange={(event) => update("fromEmail", event.target.value)} required /></label>

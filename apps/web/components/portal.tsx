@@ -645,6 +645,7 @@ const roleNav: Record<string, string[]> = {
 
 const permissionNav: Record<string, string> = {
   branding: "organisation.edit",
+  "email-settings": "organisation.edit",
   "payment-settings": "payment.edit",
   "document-templates": "organisation.edit",
   reports: "report.view",

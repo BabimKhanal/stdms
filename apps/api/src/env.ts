@@ -40,6 +40,7 @@ const envSchema = z.object({
 
   MAILER_PROVIDER: z.enum(["console", "resend"]).default("console"),
   RESEND_API_KEY: z.string().default(""),
+  EMAIL_CREDENTIALS_ENCRYPTION_KEY: z.string().default(""),
   MAIL_FROM: z.string().default("Nucleus <no-reply@example.com>"),
   SMS_PROVIDER: z.enum(["console", "webhook"]).default("console"),
   SMS_WEBHOOK_URL: z.string().default(""),
