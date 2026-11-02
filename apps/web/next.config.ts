@@ -3,6 +3,9 @@ import path from "node:path";
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@edu/api-client", "@edu/shared"],
+  images: {
+    remotePatterns: [{ protocol: "https", hostname: "res.cloudinary.com" }],
+  },
   /* config options here */
   experimental: {
     agentFeedback: true,

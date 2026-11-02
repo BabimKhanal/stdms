@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import type { DB } from "../../lib/types";
 import { attendanceRecords, attendanceSettings, events, homework, homeworkSubmissions, leaveRequests, noticeAudiences, notices, studentGuardians, students, sections, classes, subjects, timetablePeriods, employees, enrolments, users } from "../../db/schema";
 import { createForUsers, organisationUserIds } from "../notifications/service";
@@ -9,7 +9,7 @@ import { eventInputSchema } from "@edu/shared";
 type EventInput = z.infer<typeof eventInputSchema>;
 import { badRequest, conflict, forbidden, notFound } from "../../lib/errors";
 import type { AuthUser } from "../../lib/context";
-import { assertAssigned, assertClassSubjectAssigned, guardianStudentIds, idList, learnerStudentIds, teacherScope } from "../../lib/teacher-scope";
+import { assertAssigned, assertClassSubjectAssigned, assertStudentAssigned, guardianStudentIds, idList, isUnrestrictedAdmin, learnerStudentIds, teacherScope } from "../../lib/teacher-scope";
 
 const tenant = (table: { organisationId: any }, orgId: string) => eq(table.organisationId, orgId);
 
@@ -46,6 +46,9 @@ export async function markAttendance(db: DB, orgId: string, userId: string, inpu
   if (!section[0]) throw notFound("Section not found");
   if (principal) await assertAssigned(db, principal, orgId, section[0].classId, input.sectionId);
   if (input.subjectId && principal) await assertClassSubjectAssigned(db, principal, orgId, section[0].classId, input.subjectId);
+  const studentIds = [...new Set(input.records.map((record) => record.studentId))];
+  const enrolled = await db.select({ studentId: enrolments.studentId }).from(enrolments).where(and(tenant(enrolments, orgId), eq(enrolments.sectionId, input.sectionId), inArray(enrolments.studentId, studentIds)));
+  if (enrolled.length !== studentIds.length) throw badRequest("One or more students are not enrolled in this section");
   const saved = await db.transaction(async (tx) => {
     for (const record of input.records) {
       await tx.insert(attendanceRecords).values({ organisationId: orgId, studentId: record.studentId, sectionId: input.sectionId, classId: section[0].classId, date: input.date, periodId: input.periodId ?? null, subjectId: input.subjectId ?? null, status: record.status, remarks: record.remarks ?? null, markedBy: userId }).onConflictDoUpdate({ target: [attendanceRecords.organisationId, attendanceRecords.studentId, attendanceRecords.date, attendanceRecords.periodId, attendanceRecords.subjectId], set: { status: record.status, remarks: record.remarks ?? null, markedBy: userId } });
@@ -95,7 +98,17 @@ export async function lowAttendance(db: DB, orgId: string, q: { from?: string; t
 
 export async function listLeave(db: DB, orgId: string, principal?: AuthUser) { const conditions = [tenant(leaveRequests, orgId)]; const learnerIds = principal ? await learnerStudentIds(db, orgId, principal) : null; if (learnerIds) conditions.push(learnerIds.length ? inArray(leaveRequests.studentId, learnerIds) : sql`false`); return db.select({ ...(leaveRequests as any), applicantName: sql<string>`coalesce(${students.firstName} || ' ' || ${students.lastName}, ${employees.fullName})` }).from(leaveRequests).leftJoin(students, eq(leaveRequests.studentId, students.id)).leftJoin(employees, eq(leaveRequests.employeeId, employees.id)).where(and(...conditions)).orderBy(desc(leaveRequests.createdAt)); }
 export async function createLeave(db: DB, orgId: string, userId: string, input: LeaveInput, principal?: AuthUser) { let studentId = input.studentId ?? null; let employeeId = input.employeeId ?? null; let applicantType = input.applicantType; if (principal) { if (principal.studentId) { studentId = principal.studentId; employeeId = null; applicantType = "student"; } else if (principal.roles.some((role) => role === "parent" || role === "guardian")) { const children = await guardianStudentIds(db, orgId, principal.guardianIds); if (!studentId || !children.includes(studentId)) throw forbidden("Choose one of your children for this leave request"); employeeId = null; applicantType = "student"; } else if (principal.employeeId) { employeeId = principal.employeeId; studentId = null; applicantType = "employee"; } } const [row] = await db.insert(leaveRequests).values({ ...input, applicantType, organisationId: orgId, studentId, employeeId, createdBy: userId }).returning(); return row; }
-export async function reviewLeave(db: DB, orgId: string, userId: string, id: string, input: { status: "approved" | "rejected"; reviewComment?: string | null }) { const [row] = await db.update(leaveRequests).set({ status: input.status, reviewComment: input.reviewComment ?? null, reviewedBy: userId, reviewedAt: new Date() }).where(and(eq(leaveRequests.id, id), tenant(leaveRequests, orgId))).returning(); if (!row) throw notFound("Leave request not found"); return row; }
+export async function reviewLeave(db: DB, orgId: string, principal: AuthUser, id: string, input: { status: "approved" | "rejected"; reviewComment?: string | null }) {
+  const [leave] = await db.select({ studentId: leaveRequests.studentId }).from(leaveRequests).where(and(eq(leaveRequests.id, id), tenant(leaveRequests, orgId))).limit(1);
+  if (!leave) throw notFound("Leave request not found");
+  if (principal.roles.some((role) => role === "teacher" || role === "class_teacher")) {
+    if (!leave.studentId) throw forbidden("Class teachers can only review learner leave requests");
+    await assertStudentAssigned(db, principal, orgId, leave.studentId);
+  }
+  const [row] = await db.update(leaveRequests).set({ status: input.status, reviewComment: input.reviewComment ?? null, reviewedBy: principal.id, reviewedAt: new Date() }).where(and(eq(leaveRequests.id, id), tenant(leaveRequests, orgId))).returning();
+  if (!row) throw notFound("Leave request not found");
+  return row;
+}
 
 function readAttachments(value: string | null) { if (!value) return []; try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [value]; } catch { return [value]; } }
 async function validateHomeworkSection(db: DB, orgId: string, classId: string, sectionId: string) {
@@ -123,7 +136,21 @@ export async function listSubmissions(db: DB, orgId: string, homeworkId: string,
 export async function saveSubmission(db: DB, orgId: string, homeworkId: string, studentId: string, input: { content?: string | null; fileUrl?: string | null }) { const [assignment] = await db.select({ classId: homework.classId, sectionId: homework.sectionId, teacherId: homework.teacherId, title: homework.title }).from(homework).where(and(eq(homework.id, homeworkId), tenant(homework, orgId))).limit(1); if (!assignment) throw notFound("Homework not found"); const [enrolment] = await db.select({ id: enrolments.id }).from(enrolments).where(and(eq(enrolments.studentId, studentId), eq(enrolments.classId, assignment.classId), eq(enrolments.sectionId, assignment.sectionId), tenant(enrolments, orgId))).limit(1); if (!enrolment) throw forbidden("You are not enrolled in this assignment"); const [row] = await db.insert(homeworkSubmissions).values({ organisationId: orgId, homeworkId, studentId, content: input.content ?? null, fileUrl: input.fileUrl ?? null, status: "submitted", submittedAt: new Date() }).onConflictDoUpdate({ target: [homeworkSubmissions.homeworkId, homeworkSubmissions.studentId], set: { content: input.content ?? null, fileUrl: input.fileUrl ?? null, status: "submitted", submittedAt: new Date() } }).returning(); if (assignment.teacherId) { const [recipient] = await db.select({ id: users.id }).from(users).where(and(eq(users.id, assignment.teacherId), eq(users.organisationId, orgId))).limit(1); if (recipient) { const created = await createForUsers(db, orgId, [recipient.id], { type: "assignment_submitted", title: "New assignment submission", body: `A student submitted ${assignment.title}.`, data: { submissionId: row.id, homeworkId } }); created.forEach(publishNotification); } } return row; }
 export async function gradeSubmission(db: DB, orgId: string, id: string, input: { marks: number; feedback?: string | null; status: string }, principal?: AuthUser) { if (principal) { const [submission] = await db.select({ homeworkId: homeworkSubmissions.homeworkId }).from(homeworkSubmissions).where(and(eq(homeworkSubmissions.id, id), tenant(homeworkSubmissions, orgId))).limit(1); if (!submission) throw notFound("Submission not found"); await assertHomeworkAssigned(db, orgId, submission.homeworkId, principal); } const [row] = await db.update(homeworkSubmissions).set({ marks: input.marks, feedback: input.feedback ?? null, status: input.status as never, gradedAt: new Date() }).where(and(eq(homeworkSubmissions.id, id), tenant(homeworkSubmissions, orgId))).returning(); if (!row) throw notFound("Submission not found"); const [recipient] = await db.select({ id: users.id }).from(users).where(and(eq(users.studentId, row.studentId), eq(users.organisationId, orgId))).limit(1); if (recipient) { const created = await createForUsers(db, orgId, [recipient.id], { type: "assignment_graded", title: "Assignment graded", body: `Your assignment received ${input.marks} marks.`, data: { submissionId: row.id, homeworkId: row.homeworkId } }); created.forEach(publishNotification); } return row; }
 
-export async function listNotices(db: DB, orgId: string) { return db.select({ ...(notices as any), authorName: sql<string | null>`${employees.fullName}`, audiences: sql<string[]>`coalesce((select jsonb_agg(na.audience_type) from notice_audiences na where na.notice_id = ${notices.id} and na.organisation_id = ${orgId}), '[]'::jsonb)` }).from(notices).leftJoin(employees, sql`${notices.authorId} = ${employees.id}`).where(tenant(notices, orgId)).orderBy(desc(notices.publishAt)); }
+export async function listNotices(db: DB, orgId: string, principal?: AuthUser | null) {
+  const now = new Date();
+  const conditions = [tenant(notices, orgId), lte(notices.publishAt, now), or(isNull(notices.expireAt), gte(notices.expireAt, now))!];
+  if (principal && !isUnrestrictedAdmin(principal)) {
+    const audiences = principal.studentId
+      ? ["everyone", "students"]
+      : principal.roles.some((role) => role === "parent" || role === "guardian")
+        ? ["everyone", "parents", "guardians"]
+        : principal.roles.some((role) => role === "teacher" || role === "class_teacher")
+          ? ["everyone", "teachers", "staff"]
+          : ["everyone", "staff"];
+    conditions.push(sql`exists (select 1 from notice_audiences na where na.notice_id = ${notices.id} and na.organisation_id = ${orgId} and na.audience_type in (${sql.join(audiences.map((audience) => sql`${audience}`), sql`, `)}))`);
+  }
+  return db.select({ ...(notices as any), authorName: sql<string | null>`${employees.fullName}`, audiences: sql<string[]>`coalesce((select jsonb_agg(na.audience_type) from notice_audiences na where na.notice_id = ${notices.id} and na.organisation_id = ${orgId}), '[]'::jsonb)` }).from(notices).leftJoin(employees, sql`${notices.authorId} = ${employees.id}`).where(and(...conditions)).orderBy(desc(notices.publishAt));
+}
 export async function noticeRecipientIds(db: DB, orgId: string, audiences: string[]) {
   const selected = new Set(audiences);
   if (selected.has("everyone")) return organisationUserIds(db, orgId);
@@ -148,7 +175,17 @@ export async function noticeRecipientIds(db: DB, orgId: string, audiences: strin
   return [...ids];
 }
 export async function createNotice(db: DB, orgId: string, userId: string, input: NoticeInput) { const row = await db.transaction(async (tx) => { const [created] = await tx.insert(notices).values({ ...input, organisationId: orgId, authorId: userId, publishAt: input.publishAt ? new Date(input.publishAt) : undefined, expireAt: input.expireAt ? new Date(input.expireAt) : null }).returning(); await tx.insert(noticeAudiences).values(input.audiences.map((audienceType) => ({ organisationId: orgId, noticeId: created.id, audienceType }))); return created; }); const recipients = await noticeRecipientIds(db, orgId, input.audiences); const created = await createForUsers(db, orgId, recipients, { type: "notice", title: row.title, body: row.body, data: { noticeId: row.id, audiences: input.audiences } }); created.forEach(publishNotification); return row; }
-export async function updateNotice(db: DB, orgId: string, id: string, input: Partial<NoticeInput>) { const [row] = await db.update(notices).set({ ...input, publishAt: input.publishAt ? new Date(input.publishAt) : undefined, expireAt: input.expireAt ? new Date(input.expireAt) : input.expireAt === null ? null : undefined }).where(and(eq(notices.id, id), tenant(notices, orgId))).returning(); if (!row) throw notFound("Notice not found"); return row; }
+export async function updateNotice(db: DB, orgId: string, id: string, input: Partial<NoticeInput>) {
+  return db.transaction(async (tx) => {
+    const [row] = await tx.update(notices).set({ ...input, publishAt: input.publishAt ? new Date(input.publishAt) : undefined, expireAt: input.expireAt ? new Date(input.expireAt) : input.expireAt === null ? null : undefined }).where(and(eq(notices.id, id), tenant(notices, orgId))).returning();
+    if (!row) throw notFound("Notice not found");
+    if (input.audiences) {
+      await tx.delete(noticeAudiences).where(and(eq(noticeAudiences.noticeId, id), tenant(noticeAudiences, orgId)));
+      await tx.insert(noticeAudiences).values(input.audiences.map((audienceType) => ({ organisationId: orgId, noticeId: id, audienceType })));
+    }
+    return row;
+  });
+}
 export async function deleteNotice(db: DB, orgId: string, id: string) { const rows = await db.delete(notices).where(and(eq(notices.id, id), tenant(notices, orgId))).returning(); if (!rows.length) throw notFound("Notice not found"); }
 export async function listEvents(db: DB, orgId: string) { return db.select().from(events).where(tenant(events, orgId)).orderBy(asc(events.startDate)); }
 export async function createEvent(db: DB, orgId: string, userId: string, input: EventInput) { const [row] = await db.insert(events).values({ ...input, organisationId: orgId, createdBy: userId }).returning(); return row; }

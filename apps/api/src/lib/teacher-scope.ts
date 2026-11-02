@@ -9,7 +9,7 @@ export function isUnrestrictedAdmin(user: AuthUser) {
 }
 
 export function isScopedTeacher(user: AuthUser) {
-  return !isUnrestrictedAdmin(user) && user.roles.includes("teacher");
+  return !isUnrestrictedAdmin(user) && user.roles.some((role) => role === "teacher" || role === "class_teacher");
 }
 
 /** Student records linked to a guardian login. */

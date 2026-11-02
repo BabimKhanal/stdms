@@ -644,11 +644,20 @@ const roleNav: Record<string, string[]> = {
 };
 
 const permissionNav: Record<string, string> = {
+  students: "student.view",
+  guardians: "guardian.view",
+  academics: "academic.view",
+  attendance: "attendance.view",
+  learning: "homework.view",
+  fees: "invoice.view",
+  exams: "exam.view",
+  reports: "report.view",
+  users: "user.view",
+  employees: "employee.view",
   branding: "organisation.edit",
   "email-settings": "organisation.edit",
   "payment-settings": "payment.edit",
   "document-templates": "organisation.edit",
-  reports: "report.view",
   communication: "notice.view",
 };
 

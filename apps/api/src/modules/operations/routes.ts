@@ -25,7 +25,7 @@ operationRoutes.post("/attendance/mark", requirePermission("attendance.create"),
 operationRoutes.put("/attendance/:id", requirePermission("attendance.edit"), async (c) => { const input = parse(attendanceCorrectionSchema, await c.req.json()); const result = await svc.correctAttendance(db(c), org(c), user(c), c.req.param("id"), input, c.get("user")!); await writeAudit(c, { action: "correct", entity: "attendance", entityId: c.req.param("id"), newValue: input }); return ok(c, result); });
 operationRoutes.get("/leave", requirePermission("leave.view"), async (c) => { const rows = await svc.listLeave(db(c), org(c), c.get("user")!); return okList(c, rows, rows.length, 1, 1000); });
 operationRoutes.post("/leave", requirePermission("leave.create"), async (c) => ok(c, await svc.createLeave(db(c), org(c), user(c), parse(leaveInputSchema, await c.req.json()), c.get("user")!), 201));
-operationRoutes.put("/leave/:id/review", requirePermission("leave.approve"), async (c) => ok(c, await svc.reviewLeave(db(c), org(c), user(c), c.req.param("id"), parse(leaveReviewSchema, await c.req.json()))));
+operationRoutes.put("/leave/:id/review", requirePermission("leave.approve"), async (c) => { const input = parse(leaveReviewSchema, await c.req.json()); const row = await svc.reviewLeave(db(c), org(c), c.get("user")!, c.req.param("id"), input); await writeAudit(c, { action: "review", entity: "leave_request", entityId: row.id, newValue: input }); return ok(c, row); });
 operationRoutes.get("/homework", requirePermission("homework.view"), async (c) => { const rows = await svc.listHomework(db(c), org(c), c.get("user")!.studentId, c.get("user")!); return okList(c, rows, rows.length, 1, 1000); });
 operationRoutes.post("/homework", requirePermission("homework.create"), async (c) => ok(c, await svc.createHomework(db(c), org(c), user(c), parse(homeworkInputSchema, await c.req.json()), c.get("user")!), 201));
 operationRoutes.put("/homework/:id", requirePermission("homework.edit"), async (c) => ok(c, await svc.updateHomework(db(c), org(c), c.req.param("id"), parse(homeworkUpdateSchema, await c.req.json()), c.get("user")!)));
@@ -39,8 +39,8 @@ operationRoutes.post("/homework/:id/submissions", async (c) => {
   return ok(c, await svc.saveSubmission(db(c), org(c), c.req.param("id"), principal.studentId, parse(homeworkSubmitInputSchema, await c.req.json())), 201);
 });
 operationRoutes.put("/homework/submissions/:id/grade", requirePermission("homework.edit"), async (c) => ok(c, await svc.gradeSubmission(db(c), org(c), c.req.param("id"), parse(gradeSubmissionSchema, await c.req.json()), c.get("user")!)));
-operationRoutes.get("/notices", requirePermission("notice.view"), async (c) => { const rows = await svc.listNotices(db(c), org(c)); return okList(c, rows, rows.length, 1, 1000); });
-operationRoutes.post("/notices", requirePermission("notice.create"), async (c) => ok(c, await svc.createNotice(db(c), org(c), user(c), parse(noticeInputSchema, await c.req.json())), 201));
+operationRoutes.get("/notices", requirePermission("notice.view"), async (c) => { const rows = await svc.listNotices(db(c), org(c), c.get("user")!); return okList(c, rows, rows.length, 1, 1000); });
+operationRoutes.post("/notices", requirePermission("notice.create"), async (c) => { const input = parse(noticeInputSchema, await c.req.json()); const row = await svc.createNotice(db(c), org(c), user(c), input); await writeAudit(c, { action: "create", entity: "notice", entityId: row.id, newValue: { title: row.title, audiences: input.audiences } }); return ok(c, row, 201); });
 operationRoutes.post("/messages/bulk", requirePermission("notice.create"), async (c) => {
   const input = z.object({
     subject: z.string().trim().min(3).max(200),
@@ -59,8 +59,8 @@ operationRoutes.post("/messages/bulk", requirePermission("notice.create"), async
   created.forEach(publishNotification);
   return ok(c, { recipients: created.length, audiences: input.audiences });
 });
-operationRoutes.put("/notices/:id", requirePermission("notice.edit"), async (c) => ok(c, await svc.updateNotice(db(c), org(c), c.req.param("id"), parse(noticeInputSchema.partial(), await c.req.json()))));
-operationRoutes.delete("/notices/:id", requirePermission("notice.delete"), async (c) => { await svc.deleteNotice(db(c), org(c), c.req.param("id")); return ok(c, { deleted: true }); });
+operationRoutes.put("/notices/:id", requirePermission("notice.edit"), async (c) => { const input = parse(noticeInputSchema.partial(), await c.req.json()); const row = await svc.updateNotice(db(c), org(c), c.req.param("id"), input); await writeAudit(c, { action: "update", entity: "notice", entityId: row.id, newValue: input }); return ok(c, row); });
+operationRoutes.delete("/notices/:id", requirePermission("notice.delete"), async (c) => { await svc.deleteNotice(db(c), org(c), c.req.param("id")); await writeAudit(c, { action: "delete", entity: "notice", entityId: c.req.param("id") }); return ok(c, { deleted: true }); });
 operationRoutes.get("/events", requirePermission("event.view"), async (c) => { const rows = await svc.listEvents(db(c), org(c)); return okList(c, rows, rows.length, 1, 1000); });
 operationRoutes.post("/events", requirePermission("event.create"), async (c) => ok(c, await svc.createEvent(db(c), org(c), user(c), parse(eventInputSchema, await c.req.json())), 201));
 operationRoutes.put("/events/:id", requirePermission("event.edit"), async (c) => ok(c, await svc.updateEvent(db(c), org(c), c.req.param("id"), parse(eventInputSchema.partial(), await c.req.json()))));
