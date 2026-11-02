@@ -13,6 +13,7 @@
     "test": "turbo test",
     "typecheck": "turbo typecheck",
     "lint": "turbo lint",
+    "ci": "npm run typecheck && npm run lint && npm run test && npm run build",
     "db:generate": "npm run db:generate -w @edu/api",
     "db:migrate": "npm run db:migrate -w @edu/api",
     "db:seed": "npm run db:seed -w @edu/api",

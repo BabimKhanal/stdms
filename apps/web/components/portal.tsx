@@ -346,7 +346,7 @@ export function Portal() {
                 onRefresh={() => setDashboardVersion((value) => value + 1)}
                 user={user}
               />
-            ) : section === "students" ? <StudentDirectory initialStudents={students} />
+            ) : section === "students" ? <StudentDirectory initialStudents={students} canCreate={Boolean(user?.isPlatformAdmin || user?.permissions?.includes("student.create"))} canEdit={Boolean(user?.isPlatformAdmin || user?.permissions?.includes("student.edit"))} canManageLifecycle={Boolean(user?.isPlatformAdmin || user?.permissions?.includes("enrolment.approve"))} />
               : section === "guardians" ? <GuardianWorkspace />
               : section === "academics" ? <AcademicWorkspace />
               : section === "attendance" ? <AttendanceWorkspace />

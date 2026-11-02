@@ -24,6 +24,8 @@ import { badRequest, notFound } from "../../lib/errors";
 import { buildDocumentData } from "../../lib/document-data";
 import { renderTemplatePdf } from "../../lib/document-pdf";
 
+const studentProfileUpdateSchema = studentInputSchema.omit({ academicYearId: true, classId: true, sectionId: true, rollNumber: true, status: true }).partial();
+
 export const studentRoutes = new Hono<AppEnv>();
 
 studentRoutes.use("*", requireAuth, requireOrg);
@@ -123,8 +125,9 @@ studentRoutes.get("/:id", requirePermission("student.view"), async (c) => {
 studentRoutes.post("/", requirePermission("student.create"), async (c) => {
   const input = parse(studentInputSchema, await c.req.json());
   const orgId = c.get("orgId")!;
-  const yearId =
-    input.academicYearId ?? (await getCurrentYearId(c.get("db"), orgId));
+  const yearId = input.classId
+    ? (input.academicYearId ?? (await getCurrentYearId(c.get("db"), orgId)))
+    : null;
   const row = await svc.createStudent(c.get("db"), orgId, {
     ...input,
     academicYearId: yearId,
@@ -139,7 +142,7 @@ studentRoutes.post("/", requirePermission("student.create"), async (c) => {
 });
 
 studentRoutes.put("/:id", requirePermission("student.edit"), async (c) => {
-  const input = parse(studentInputSchema.partial(), await c.req.json());
+  const input = parse(studentProfileUpdateSchema, await c.req.json());
   const before = await svc
     .getStudent(c.get("db"), c.get("orgId")!, c.req.param("id"), c.get("user")!)
     .catch(() => null);
@@ -288,6 +291,7 @@ enrolmentRoutes.use("*", requireAuth, requireOrg);
 const promoteSchema = z.object({
   fromYearId: z.uuid(),
   toYearId: z.uuid(),
+  reason: z.string().trim().min(3).max(500),
   entries: z
     .array(
       z.object({
@@ -301,6 +305,7 @@ const promoteSchema = z.object({
         ]),
         toClassId: z.uuid().nullable().optional(),
         toSectionId: z.uuid().nullable().optional(),
+        rollNumber: z.number().int().min(0).nullable().optional(),
       }),
     )
     .min(1),
@@ -315,11 +320,13 @@ const lifecycleSchema = z.object({
     "transferred",
     "alumni",
   ]),
+  reason: z.string().trim().min(3).max(500),
+  effectiveDate: z.iso.date().optional(),
 });
 
 studentRoutes.post(
   "/:id/lifecycle",
-  requirePermission("student.edit"),
+  requirePermission("enrolment.approve"),
   async (c) => {
     const input = parse(lifecycleSchema, await c.req.json());
     const row = await svc.transitionStudentStatus(
@@ -327,20 +334,24 @@ studentRoutes.post(
       c.get("orgId")!,
       c.req.param("id"),
       input.status,
+      c.get("user")!.id,
+      input.reason,
+      input.effectiveDate,
     );
     await writeAudit(c, {
       action: "status_change",
       entity: "student",
-      entityId: row.id,
+      entityId: row.student.id,
+      oldValue: { status: row.previousStatus },
       newValue: input,
     });
-    return ok(c, row);
+    return ok(c, row.student);
   },
 );
 
 enrolmentRoutes.post(
   "/promote",
-  requirePermission("enrolment.edit"),
+  requirePermission("enrolment.approve"),
   async (c) => {
     const input = parse(promoteSchema, await c.req.json());
     const result = await svc.promoteStudents(
@@ -349,11 +360,13 @@ enrolmentRoutes.post(
       input.fromYearId,
       input.toYearId,
       input.entries,
+      c.get("user")!.id,
+      input.reason,
     );
     await writeAudit(c, {
       action: "promote",
       entity: "enrolment",
-      newValue: { count: result.length },
+      newValue: { fromYearId: input.fromYearId, toYearId: input.toYearId, reason: input.reason, entries: result },
     });
     return ok(c, result);
   },

@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useState } from "react";
-import { Download, KeyRound, Search, UserPlus, Users, X } from "lucide-react";
+import { ArrowRightLeft, Download, KeyRound, Search, UserPlus, Users, X } from "lucide-react";
 import { EduApiClient } from "@edu/api-client";
 import { Badge } from "./ui/badge";
 import { Alert } from "./ui/alert";
@@ -22,6 +22,7 @@ import {
   TableRow,
 } from "./ui/table";
 import { downloadCsv } from "../lib/csv";
+import { Modal } from "./ui/modal";
 
 type Option = {
   id: string;
@@ -69,6 +70,7 @@ type StudentDetail = StudentRow & {
     phone: string | null;
     isPrimary: boolean;
   }>;
+  lifecycleEvents?: Array<{ id: string; action: string; reason: string | null; effectiveDate: string; previousStatus: string | null; newStatus: string | null }>;
 };
 
 const emptyForm = {
@@ -95,8 +97,14 @@ const emptyForm = {
 
 function StudentDirectoryContent({
   initialStudents,
+  canCreate,
+  canEdit,
+  canManageLifecycle,
 }: {
   initialStudents: Student[];
+  canCreate: boolean;
+  canEdit: boolean;
+  canManageLifecycle: boolean;
 }) {
   const api = new EduApiClient(undefined, () =>
     localStorage.getItem("edu_access_token"),
@@ -120,6 +128,13 @@ function StudentDirectoryContent({
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [lifecycleOpen, setLifecycleOpen] = useState(false);
+  const [lifecycleAction, setLifecycleAction] = useState("promoted");
+  const [lifecycleReason, setLifecycleReason] = useState("");
+  const [toYearId, setToYearId] = useState("");
+  const [toClassId, setToClassId] = useState("");
+  const [toSectionId, setToSectionId] = useState("");
+  const [nextRollNumber, setNextRollNumber] = useState("");
   useEffect(() => {
     void Promise.all([
       api.get<{ data: Option[] }>("/academics/classes"),
@@ -257,11 +272,15 @@ function StudentDirectoryContent({
       phone: form.phone || null,
       email: form.email || null,
       admissionDate: form.admissionDate || null,
-      academicYearId: form.academicYearId || null,
-      classId: form.classId || null,
-      sectionId: form.sectionId || null,
-      rollNumber: form.rollNumber ? Number(form.rollNumber) : null,
+      ...(!selected ? { academicYearId: form.academicYearId || null, classId: form.classId || null, sectionId: form.sectionId || null, rollNumber: form.rollNumber ? Number(form.rollNumber) : null } : {}),
     };
+    if (selected) {
+      delete (payload as Partial<typeof payload>).status;
+      delete (payload as Partial<typeof payload>).academicYearId;
+      delete (payload as Partial<typeof payload>).classId;
+      delete (payload as Partial<typeof payload>).sectionId;
+      delete (payload as Partial<typeof payload>).rollNumber;
+    }
     try {
       if (selected) await api.put(`/students/${selected.id}`, payload);
       else await api.post("/students", payload);
@@ -273,6 +292,30 @@ function StudentDirectoryContent({
       const message = err instanceof Error ? err.message : "Unable to save student";
       setError(message);
       toast.error("Could not save student", message);
+    } finally {
+      setSaving(false);
+    }
+  }
+  async function applyLifecycle(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selected) return;
+    setSaving(true);
+    setError("");
+    try {
+      if (lifecycleAction === "promoted" || lifecycleAction === "repeated") {
+        if (!selected.academicYearId) throw new Error("The student has no current source-year enrolment.");
+        await api.post("/enrolments/promote", { fromYearId: selected.academicYearId, toYearId, reason: lifecycleReason, entries: [{ studentId: selected.id, status: lifecycleAction, toClassId, toSectionId: toSectionId || null, rollNumber: nextRollNumber ? Number(nextRollNumber) : null }] });
+      } else {
+        await api.post(`/students/${selected.id}/lifecycle`, { status: lifecycleAction, reason: lifecycleReason, effectiveDate: new Date().toISOString().slice(0, 10) });
+      }
+      toast.success("Student lifecycle updated", `${selected.fullName ?? "Student"}: ${lifecycleAction}.`);
+      setLifecycleOpen(false);
+      await openStudent(selected.id);
+      await loadStudents(1);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to update student lifecycle";
+      setError(message);
+      toast.error("Lifecycle update failed", message);
     } finally {
       setSaving(false);
     }
@@ -307,10 +350,10 @@ function StudentDirectoryContent({
             Complete learner profiles, enrolment history, and guardians.
           </p>
         </div>
-        <Button onClick={beginCreate}>
+        {canCreate && <Button onClick={beginCreate}>
           <UserPlus size={16} />
           Add student
-        </Button>
+        </Button>}
       </div>
       {error && (
         <Alert tone="error" title="Student directory" onDismiss={() => setError("")}>
@@ -349,7 +392,7 @@ function StudentDirectoryContent({
               {field("nationality", "Nationality")}
               {field("phone", "Phone")}
               {field("email", "Email", "email")}
-              {field("rollNumber", "Roll number", "number")}
+              {!selected && field("rollNumber", "Roll number", "number")}
               <select
                 value={form.gender}
                 onChange={(event) => update("gender", event.target.value)}
@@ -359,7 +402,7 @@ function StudentDirectoryContent({
                 <option value="female">Female</option>
                 <option value="other">Other</option>
               </select>
-              <select
+              {!selected && <select
                 value={form.academicYearId}
                 onChange={(event) =>
                   update("academicYearId", event.target.value)
@@ -372,8 +415,8 @@ function StudentDirectoryContent({
                     {item.name}
                   </option>
                 ))}
-              </select>
-              <select
+              </select>}
+              {!selected && <select
                 value={form.classId}
                 onChange={(event) => update("classId", event.target.value)}
                 className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
@@ -384,8 +427,8 @@ function StudentDirectoryContent({
                     {item.name}
                   </option>
                 ))}
-              </select>
-              <select
+              </select>}
+              {!selected && <select
                 value={form.sectionId}
                 onChange={(event) => update("sectionId", event.target.value)}
                 className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
@@ -401,7 +444,7 @@ function StudentDirectoryContent({
                       {item.name}
                     </option>
                   ))}
-              </select>
+              </select>}
               <textarea
                 value={form.address}
                 onChange={(event) => update("address", event.target.value)}
@@ -592,9 +635,10 @@ function StudentDirectoryContent({
               </div>
             </div>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={beginEdit}>
+              {canEdit && <Button size="sm" variant="outline" onClick={beginEdit}>
                 Edit
-              </Button>
+              </Button>}
+              {canManageLifecycle && <Button size="sm" variant="outline" onClick={() => { setLifecycleAction("promoted"); setLifecycleReason(""); setToYearId(""); setToClassId(""); setToSectionId(""); setNextRollNumber(""); setLifecycleOpen(true); }}><ArrowRightLeft size={14} />Lifecycle</Button>}
               <Button
                 size="sm"
                 variant="ghost"
@@ -671,9 +715,20 @@ function StudentDirectoryContent({
                 <p className="text-sm text-slate-500">No guardians linked.</p>
               )}
             </div>
+            <div className="lg:col-span-3">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Lifecycle timeline</p>
+              {selected.lifecycleEvents?.length ? <div className="space-y-2">{selected.lifecycleEvents.map((event) => <div key={event.id} className="rounded-xl border border-slate-100 p-3 text-sm"><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold capitalize text-slate-900">{event.action}</span><span className="text-xs text-slate-400">{event.effectiveDate}</span></div>{event.reason && <p className="mt-1 text-slate-600">{event.reason}</p>}{event.previousStatus !== event.newStatus && <p className="mt-1 text-xs text-slate-400">{event.previousStatus ?? "-"} → {event.newStatus ?? "-"}</p>}</div>)}</div> : <p className="text-sm text-slate-500">No lifecycle actions have been recorded.</p>}
+            </div>
           </CardContent>
         </Card></div></div>
       )}
+      <Modal open={lifecycleOpen} title="Student lifecycle action" description={selected ? `Apply a history-preserving action to ${selected.fullName}.` : undefined} onClose={() => setLifecycleOpen(false)} footer={<div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setLifecycleOpen(false)}>Cancel</Button><Button type="submit" form="student-lifecycle-form" disabled={saving}>{saving ? "Applying..." : "Apply action"}</Button></div>}>
+        <form id="student-lifecycle-form" onSubmit={applyLifecycle} className="space-y-4">
+          <Alert tone="warning" title="This updates the permanent academic history">Use profile editing for spelling and contact corrections. Use this action only for a real placement or status change.</Alert>
+          <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Action</span><select value={lifecycleAction} onChange={(event) => setLifecycleAction(event.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="promoted">Promote to next year</option><option value="repeated">Repeat in next year</option><option value="suspended">Suspend</option><option value="withdrawn">Withdraw</option><option value="transferred">Transfer out</option><option value="graduated">Graduate</option>{selected?.status === "graduated" && <option value="alumni">Move to alumni</option>}{["suspended", "withdrawn", "transferred"].includes(selected?.status ?? "") && <option value="active">Reactivate</option>}</select></label>
+          {(lifecycleAction === "promoted" || lifecycleAction === "repeated") ? <><div className="grid gap-4 sm:grid-cols-2"><label><span className="mb-2 block text-sm font-medium text-slate-700">Destination year</span><select required value={toYearId} onChange={(event) => setToYearId(event.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">Select year</option>{years.filter((year) => year.id !== selected?.academicYearId).map((year) => <option key={year.id} value={year.id}>{year.name}</option>)}</select></label><label><span className="mb-2 block text-sm font-medium text-slate-700">Destination class</span><select required value={toClassId} onChange={(event) => { setToClassId(event.target.value); setToSectionId(""); }} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">Select class</option>{classes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label><span className="mb-2 block text-sm font-medium text-slate-700">Destination section</span><select value={toSectionId} onChange={(event) => setToSectionId(event.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">No section</option>{sections.filter((item) => item.classId === toClassId).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label><span className="mb-2 block text-sm font-medium text-slate-700">New roll number</span><Input type="number" min={0} value={nextRollNumber} onChange={(event) => setNextRollNumber(event.target.value)} /></label></div><label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Reason</span><textarea required minLength={3} maxLength={500} value={lifecycleReason} onChange={(event) => setLifecycleReason(event.target.value)} className="min-h-20 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm" placeholder="Record the promotion or repetition decision" /></label></> : <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Reason</span><textarea required minLength={3} maxLength={500} value={lifecycleReason} onChange={(event) => setLifecycleReason(event.target.value)} className="min-h-24 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm" placeholder="Record the administrative reason for this action" /></label>}
+        </form>
+      </Modal>
     </div>
   );
 }
@@ -688,8 +743,14 @@ function Detail({ label, value }: { label: string; value?: string | null }) {
 }
 export function StudentDirectory({
   initialStudents,
+  canCreate = false,
+  canEdit = false,
+  canManageLifecycle = false,
 }: {
   initialStudents: Student[];
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canManageLifecycle?: boolean;
 }) {
   return (
     <Tabs defaultValue="directory" className="space-y-6">
@@ -719,7 +780,7 @@ export function StudentDirectory({
         </Button>
       </div>
       <TabsContent value="directory" className="mt-0">
-        <StudentDirectoryContent initialStudents={initialStudents} />
+        <StudentDirectoryContent initialStudents={initialStudents} canCreate={canCreate} canEdit={canEdit} canManageLifecycle={canManageLifecycle} />
       </TabsContent>
       <TabsContent value="credentials" className="mt-0">
         <CredentialProvisioner students={initialStudents} />

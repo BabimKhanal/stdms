@@ -5,7 +5,7 @@ services:
     buildCommand: npm ci --include=dev && npm run build -w @edu/shared && npm run build -w @edu/api
     preDeployCommand: npm run db:migrate
     startCommand: npm run start -w @edu/api
-    healthCheckPath: /health
+    healthCheckPath: /ready
     envVars:
       - key: NODE_ENV
         value: production

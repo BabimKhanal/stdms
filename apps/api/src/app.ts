@@ -19,8 +19,27 @@ import { notificationRoutes } from "./modules/notifications/routes";
 import type { AppEnv } from "./lib/types";
 import { writeAudit } from "./lib/audit";
 import { forbidden } from "./lib/errors";
+import { readiness } from "./lib/health";
+import { randomUUID } from "node:crypto";
 
 export const app = new Hono<AppEnv>();
+
+app.use("*", async (c, next) => {
+  const requestId = c.req.header("x-request-id")?.slice(0, 100) || randomUUID();
+  c.header("x-request-id", requestId);
+  const startedAt = Date.now();
+  try {
+    await next();
+  } finally {
+    console.log(JSON.stringify({ level: "info", event: "http_request", requestId, method: c.req.method, path: c.req.path, status: c.res?.status ?? 500, durationMs: Date.now() - startedAt, userId: c.get("user")?.id ?? null, organisationId: c.get("orgId") ?? null }));
+  }
+});
+
+app.get("/live", (c) => c.json({ ok: true, service: "edu-api", time: new Date().toISOString() }));
+app.get("/ready", async (c) => {
+  const result = await readiness();
+  return c.json(result, result.ok ? 200 : 503);
+});
 
 const configuredWebOrigins = env.WEB_ORIGIN.split(",")
   .map((origin) => origin.trim())
@@ -97,7 +116,7 @@ app.onError((err, c) => {
   const status = ((err as { status?: number }).status ?? 500) as ContentfulStatusCode;
   if (status >= 500) console.error("[api]", err);
   return c.json(
-    { ok: false, error: err.message || "Internal server error", code: (err as { code?: string }).code },
+    { ok: false, error: status >= 500 ? "Internal server error" : err.message || "Request failed", code: (err as { code?: string }).code },
     status,
   );
 });

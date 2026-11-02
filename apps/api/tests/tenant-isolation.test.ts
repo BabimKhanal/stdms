@@ -29,13 +29,17 @@ async function get<T>(app: { request: (input: RequestInfo | URL, init?: RequestI
   return { response, payload };
 }
 
-test("tenant isolation blocks cross-tenant records", { skip: !integrationEnabled || !tenantAIdentifier || !tenantAPassword || !tenantBIdentifier || !tenantBPassword }, async () => {
+test("tenant isolation blocks cross-tenant records", { skip: !integrationEnabled }, async () => {
+  assert.ok(tenantAIdentifier, "TEST_TENANT_A_IDENTIFIER is required");
+  assert.ok(tenantAPassword, "TEST_TENANT_A_PASSWORD is required");
+  assert.ok(tenantBIdentifier, "TEST_TENANT_B_IDENTIFIER is required");
+  assert.ok(tenantBPassword, "TEST_TENANT_B_PASSWORD is required");
   assert.ok(process.env.DATABASE_URL, "DATABASE_URL is required");
   assert.ok(process.env.APP_DATABASE_URL, "APP_DATABASE_URL is required");
   assert.ok(process.env.REDIS_URL, "REDIS_URL is required");
 
   const { app } = await import("../src/app.js");
-  const tenantA = await login(app, tenantAIdentifier!, tenantAPassword!);
+  const tenantA = await login(app, tenantAIdentifier, tenantAPassword);
   const tenantB = await login(app, tenantBIdentifier!, tenantBPassword!);
   assert.notEqual(tenantA.user.orgId, tenantB.user.orgId, "fixtures must belong to different organisations");
 
@@ -47,6 +51,8 @@ test("tenant isolation blocks cross-tenant records", { skip: !integrationEnabled
   const studentFromA = await get<Row>(app, tenantA.accessToken, `/api/v1/students/${studentB.id}`);
   assert.equal(studentFromA.response.status, 404);
   assert.equal(studentFromA.payload.ok, false);
+  const lifecycleFromA = await app.request(`/api/v1/students/${studentB.id}/lifecycle`, { method: "POST", headers: { Authorization: `Bearer ${tenantA.accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ status: "withdrawn", reason: "Cross-tenant mutation must fail" }) });
+  assert.equal(lifecycleFromA.status, 404);
 
   const invoicesB = await get<Row[]>(app, tenantB.accessToken, "/api/v1/fees/invoices");
   assert.equal(invoicesB.response.status, 200);

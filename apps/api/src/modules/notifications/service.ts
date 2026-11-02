@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { emailDeliveries, emailSettings, emailTemplates, employees, guardians, notifications, organisations, students, users } from "../../db/schema";
+import { emailDeliveries, emailSettings, emailTemplates, employees, guardians, notifications, organisations, pushTokens, students, users } from "../../db/schema";
 import type { DB } from "../../db/client";
 import { env } from "../../env";
 import { deliverNotification } from "../../lib/notification-providers";
@@ -31,6 +31,17 @@ export async function markRead(db: DB, orgId: string, userId: string, id: string
     .where(and(eq(notifications.id, id), eq(notifications.organisationId, orgId), eq(notifications.userId, userId)))
     .returning();
   return row ?? null;
+}
+
+export async function registerPushToken(db: DB, orgId: string, userId: string, token: string, platform: string) {
+  const [row] = await db.insert(pushTokens).values({ organisationId: orgId, userId, token, platform, lastSeenAt: new Date() })
+    .onConflictDoUpdate({ target: pushTokens.token, set: { organisationId: orgId, userId, platform, lastSeenAt: new Date() } }).returning();
+  return row;
+}
+
+export async function revokePushToken(db: DB, orgId: string, userId: string, token: string) {
+  const rows = await db.delete(pushTokens).where(and(eq(pushTokens.organisationId, orgId), eq(pushTokens.userId, userId), eq(pushTokens.token, token))).returning({ id: pushTokens.id });
+  return { revoked: rows.length > 0 };
 }
 
 export async function createForUsers(db: DB, orgId: string, userIds: string[], input: NotificationInput) {
