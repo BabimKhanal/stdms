@@ -44,7 +44,12 @@ export function Modal({
       aria-modal="true"
       aria-labelledby="modal-title"
     >
-      <button type="button" aria-label="Close dialog" className="absolute inset-0 cursor-default" onClick={onClose} />
+      <button
+        type="button"
+        aria-label="Close dialog"
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+      />
       <section
         className={cn(
           "animate-modal-in relative z-10 flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl ring-1 ring-slate-900/5 sm:max-h-[92dvh] sm:rounded-3xl",
@@ -53,10 +58,15 @@ export function Modal({
       >
         <header className="z-10 flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 bg-white px-5 py-4 sm:px-7">
           <div>
-            <h2 id="modal-title" className="text-lg font-semibold tracking-tight text-slate-950">
+            <h2
+              id="modal-title"
+              className="text-lg font-semibold tracking-tight text-slate-950"
+            >
               {title}
             </h2>
-            {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
+            {description && (
+              <p className="mt-1 text-sm text-slate-500">{description}</p>
+            )}
           </div>
           <button
             type="button"
