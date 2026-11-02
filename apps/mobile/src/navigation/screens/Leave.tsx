@@ -9,11 +9,13 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from "react-native";
 import { EduApiClient } from "@edu/api-client";
 import { mobileToken, useAuth } from "../../auth";
 import { API_URL } from "../../config";
+import { DatePicker } from "../../components";
 
 const palette = {
   primary: "#7c3aed",
@@ -93,6 +95,8 @@ export function Leave() {
   const [reason, setReason] = useState("");
   const [fromDate, setFromDate] = useState(today());
   const [toDate, setToDate] = useState(today());
+  const [fromPicker, setFromPicker] = useState(false);
+  const [toPicker, setToPicker] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async (mode: "initial" | "refresh" = "initial") => {
@@ -242,22 +246,55 @@ export function Leave() {
         <View style={styles.dateRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.label}>From</Text>
-            <TextInput
+            <TouchableOpacity
+              accessibilityLabel="Choose start date"
+              onPress={() => setFromPicker(true)}
+              style={[styles.input, styles.inputReadOnly]}
+            >
+              <Text style={styles.inputText}>{fromDate}</Text>
+              <MaterialCommunityIcons
+                name="calendar-outline"
+                color={palette.muted}
+                size={16}
+              />
+            </TouchableOpacity>
+            <DatePicker
+              visible={fromPicker}
               value={fromDate}
-              onChangeText={setFromDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={palette.muted}
-              style={styles.input}
+              min={today()}
+              onChange={(date) => {
+                setFromDate(date);
+                setFromPicker(false);
+                if (date < toDate) setToDate(date);
+              }}
+              onClose={() => setFromPicker(false)}
+              label="Start date"
             />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.label}>To</Text>
-            <TextInput
+            <TouchableOpacity
+              accessibilityLabel="Choose end date"
+              onPress={() => setToPicker(true)}
+              style={[styles.input, styles.inputReadOnly]}
+            >
+              <Text style={styles.inputText}>{toDate}</Text>
+              <MaterialCommunityIcons
+                name="calendar-outline"
+                color={palette.muted}
+                size={16}
+              />
+            </TouchableOpacity>
+            <DatePicker
+              visible={toPicker}
               value={toDate}
-              onChangeText={setToDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={palette.muted}
-              style={styles.input}
+              min={fromDate}
+              onChange={(date) => {
+                setToDate(date);
+                setToPicker(false);
+              }}
+              onClose={() => setToPicker(false)}
+              label="End date"
             />
           </View>
         </View>
@@ -424,6 +461,16 @@ const styles = StyleSheet.create({
     minHeight: 46,
     paddingHorizontal: 12,
     paddingVertical: 11,
+  },
+  inputReadOnly: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingRight: 10,
+  },
+  inputText: {
+    color: palette.ink,
+    fontSize: 14,
   },
   textarea: { minHeight: 92, textAlignVertical: "top" },
   dateRow: { flexDirection: "row", gap: 10 },

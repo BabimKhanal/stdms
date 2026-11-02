@@ -120,6 +120,13 @@
       "when": 1793622344828,
       "tag": "0016_student_lifecycle_events",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793624242297,
+      "tag": "0017_slow_doctor_octopus",
+      "breakpoints": true
     }
   ]
 }

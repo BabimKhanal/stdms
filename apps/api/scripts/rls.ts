@@ -23,7 +23,11 @@ const UNSCOPED = `current_setting('app.allow_unscoped', true) = 'true'`;
 const ORG = `NULLIF(current_setting('app.current_org_id', true), '')::uuid`;
 
 /** Tables that are deliberately NOT tenant-RLS'd. */
-const EXCLUDED = new Set(["organisations", "permissions"]);
+const EXCLUDED = new Set([
+  "organisations",
+  "permissions",
+  "platform_audit_logs",
+]);
 
 /** Tables without an organisation_id column — policy goes through a lookup. */
 const SUBQUERY_POLICIES: Record<string, { using: string; check: string }> = {

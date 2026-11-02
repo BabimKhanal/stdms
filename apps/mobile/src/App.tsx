@@ -4,12 +4,14 @@ import { Asset } from 'expo-asset';
 import { createURL } from 'expo-linking';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import { ActivityIndicator, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Platform, useColorScheme, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Navigation } from './navigation';
 import { AuthProvider, useAuth } from './auth';
 import { Login } from './screens/Login';
 import { ForcedPasswordChange } from './screens/ForcedPasswordChange';
+import { useNetwork } from './hooks/useNetwork';
+import { OfflineBanner } from './components/OfflineBanner';
 
 Asset.loadAsync([
   ...NavigationAssets,
@@ -31,6 +33,7 @@ export function App() {
 function AuthenticatedApp() {
   const colorScheme = useColorScheme();
   const { user, loading } = useAuth();
+  const { online } = useNetwork();
 
   useEffect(() => {
     void SplashScreen.hideAsync().catch(() => undefined);
@@ -43,12 +46,15 @@ function AuthenticatedApp() {
   const theme = colorScheme === 'dark' ? DarkTheme : DefaultTheme;
 
   return (
-    <Navigation
-      theme={theme}
-      linking={linking}
-      onReady={() => {
-        void SplashScreen.hideAsync().catch(() => undefined);
-      }}
-    />
+    <>
+      {!online && Platform.OS !== 'web' && <OfflineBanner online={false} onRetry={() => undefined} />}
+      <Navigation
+        theme={theme}
+        linking={linking}
+        onReady={() => {
+          void SplashScreen.hideAsync().catch(() => undefined);
+        }}
+      />
+    </>
   );
 }
