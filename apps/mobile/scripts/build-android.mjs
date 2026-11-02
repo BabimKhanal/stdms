@@ -77,16 +77,19 @@ if (!local) {
 }
 
 const androidDir = resolve(root, "android");
-const productionEnv = { ...process.env, NODE_ENV: "production" };
+// Pass NODE_EXE for Windows compatibility where Gradle may not find node in PATH
+const nodeExe = process.execPath;
+const productionEnv = { ...process.env, NODE_ENV: "production", NODE_EXE: nodeExe };
 
 if (!existsSync(androidDir)) {
   run("bun", ["x", "expo", "prebuild", "--platform", "android", "--no-install"], "Generate Android native project", { env: productionEnv });
 }
 
-const gradleHome = process.env.GRADLE_HOME ? resolve(process.env.GRADLE_HOME) : resolve(root, "gradle-9.3.1");
+// Use local Gradle installation or GRADLE_HOME environment variable
+const gradleHome = process.env.GRADLE_HOME ? resolve(process.env.GRADLE_HOME) : resolve(root, "gradle-9.4.1");
 const gradle = resolve(gradleHome, "bin", process.platform === "win32" ? "gradle.bat" : "gradle");
 if (!existsSync(gradle)) {
-  fail(`Gradle was not found at ${gradle}. Set GRADLE_HOME to a valid Gradle installation.`);
+  fail(`Gradle was not found at ${gradle}. Set GRADLE_HOME to a valid Gradle installation or run without --local to use EAS.`);
 }
 
 run(gradle, ["--no-daemon", "assembleRelease"], "Build local Android release APK", { cwd: androidDir, env: productionEnv });
