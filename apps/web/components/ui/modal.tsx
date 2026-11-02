@@ -39,7 +39,7 @@ export function Modal({
 
   return (
     <div
-      className="animate-overlay-in fixed inset-0 z-50 flex items-end justify-center bg-slate-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-6"
+      className="animate-overlay-in fixed inset-0 z-50 flex items-end justify-center bg-slate-950/40 p-2 backdrop-blur-sm sm:items-center sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
@@ -47,11 +47,11 @@ export function Modal({
       <button type="button" aria-label="Close dialog" className="absolute inset-0 cursor-default" onClick={onClose} />
       <section
         className={cn(
-          "animate-modal-in relative z-10 max-h-[min(92vh,900px)] w-full overflow-y-auto rounded-t-3xl bg-white shadow-2xl ring-1 ring-slate-900/5 sm:rounded-3xl",
+          "animate-modal-in relative z-10 flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl ring-1 ring-slate-900/5 sm:max-h-[92dvh] sm:rounded-3xl",
           size === "lg" ? "sm:max-w-5xl" : "sm:max-w-3xl",
         )}
       >
-        <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-100 bg-white/95 px-5 py-4 backdrop-blur sm:px-7">
+        <header className="z-10 flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 bg-white px-5 py-4 sm:px-7">
           <div>
             <h2 id="modal-title" className="text-lg font-semibold tracking-tight text-slate-950">
               {title}
@@ -67,9 +67,11 @@ export function Modal({
             <X size={18} />
           </button>
         </header>
-        <div className="p-5 sm:p-7">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 sm:p-7">
+          {children}
+        </div>
         {footer && (
-          <footer className="sticky bottom-0 border-t border-slate-100 bg-white/95 px-5 py-4 backdrop-blur sm:px-7">
+          <footer className="z-10 shrink-0 border-t border-slate-100 bg-white px-5 py-4 sm:px-7">
             {footer}
           </footer>
         )}
