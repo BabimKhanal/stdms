@@ -99,6 +99,13 @@
       "when": 1791990000000,
       "tag": "0013_tenant_email_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791991000000,
+      "tag": "0014_email_system",
+      "breakpoints": true
     }
   ]
 }

@@ -28,29 +28,99 @@ organisationRoutes.get("/", requirePermission("organisation.view"), async (c) =>
 organisationRoutes.get("/branding", requirePermission("organisation.view"), async (c) => ok(c, await svc.getBranding(c.get("db"), c.get("orgId")!)));
 organisationRoutes.put("/", requirePermission("organisation.edit"), async (c) => ok(c, await svc.update(c.get("db"), c.get("orgId")!, parse(input, await c.req.json()))));
 organisationRoutes.put("/branding", requirePermission("organisation.edit"), async (c) => ok(c, await svc.updateBranding(c.get("db"), c.get("orgId")!, parse(brandingInput, await c.req.json()))));
+const emailProvider = z.enum(["console", "resend", "sendgrid", "mailgun", "smtp"]);
 const emailSettingsInput = z.object({
-  provider: z.enum(["console", "resend"]),
+  provider: emailProvider,
   enabled: z.boolean(),
   fromName: z.string().trim().min(1).max(120),
   fromEmail: z.string().email(),
   replyTo: z.string().email().nullable(),
   footer: z.string().max(2000).nullable(),
   dailyLimit: z.number().int().min(1).max(100000),
+  providerDomain: z.string().trim().max(200).nullable().optional(),
+  smtpHost: z.string().trim().max(200).nullable().optional(),
+  smtpPort: z.number().int().min(1).max(65535).nullable().optional(),
+  smtpSecure: z.boolean().optional(),
+  smtpUsername: z.string().trim().max(200).nullable().optional(),
   apiKey: z.string().max(500).optional(),
+  smtpPassword: z.string().max(500).optional(),
 }).strict();
 organisationRoutes.get("/email-settings", requirePermission("organisation.view"), async (c) => ok(c, await svc.getEmailSettings(c.get("db"), c.get("orgId")!)));
 organisationRoutes.put("/email-settings", requirePermission("organisation.edit"), async (c) => {
   const input = parse(emailSettingsInput, await c.req.json());
   const row = await svc.saveEmailSettings(c.get("db"), c.get("orgId")!, input);
-  await writeAudit(c, { action: "update", entity: "email_settings", entityId: row.id, newValue: { provider: input.provider, enabled: input.enabled, fromName: input.fromName, fromEmail: input.fromEmail, replyTo: input.replyTo, dailyLimit: input.dailyLimit, hasCredentials: Boolean(input.apiKey) || row.hasCredentials } });
+  await writeAudit(c, { action: "update", entity: "email_settings", entityId: row.id, newValue: { provider: input.provider, enabled: input.enabled, fromName: input.fromName, fromEmail: input.fromEmail, replyTo: input.replyTo, dailyLimit: input.dailyLimit, hasCredentials: Boolean(input.apiKey || input.smtpPassword) || row.hasCredentials } });
   return ok(c, row);
 });
 organisationRoutes.post("/email-settings/test", requirePermission("organisation.edit"), async (c) => {
   const body = z.object({ to: z.string().email() }).parse(await c.req.json());
-  const settings = await svc.getEmailSettings(c.get("db"), c.get("orgId")!);
-  const deliverySettings = await svc.getEmailDeliverySettings(c.get("db"), c.get("orgId")!);
-  await sendMail({ to: body.to, subject: "Email configuration test", html: `<p>Your institution email configuration is working.</p>` }, deliverySettings ?? { provider: settings.provider as "console" | "resend", enabled: settings.enabled, fromName: settings.fromName, fromEmail: settings.fromEmail, replyTo: settings.replyTo, footer: settings.footer });
-  return ok(c, { sent: true, to: body.to });
+  const orgId = c.get("orgId")!;
+  const deliverySettings = await svc.getEmailDeliverySettings(c.get("db"), orgId);
+  try {
+    await sendMail({ to: body.to, subject: "Email configuration test", html: `<p>Your institution email configuration is working.</p>` }, deliverySettings ?? {});
+    await svc.recordEmailTest(c.get("db"), orgId, null);
+    return ok(c, { sent: true, to: body.to });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Email test failed";
+    await svc.recordEmailTest(c.get("db"), orgId, message);
+    throw badRequest(message, "email_test_failed");
+  }
+});
+
+const emailTemplateInput = z.object({
+  key: z.string().trim().min(1).max(80).regex(/^[a-z0-9_]+$/, "Use lowercase letters, numbers, and underscores"),
+  name: z.string().trim().min(1).max(120),
+  subject: z.string().trim().min(1).max(300),
+  htmlBody: z.string().min(1).max(100000),
+  textBody: z.string().max(50000).nullable(),
+  isActive: z.boolean(),
+});
+organisationRoutes.get("/email-templates", requirePermission("organisation.view"), async (c) => okList(c, await svc.listEmailTemplates(c.get("db"), c.get("orgId")!), 0, 1, 1000));
+organisationRoutes.post("/email-templates", requirePermission("organisation.edit"), async (c) => {
+  const body = parse(emailTemplateInput, await c.req.json());
+  const row = await svc.saveEmailTemplate(c.get("db"), c.get("orgId")!, c.get("user")!.id, undefined, body);
+  await writeAudit(c, { action: "create", entity: "email_template", entityId: row.id, newValue: { key: row.key, name: row.name } });
+  return ok(c, row, 201);
+});
+organisationRoutes.put("/email-templates/:id", requirePermission("organisation.edit"), async (c) => {
+  const body = parse(emailTemplateInput.omit({ key: true }), await c.req.json());
+  const row = await svc.saveEmailTemplate(c.get("db"), c.get("orgId")!, c.get("user")!.id, c.req.param("id"), { key: "", ...body });
+  await writeAudit(c, { action: "update", entity: "email_template", entityId: row.id, newValue: { name: row.name, isActive: row.isActive } });
+  return ok(c, row);
+});
+organisationRoutes.delete("/email-templates/:id", requirePermission("organisation.edit"), async (c) => {
+  await svc.deleteEmailTemplate(c.get("db"), c.get("orgId")!, c.req.param("id"));
+  await writeAudit(c, { action: "delete", entity: "email_template", entityId: c.req.param("id") });
+  return ok(c, { deleted: true });
+});
+organisationRoutes.post("/email-templates/preview", requirePermission("organisation.view"), async (c) => {
+  const body = z.object({ subject: z.string().max(300), htmlBody: z.string().max(100000), textBody: z.string().max(50000).nullable().optional() }).parse(await c.req.json());
+  const organisation = await svc.get(c.get("db"), c.get("orgId")!);
+  const rendered = svc.renderTemplate({ subject: body.subject, htmlBody: body.htmlBody, textBody: body.textBody ?? null }, {
+    title: "Sample announcement",
+    body: "This is a preview of your email content.",
+    schoolName: organisation.name,
+    recipientName: "Aarav Sharma",
+    appUrl: "https://example.com",
+    date: new Date().toISOString().slice(0, 10),
+  });
+  return ok(c, rendered);
+});
+organisationRoutes.get("/email-deliveries", requirePermission("organisation.view"), async (c) => okList(c, await svc.listEmailDeliveries(c.get("db"), c.get("orgId")!), 0, 1, 100));
+organisationRoutes.post("/email-deliveries/:id/retry", requirePermission("organisation.edit"), async (c) => {
+  const orgId = c.get("orgId")!;
+  const delivery = await svc.getEmailDelivery(c.get("db"), orgId, c.req.param("id"));
+  const settings = await svc.getEmailDeliverySettings(c.get("db"), orgId);
+  try {
+    await sendMail({ to: delivery.toEmail, subject: delivery.subject, html: delivery.htmlBody ?? "" }, settings ?? {});
+    const row = await svc.markEmailDelivery(c.get("db"), orgId, delivery.id, "sent", null);
+    await writeAudit(c, { action: "retry", entity: "email_delivery", entityId: delivery.id, newValue: { status: "sent" } });
+    return ok(c, row);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Email retry failed";
+    await svc.markEmailDelivery(c.get("db"), orgId, delivery.id, "failed", message);
+    throw badRequest(message, "email_retry_failed");
+  }
 });
 organisationRoutes.get("/features", requirePermission("organisation.view"), async (c) => okList(c, await svc.listFeatures(c.get("db"), c.get("orgId")!), 0, 1, 1000));
 organisationRoutes.get("/audit", requirePermission("audit.view"), async (c) => okList(c, await svc.listAudit(c.get("db"), c.get("orgId")!), 0, 1, 1000));

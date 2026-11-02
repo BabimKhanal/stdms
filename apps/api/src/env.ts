@@ -38,10 +38,14 @@ const envSchema = z.object({
 
   CLOUDINARY_API_SECRET: z.string().default(""),
 
-  MAILER_PROVIDER: z.enum(["console", "resend"]).default("console"),
+  MAILER_PROVIDER: z.enum(["console", "resend", "sendgrid", "mailgun", "smtp"]).default("console"),
   RESEND_API_KEY: z.string().default(""),
+  SENDGRID_API_KEY: z.string().default(""),
+  MAILGUN_API_KEY: z.string().default(""),
+  MAILGUN_DOMAIN: z.string().default(""),
   EMAIL_CREDENTIALS_ENCRYPTION_KEY: z.string().default(""),
   MAIL_FROM: z.string().default("Nucleus <no-reply@example.com>"),
+  MAIL_FROM_EMAIL: z.string().default("no-reply@example.com"),
   SMS_PROVIDER: z.enum(["console", "webhook"]).default("console"),
   SMS_WEBHOOK_URL: z.string().default(""),
   PUSH_PROVIDER: z.enum(["console", "webhook"]).default("console"),

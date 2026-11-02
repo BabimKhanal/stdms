@@ -46,13 +46,15 @@ operationRoutes.post("/messages/bulk", requirePermission("notice.create"), async
     subject: z.string().trim().min(3).max(200),
     body: z.string().trim().min(1).max(10000),
     audiences: z.array(z.enum(["everyone", "students", "parents", "guardians", "teachers", "staff"])).min(1),
+    templateKey: z.string().trim().regex(/^[a-z0-9_]+$/).optional(),
   }).parse(await c.req.json());
   const recipientIds = await svc.noticeRecipientIds(db(c), org(c), input.audiences);
   const created = await createForUsers(db(c), org(c), recipientIds, {
-    type: "bulk_message",
+    type: input.templateKey ?? "bulk_message",
     title: input.subject,
     body: input.body,
-    data: { audiences: input.audiences },
+    data: { audiences: input.audiences, templateKey: input.templateKey ?? "bulk_message" },
+    createdBy: user(c),
   });
   created.forEach(publishNotification);
   return ok(c, { recipients: created.length, audiences: input.audiences });

@@ -10,6 +10,8 @@ import type { AuthUser } from "../../lib/context";
 import { randomToken, readSession, revokeAllSessions, revokeSession, saveSession, type SessionData } from "./session";
 import { deletePasswordResetToken, getPasswordResetUser, setPasswordResetToken } from "../../lib/redis";
 import { sendMail } from "../../lib/mailer";
+import { buildMailConfig } from "../../lib/mail-config";
+import { renderEmailHtml, renderEmailSubject, renderEmailText } from "../../lib/email-template";
 import { env } from "../../env";
 
 /**
@@ -150,10 +152,25 @@ function escapeHtml(value: string) {
   return value.replace(/[&<>\"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[character] ?? character);
 }
 
+type EmailSettingsDbRow = {
+  provider: string;
+  enabled: boolean;
+  from_name: string;
+  from_email: string;
+  reply_to: string | null;
+  footer: string | null;
+  provider_domain: string | null;
+  smtp_host: string | null;
+  smtp_port: number | null;
+  smtp_secure: boolean;
+  smtp_username: string | null;
+  credentials_encrypted: string | null;
+};
+
 export async function requestPasswordReset(c: Context<AppEnv>, identifier: string) {
   await c.var.client.query("SELECT set_config('app.allow_unscoped', 'true', false)");
-  const result = await c.var.client.query<{ id: string; email: string | null; name: string }>(
-    `SELECT id, email, name FROM users WHERE status = 'active' AND (lower(email) = lower($1) OR lower(username) = lower($1)) LIMIT 1`,
+  const result = await c.var.client.query<{ id: string; email: string | null; name: string; organisation_id: string | null }>(
+    `SELECT id, email, name, organisation_id FROM users WHERE status = 'active' AND (lower(email) = lower($1) OR lower(username) = lower($1)) LIMIT 1`,
     [identifier],
   );
   const user = result.rows[0];
@@ -161,11 +178,57 @@ export async function requestPasswordReset(c: Context<AppEnv>, identifier: strin
     const token = randomToken();
     await setPasswordResetToken(token, user.id);
     const link = `${env.PASSWORD_RESET_URL}?token=${encodeURIComponent(token)}`;
-    await sendMail({
-      to: user.email,
-      subject: "Reset your Nucleus password",
-      html: `<p>Hello ${escapeHtml(user.name)},</p><p>Use the link below to choose a new password. It expires in 15 minutes and can only be used once.</p><p><a href="${escapeHtml(link)}">Reset password</a></p>`,
-    });
+
+    let mailConfig: ReturnType<typeof buildMailConfig> | undefined;
+    let subject = "Reset your Nucleus password";
+    let html = `<p>Hello ${escapeHtml(user.name)},</p><p>Use the link below to choose a new password. It expires in 15 minutes and can only be used once.</p><p><a href="${escapeHtml(link)}">Reset password</a></p>`;
+    let text: string | undefined;
+
+    if (user.organisation_id) {
+      const settings = await c.var.client.query<EmailSettingsDbRow>(`SELECT * FROM email_settings WHERE organisation_id = $1 LIMIT 1`, [user.organisation_id]);
+      const row = settings.rows[0];
+      if (row) {
+        mailConfig = buildMailConfig({
+          provider: row.provider,
+          enabled: row.enabled,
+          fromName: row.from_name,
+          fromEmail: row.from_email,
+          replyTo: row.reply_to,
+          footer: row.footer,
+          providerDomain: row.provider_domain,
+          smtpHost: row.smtp_host,
+          smtpPort: row.smtp_port,
+          smtpSecure: row.smtp_secure,
+          smtpUsername: row.smtp_username,
+          credentialsEncrypted: row.credentials_encrypted,
+        });
+      }
+      const templateResult = await c.var.client.query<{ subject: string; html_body: string; text_body: string | null }>(
+        `SELECT subject, html_body, text_body FROM email_templates WHERE organisation_id = $1 AND key = 'password_reset' AND is_active = true LIMIT 1`,
+        [user.organisation_id],
+      );
+      const template = templateResult.rows[0];
+      if (template) {
+        const organisation = await c.var.client.query<{ name: string }>(`SELECT name FROM organisations WHERE id = $1 LIMIT 1`, [user.organisation_id]);
+        const vars = {
+          title: "Reset your password",
+          body: link,
+          schoolName: organisation.rows[0]?.name ?? "Your institution",
+          recipientName: user.name,
+          appUrl: env.WEB_ORIGIN,
+          date: new Date().toISOString().slice(0, 10),
+        };
+        subject = renderEmailSubject(template.subject, vars);
+        html = renderEmailHtml(template.html_body, vars);
+        text = template.text_body ? renderEmailText(template.text_body, vars) : undefined;
+      }
+    }
+
+    try {
+      await sendMail({ to: user.email, subject, html, text }, mailConfig ?? {});
+    } catch (error) {
+      console.error("[password-reset-email]", error);
+    }
   }
   // Do not reveal whether an account exists.
   return { requested: true };

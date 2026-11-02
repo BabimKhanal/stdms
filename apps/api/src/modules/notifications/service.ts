@@ -1,14 +1,17 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { emailSettings, employees, guardians, notifications, students, users } from "../../db/schema";
+import { emailDeliveries, emailSettings, emailTemplates, employees, guardians, notifications, organisations, students, users } from "../../db/schema";
 import type { DB } from "../../db/client";
+import { env } from "../../env";
 import { deliverNotification } from "../../lib/notification-providers";
-import { decryptEmailCredential } from "../../lib/email-credentials";
+import { buildMailConfig } from "../../lib/mail-config";
+import { renderEmailHtml, renderEmailSubject, renderEmailText } from "../../lib/email-template";
 
 export type NotificationInput = {
   type: string;
   title: string;
   body?: string | null;
   data?: Record<string, unknown>;
+  createdBy?: string | null;
 };
 
 export async function list(db: DB, orgId: string, userId: string) {
@@ -41,11 +44,52 @@ export async function createForUsers(db: DB, orgId: string, userIds: string[], i
     body: input.body ?? null,
     data: input.data ?? {},
   }))).returning();
-  const recipients = await db.select({ id: users.id, email: users.email, phone: sql<string | null>`coalesce(${employees.phone}, ${students.phone}, ${guardians.phone})` }).from(users).leftJoin(employees, eq(users.employeeId, employees.id)).leftJoin(students, eq(users.studentId, students.id)).leftJoin(guardians, eq(users.guardianId, guardians.id)).where(and(eq(users.organisationId, orgId), inArray(users.id, uniqueUserIds)));
+
+  const recipients = await db.select({ id: users.id, name: users.name, email: users.email, phone: sql<string | null>`coalesce(${employees.phone}, ${students.phone}, ${guardians.phone})` }).from(users).leftJoin(employees, eq(users.employeeId, employees.id)).leftJoin(students, eq(users.studentId, students.id)).leftJoin(guardians, eq(users.guardianId, guardians.id)).where(and(eq(users.organisationId, orgId), inArray(users.id, uniqueUserIds)));
   const recipientMap = new Map(recipients.map((recipient) => [recipient.id, recipient]));
-  const [settings] = await db.select({ provider: emailSettings.provider, enabled: emailSettings.enabled, fromName: emailSettings.fromName, fromEmail: emailSettings.fromEmail, replyTo: emailSettings.replyTo, footer: emailSettings.footer, credentialsEncrypted: emailSettings.credentialsEncrypted }).from(emailSettings).where(eq(emailSettings.organisationId, orgId)).limit(1);
-  const mailConfig = settings ? { ...settings, provider: settings.provider as "console" | "resend", apiKey: settings.credentialsEncrypted ? decryptEmailCredential(settings.credentialsEncrypted) : undefined } : undefined;
-  await Promise.all(rows.map((row) => deliverNotification(recipientMap.get(row.userId) ?? { id: row.userId }, { title: input.title, body: input.body ?? "", data: input.data }, mailConfig)));
+
+  const [settings] = await db.select().from(emailSettings).where(eq(emailSettings.organisationId, orgId)).limit(1);
+  const mailConfig = settings ? buildMailConfig(settings) : undefined;
+  const provider = mailConfig?.provider ?? env.MAILER_PROVIDER;
+
+  const [organisation] = await db.select({ name: organisations.name }).from(organisations).where(eq(organisations.id, orgId)).limit(1);
+  const activeTemplates = await db.select().from(emailTemplates).where(and(eq(emailTemplates.organisationId, orgId), eq(emailTemplates.isActive, true)));
+  const templateMap = new Map(activeTemplates.map((template) => [template.key, template]));
+  const fallback = templateMap.get("default");
+  const schoolName = organisation?.name ?? "Your institution";
+  const date = new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date());
+
+  const deliveries: typeof emailDeliveries.$inferInsert[] = [];
+  await Promise.all(rows.map(async (row) => {
+    const recipient = recipientMap.get(row.userId) ?? { id: row.userId, name: null, email: null, phone: null };
+    const template = templateMap.get(input.type) ?? fallback;
+    const vars = { title: input.title, body: input.body ?? "", schoolName, recipientName: recipient.name ?? "", appUrl: env.WEB_ORIGIN, date };
+    const content = template
+      ? {
+          subject: renderEmailSubject(template.subject, vars),
+          html: renderEmailHtml(template.htmlBody, vars),
+          text: template.textBody ? renderEmailText(template.textBody, vars) : undefined,
+        }
+      : { subject: input.title, html: `<p>${input.body ?? ""}</p>` };
+
+    const result = await deliverNotification(recipient, { title: input.title, body: input.body ?? "", data: input.data }, mailConfig, content);
+    if (result.email && recipient.email) {
+      deliveries.push({
+        organisationId: orgId,
+        templateKey: template?.key ?? null,
+        toEmail: recipient.email,
+        subject: result.email.subject,
+        htmlBody: result.email.html,
+        provider,
+        status: result.email.status,
+        error: result.email.error ?? null,
+        createdBy: input.createdBy ?? null,
+        sentAt: result.email.status === "sent" ? new Date() : null,
+      });
+    }
+  }));
+
+  if (deliveries.length) await db.insert(emailDeliveries).values(deliveries);
   return rows;
 }
 
