@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, ilike, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, lte, sql } from "drizzle-orm";
 import type { DB } from "../../lib/types";
 import { attendanceRecords, attendanceSettings, events, homework, homeworkSubmissions, leaveRequests, noticeAudiences, notices, studentGuardians, students, sections, classes, subjects, timetablePeriods, employees, enrolments, users } from "../../db/schema";
 import { createForUsers, organisationUserIds } from "../notifications/service";
@@ -124,7 +124,30 @@ export async function saveSubmission(db: DB, orgId: string, homeworkId: string, 
 export async function gradeSubmission(db: DB, orgId: string, id: string, input: { marks: number; feedback?: string | null; status: string }, principal?: AuthUser) { if (principal) { const [submission] = await db.select({ homeworkId: homeworkSubmissions.homeworkId }).from(homeworkSubmissions).where(and(eq(homeworkSubmissions.id, id), tenant(homeworkSubmissions, orgId))).limit(1); if (!submission) throw notFound("Submission not found"); await assertHomeworkAssigned(db, orgId, submission.homeworkId, principal); } const [row] = await db.update(homeworkSubmissions).set({ marks: input.marks, feedback: input.feedback ?? null, status: input.status as never, gradedAt: new Date() }).where(and(eq(homeworkSubmissions.id, id), tenant(homeworkSubmissions, orgId))).returning(); if (!row) throw notFound("Submission not found"); const [recipient] = await db.select({ id: users.id }).from(users).where(and(eq(users.studentId, row.studentId), eq(users.organisationId, orgId))).limit(1); if (recipient) { const created = await createForUsers(db, orgId, [recipient.id], { type: "assignment_graded", title: "Assignment graded", body: `Your assignment received ${input.marks} marks.`, data: { submissionId: row.id, homeworkId: row.homeworkId } }); created.forEach(publishNotification); } return row; }
 
 export async function listNotices(db: DB, orgId: string) { return db.select({ ...(notices as any), authorName: sql<string | null>`${employees.fullName}`, audiences: sql<string[]>`coalesce((select jsonb_agg(na.audience_type) from notice_audiences na where na.notice_id = ${notices.id} and na.organisation_id = ${orgId}), '[]'::jsonb)` }).from(notices).leftJoin(employees, sql`${notices.authorId} = ${employees.id}`).where(tenant(notices, orgId)).orderBy(desc(notices.publishAt)); }
-export async function createNotice(db: DB, orgId: string, userId: string, input: NoticeInput) { const row = await db.transaction(async (tx) => { const [created] = await tx.insert(notices).values({ ...input, organisationId: orgId, authorId: userId, publishAt: input.publishAt ? new Date(input.publishAt) : undefined, expireAt: input.expireAt ? new Date(input.expireAt) : null }).returning(); await tx.insert(noticeAudiences).values(input.audiences.map((audienceType) => ({ organisationId: orgId, noticeId: created.id, audienceType }))); return created; }); const recipients = await organisationUserIds(db, orgId); const created = await createForUsers(db, orgId, recipients, { type: "notice", title: row.title, body: row.body, data: { noticeId: row.id } }); created.forEach(publishNotification); return row; }
+export async function noticeRecipientIds(db: DB, orgId: string, audiences: string[]) {
+  const selected = new Set(audiences);
+  if (selected.has("everyone")) return organisationUserIds(db, orgId);
+
+  const ids = new Set<string>();
+  if (selected.has("students")) {
+    const rows = await db.select({ id: users.id }).from(users).where(and(tenant(users, orgId), isNotNull(users.studentId)));
+    rows.forEach((row) => ids.add(row.id));
+  }
+  if (selected.has("parents") || selected.has("guardians")) {
+    const rows = await db.select({ id: users.id }).from(users).where(and(tenant(users, orgId), isNotNull(users.guardianId)));
+    rows.forEach((row) => ids.add(row.id));
+  }
+  if (selected.has("teachers")) {
+    const rows = await db.select({ id: users.id }).from(users).innerJoin(employees, eq(users.employeeId, employees.id)).where(and(tenant(users, orgId), eq(employees.organisationId, orgId), eq(employees.staffType, "teaching")));
+    rows.forEach((row) => ids.add(row.id));
+  }
+  if (selected.has("staff")) {
+    const rows = await db.select({ id: users.id }).from(users).where(and(tenant(users, orgId), isNotNull(users.employeeId)));
+    rows.forEach((row) => ids.add(row.id));
+  }
+  return [...ids];
+}
+export async function createNotice(db: DB, orgId: string, userId: string, input: NoticeInput) { const row = await db.transaction(async (tx) => { const [created] = await tx.insert(notices).values({ ...input, organisationId: orgId, authorId: userId, publishAt: input.publishAt ? new Date(input.publishAt) : undefined, expireAt: input.expireAt ? new Date(input.expireAt) : null }).returning(); await tx.insert(noticeAudiences).values(input.audiences.map((audienceType) => ({ organisationId: orgId, noticeId: created.id, audienceType }))); return created; }); const recipients = await noticeRecipientIds(db, orgId, input.audiences); const created = await createForUsers(db, orgId, recipients, { type: "notice", title: row.title, body: row.body, data: { noticeId: row.id, audiences: input.audiences } }); created.forEach(publishNotification); return row; }
 export async function updateNotice(db: DB, orgId: string, id: string, input: Partial<NoticeInput>) { const [row] = await db.update(notices).set({ ...input, publishAt: input.publishAt ? new Date(input.publishAt) : undefined, expireAt: input.expireAt ? new Date(input.expireAt) : input.expireAt === null ? null : undefined }).where(and(eq(notices.id, id), tenant(notices, orgId))).returning(); if (!row) throw notFound("Notice not found"); return row; }
 export async function deleteNotice(db: DB, orgId: string, id: string) { const rows = await db.delete(notices).where(and(eq(notices.id, id), tenant(notices, orgId))).returning(); if (!rows.length) throw notFound("Notice not found"); }
 export async function listEvents(db: DB, orgId: string) { return db.select().from(events).where(tenant(events, orgId)).orderBy(asc(events.startDate)); }

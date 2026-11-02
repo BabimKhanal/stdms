@@ -1,18 +1,124 @@
+import nodemailer from "nodemailer";
 import { env } from "../env";
 
-type MailInput = { to: string; subject: string; html: string };
+export type MailProvider = "console" | "resend" | "sendgrid" | "mailgun" | "smtp";
 
-/** Provider boundary for transactional email. Console mode keeps local/demo flows usable. */
-export async function sendMail(input: MailInput): Promise<void> {
-  if (env.MAILER_PROVIDER === "resend") {
-    if (!env.RESEND_API_KEY) throw new Error("RESEND_API_KEY is required when MAILER_PROVIDER=resend");
-    const response = await fetch("https://api.resend.com/emails", {
+export type MailConfig = {
+  provider?: MailProvider;
+  enabled?: boolean;
+  fromName?: string;
+  fromEmail?: string;
+  replyTo?: string | null;
+  footer?: string | null;
+  apiKey?: string | null;
+  providerDomain?: string | null;
+  smtp?: {
+    host?: string | null;
+    port?: number | null;
+    secure?: boolean;
+    username?: string | null;
+    password?: string | null;
+  };
+};
+
+export type MailInput = { to: string; subject: string; html: string; text?: string };
+
+function sender(config: MailConfig) {
+  return config.fromName && config.fromEmail ? `${config.fromName} <${config.fromEmail}>` : env.MAIL_FROM;
+}
+
+function body(input: MailInput, config: MailConfig) {
+  return config.footer ? `${input.html}<hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0" /><p style="color:#64748b;font-size:12px">${config.footer}</p>` : input.html;
+}
+
+async function postJson(url: string, headers: Record<string, string>, payload: unknown) {
+  const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(payload) });
+  if (!response.ok) {
+    const detail = (await response.text().catch(() => "")).slice(0, 500);
+    throw new Error(`Email provider rejected the message (${response.status})${detail ? `: ${detail}` : ""}`);
+  }
+}
+
+/** Provider boundary for transactional and bulk email. */
+export async function sendMail(input: MailInput, config: MailConfig = {}): Promise<void> {
+  if (config.enabled === false) return;
+  const provider = config.provider ?? env.MAILER_PROVIDER;
+  const html = body(input, config);
+
+  if (provider === "resend") {
+    const apiKey = config.apiKey || env.RESEND_API_KEY;
+    if (!apiKey) throw new Error("A Resend API key is required when the Resend provider is enabled");
+    await postJson("https://api.resend.com/emails", { Authorization: `Bearer ${apiKey}` }, {
+      from: sender(config),
+      to: [input.to],
+      subject: input.subject,
+      html,
+      ...(input.text ? { text: input.text } : {}),
+      ...(config.replyTo ? { reply_to: config.replyTo } : {}),
+    });
+    return;
+  }
+
+  if (provider === "sendgrid") {
+    const apiKey = config.apiKey || env.SENDGRID_API_KEY;
+    if (!apiKey) throw new Error("A SendGrid API key is required when the SendGrid provider is enabled");
+    await postJson("https://api.sendgrid.com/v3/mail/send", { Authorization: `Bearer ${apiKey}` }, {
+      personalizations: [{ to: [{ email: input.to }] }],
+      from: { email: config.fromEmail || env.MAIL_FROM_EMAIL, name: config.fromName || undefined },
+      ...(config.replyTo ? { reply_to: { email: config.replyTo } } : {}),
+      subject: input.subject,
+      content: [
+        ...(input.text ? [{ type: "text/plain", value: input.text }] : []),
+        { type: "text/html", value: html },
+      ],
+    });
+    return;
+  }
+
+  if (provider === "mailgun") {
+    const apiKey = config.apiKey || env.MAILGUN_API_KEY;
+    const domain = config.providerDomain || env.MAILGUN_DOMAIN;
+    if (!apiKey || !domain) throw new Error("Mailgun requires an API key and a sending domain");
+    const form = new FormData();
+    form.set("from", sender(config));
+    form.set("to", input.to);
+    form.set("subject", input.subject);
+    form.set("html", html);
+    if (input.text) form.set("text", input.text);
+    if (config.replyTo) form.set("h:Reply-To", config.replyTo);
+    const response = await fetch(`https://api.mailgun.net/v3/${encodeURIComponent(domain)}/messages`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: env.MAIL_FROM, to: [input.to], subject: input.subject, html: input.html }),
+      headers: { Authorization: `Basic ${Buffer.from(`api:${apiKey}`).toString("base64")}` },
+      body: form,
     });
     if (!response.ok) throw new Error(`Email provider rejected the message (${response.status})`);
     return;
   }
-  console.info(`[mailer:console] to=${input.to} subject=${input.subject}\n${input.html}`);
+
+  if (provider === "smtp") {
+    const host = config.smtp?.host;
+    const port = config.smtp?.port;
+    if (!host || !port) throw new Error("SMTP requires a host and port");
+    const transport = nodemailer.createTransport({
+      host,
+      port,
+      secure: config.smtp?.secure ?? port === 465,
+      auth: config.smtp?.username && config.smtp?.password ? { user: config.smtp.username, pass: config.smtp.password } : undefined,
+    });
+    try {
+      await transport.sendMail({
+        from: sender(config),
+        to: input.to,
+        subject: input.subject,
+        html,
+        text: input.text,
+        replyTo: config.replyTo ?? undefined,
+      });
+    } finally {
+      transport.close();
+    }
+    return;
+  }
+
+  console.info(`[mailer:console] to=${input.to} subject=${input.subject}\n${html}`);
 }

@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import {
   CalendarDays,
+  Mail,
   Megaphone,
   MapPin,
   Plus,
@@ -81,7 +82,7 @@ export function CommunicationWorkspace() {
   const canCreateEvent = permissions.includes("event.create");
   const canDeleteEvent = permissions.includes("event.delete");
 
-  const [tab, setTab] = useState<"notices" | "events">("notices");
+  const [tab, setTab] = useState<"notices" | "events" | "bulk">("notices");
   const [notices, setNotices] = useState<Notice[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -169,6 +170,30 @@ export function CommunicationWorkspace() {
     }
   }
 
+  async function sendBulkMessage(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await api.post<{ recipients: number }>("/messages/bulk", {
+        subject: form.get("subject"),
+        body: form.get("body"),
+        audiences: [form.get("audience")],
+      });
+      formElement.reset();
+      setShowForm(false);
+      setMessage(`Message sent to ${result.recipients} recipient${result.recipients === 1 ? "" : "s"}.`);
+      toast.success("Bulk message sent", `${result.recipients} recipient${result.recipients === 1 ? "" : "s"} received the broadcast.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to send bulk message");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function removeNotice(id: string) {
     if (!window.confirm("Delete this notice?")) return;
     setError("");
@@ -195,22 +220,22 @@ export function CommunicationWorkspace() {
     }
   }
 
-  const canCreate = tab === "notices" ? canCreateNotice : canCreateEvent;
+  const canCreate = tab === "notices" ? canCreateNotice : tab === "events" ? canCreateEvent : canCreateNotice;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <p className="text-sm font-medium text-blue-600">Community updates</p>
-          <h2 className="mt-2 text-3xl font-semibold tracking-tight">Notices & events</h2>
+          <h2 className="mt-2 text-3xl font-semibold tracking-tight">Community messaging</h2>
           <p className="mt-2 text-sm text-slate-500">
-            Share announcements and keep the school calendar in one place.
+            Share announcements, send targeted broadcasts, and keep the school calendar in one place.
           </p>
         </div>
         {canCreate && (
           <Button onClick={() => { setShowForm((value) => !value); setError(""); setMessage(""); }}>
             {showForm ? <X size={16} /> : <Plus size={16} />}
-            {showForm ? "Close" : tab === "notices" ? "Publish notice" : "Add event"}
+            {showForm ? "Close" : tab === "notices" ? "Publish notice" : tab === "events" ? "Add event" : "Send message"}
           </Button>
         )}
       </div>
@@ -221,15 +246,46 @@ export function CommunicationWorkspace() {
       <Tabs
         value={tab}
         onValueChange={(value) => {
-          setTab(value as "notices" | "events");
+          setTab(value as "notices" | "events" | "bulk");
           setShowForm(false);
         }}
       >
-        <TabsList ariaLabel="Notices and events">
+        <TabsList ariaLabel="Community messaging">
           <TabsTrigger value="notices" icon={<Megaphone size={15} />} badge={notices.length}>Notices</TabsTrigger>
           <TabsTrigger value="events" icon={<CalendarDays size={15} />} badge={events.length}>Events</TabsTrigger>
+          <TabsTrigger value="bulk" icon={<Mail size={15} />}>Bulk message</TabsTrigger>
         </TabsList>
       </Tabs>
+
+      {showForm && tab === "bulk" && canCreateNotice && (
+        <Card className="border-blue-200">
+          <CardHeader>
+            <CardTitle>Send a targeted broadcast</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={sendBulkMessage} className="grid gap-4 sm:grid-cols-2">
+              <Input name="subject" placeholder="Email subject" required minLength={3} maxLength={200} className="sm:col-span-2" />
+              <textarea
+                name="body"
+                placeholder="Write your message"
+                required
+                minLength={1}
+                maxLength={10000}
+                className="min-h-36 rounded-xl border border-slate-200 px-3.5 py-3 text-sm sm:col-span-2"
+              />
+              <select name="audience" defaultValue="everyone" className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm">
+                {audiences.map((audience) => (
+                  <option key={audience} value={audience} className="capitalize">{audience}</option>
+                ))}
+              </select>
+              <p className="self-center text-xs leading-5 text-slate-500">The broadcast creates an in-app notification and sends email when a production mail provider is configured.</p>
+              <div className="sm:col-span-2">
+                <Button disabled={saving}>{saving ? "Sending..." : "Send broadcast"}</Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
       {showForm && tab === "notices" && canCreateNotice && (
         <Card className="border-blue-200">
@@ -342,7 +398,7 @@ export function CommunicationWorkspace() {
             </CardContent>
           </Card>
         )
-      ) : events.length ? (
+      ) : tab === "events" && events.length ? (
         <div className="grid gap-4 lg:grid-cols-2">
           {events.map((event) => (
             <Card key={event.id} className="h-full">
@@ -388,11 +444,18 @@ export function CommunicationWorkspace() {
             </Card>
           ))}
         </div>
-      ) : (
+      ) : tab === "events" ? (
         <Card>
           <CardContent className="py-12 text-center">
             <CalendarDays className="mx-auto text-slate-300" size={28} />
             <p className="mt-3 text-sm text-slate-500">No events are scheduled yet.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Mail className="mx-auto text-slate-300" size={28} />
+            <p className="mt-3 text-sm text-slate-500">Use the composer above to send a targeted school broadcast.</p>
           </CardContent>
         </Card>
       )}

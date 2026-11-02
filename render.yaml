@@ -36,11 +36,11 @@ services:
       - key: CLOUDINARY_API_SECRET
         sync: false
       - key: MAILER_PROVIDER
-        value: console
+        sync: false
       - key: RESEND_API_KEY
         sync: false
       - key: MAIL_FROM
-        value: Nucleus <no-reply@example.com>
+        sync: false
       - key: PASSWORD_RESET_URL
         sync: false
       - key: ESEWA_ENABLED

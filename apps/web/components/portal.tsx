@@ -17,6 +17,7 @@ import {
   LayoutDashboard,
   LineChart,
   LogOut,
+  Mail,
   Menu,
   Megaphone,
   Palette,
@@ -51,6 +52,7 @@ import { ExamApprovalPanel } from "./exam-approval-panel";
 import { GatewaySettings } from "./gateway-settings";
 import { FeeAccessSettings } from "./fee-access-settings";
 import { DocumentTemplateWorkspace } from "./document-template-workspace";
+import { EmailSettings } from "./email-settings";
 import { Alert } from "./ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
@@ -108,6 +110,7 @@ const navGroups: NavGroup[] = [
     title: "Settings",
     items: [
       ["Branding", Palette, "branding"],
+      ["Email settings", Mail, "email-settings"],
       ["Document templates", FileText, "document-templates"],
     ],
   },
@@ -349,6 +352,7 @@ export function Portal() {
               : section === "users" ? <UserManagement />
               : section === "employees" ? <EmployeeDirectory />
               : section === "branding" && branding && user?.permissions?.includes("organisation.edit") ? <BrandingSettings branding={branding} onSaved={(updated) => { setBranding(updated); setBrandingError(""); }} />
+              : section === "email-settings" && user?.permissions?.includes("organisation.edit") ? <EmailSettings />
               : section === "payment-settings" && user?.permissions?.includes("payment.edit") ? (
                 <div className="space-y-5">
                   <div>
@@ -641,6 +645,7 @@ const roleNav: Record<string, string[]> = {
 
 const permissionNav: Record<string, string> = {
   branding: "organisation.edit",
+  "email-settings": "organisation.edit",
   "payment-settings": "payment.edit",
   "document-templates": "organisation.edit",
   reports: "report.view",

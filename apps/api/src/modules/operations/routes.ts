@@ -6,6 +6,8 @@ import { ok, okList, parse } from "../../lib/http";
 import { forbidden } from "../../lib/errors";
 import { writeAudit } from "../../lib/audit";
 import { requireAuth, requireOrg, requirePermission } from "../../middleware/guards";
+import { createForUsers } from "../notifications/service";
+import { publishNotification } from "../notifications/socket";
 import * as svc from "./service";
 
 export const operationRoutes = new Hono<AppEnv>(); operationRoutes.use("*", requireAuth, requireOrg);
@@ -39,6 +41,24 @@ operationRoutes.post("/homework/:id/submissions", async (c) => {
 operationRoutes.put("/homework/submissions/:id/grade", requirePermission("homework.edit"), async (c) => ok(c, await svc.gradeSubmission(db(c), org(c), c.req.param("id"), parse(gradeSubmissionSchema, await c.req.json()), c.get("user")!)));
 operationRoutes.get("/notices", requirePermission("notice.view"), async (c) => { const rows = await svc.listNotices(db(c), org(c)); return okList(c, rows, rows.length, 1, 1000); });
 operationRoutes.post("/notices", requirePermission("notice.create"), async (c) => ok(c, await svc.createNotice(db(c), org(c), user(c), parse(noticeInputSchema, await c.req.json())), 201));
+operationRoutes.post("/messages/bulk", requirePermission("notice.create"), async (c) => {
+  const input = z.object({
+    subject: z.string().trim().min(3).max(200),
+    body: z.string().trim().min(1).max(10000),
+    audiences: z.array(z.enum(["everyone", "students", "parents", "guardians", "teachers", "staff"])).min(1),
+    templateKey: z.string().trim().regex(/^[a-z0-9_]+$/).optional(),
+  }).parse(await c.req.json());
+  const recipientIds = await svc.noticeRecipientIds(db(c), org(c), input.audiences);
+  const created = await createForUsers(db(c), org(c), recipientIds, {
+    type: input.templateKey ?? "bulk_message",
+    title: input.subject,
+    body: input.body,
+    data: { audiences: input.audiences, templateKey: input.templateKey ?? "bulk_message" },
+    createdBy: user(c),
+  });
+  created.forEach(publishNotification);
+  return ok(c, { recipients: created.length, audiences: input.audiences });
+});
 operationRoutes.put("/notices/:id", requirePermission("notice.edit"), async (c) => ok(c, await svc.updateNotice(db(c), org(c), c.req.param("id"), parse(noticeInputSchema.partial(), await c.req.json()))));
 operationRoutes.delete("/notices/:id", requirePermission("notice.delete"), async (c) => { await svc.deleteNotice(db(c), org(c), c.req.param("id")); return ok(c, { deleted: true }); });
 operationRoutes.get("/events", requirePermission("event.view"), async (c) => { const rows = await svc.listEvents(db(c), org(c)); return okList(c, rows, rows.length, 1, 1000); });

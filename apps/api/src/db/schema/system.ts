@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm";
-import { bigint, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigint, boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAtCol, idCol, orgIdCol, updatedAtCol } from "./tenant";
 import { organisations, users } from "./tenant";
 
@@ -37,6 +37,72 @@ export const documentTemplates = pgTable(
     updatedAt: updatedAtCol(),
   },
   (t) => [uniqueIndex("document_templates_org_name_uq").on(t.organisationId, t.name), index("document_templates_org_type_idx").on(t.organisationId, t.documentType)],
+);
+
+/** Tenant-owned outbound email identity and delivery preferences. */
+export const emailSettings = pgTable(
+  "email_settings",
+  {
+    id: idCol(),
+    organisationId: orgIdCol(),
+    provider: text("provider").notNull().default("resend"),
+    enabled: boolean("enabled").notNull().default(true),
+    fromName: text("from_name").notNull(),
+    fromEmail: text("from_email").notNull(),
+    replyTo: text("reply_to"),
+    footer: text("footer"),
+    dailyLimit: integer("daily_limit").notNull().default(1000),
+    providerDomain: text("provider_domain"),
+    smtpHost: text("smtp_host"),
+    smtpPort: integer("smtp_port"),
+    smtpSecure: boolean("smtp_secure").notNull().default(true),
+    smtpUsername: text("smtp_username"),
+    credentialsEncrypted: text("credentials_encrypted"),
+    lastTestedAt: timestamp("last_tested_at", { withTimezone: true }),
+    lastTestError: text("last_test_error"),
+    createdAt: createdAtCol(),
+    updatedAt: updatedAtCol(),
+  },
+  (t) => [uniqueIndex("email_settings_org_uq").on(t.organisationId)],
+);
+
+/** Tenant-configurable transactional and broadcast email templates. */
+export const emailTemplates = pgTable(
+  "email_templates",
+  {
+    id: idCol(),
+    organisationId: orgIdCol(),
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    subject: text("subject").notNull(),
+    htmlBody: text("html_body").notNull(),
+    textBody: text("text_body"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAtCol(),
+    updatedAt: updatedAtCol(),
+  },
+  (t) => [uniqueIndex("email_templates_org_key_uq").on(t.organisationId, t.key), index("email_templates_org_idx").on(t.organisationId)],
+);
+
+/** Immutable per-recipient email delivery history for support and retry. */
+export const emailDeliveries = pgTable(
+  "email_deliveries",
+  {
+    id: idCol(),
+    organisationId: orgIdCol(),
+    templateKey: text("template_key"),
+    toEmail: text("to_email").notNull(),
+    subject: text("subject").notNull(),
+    htmlBody: text("html_body"),
+    provider: text("provider").notNull(),
+    status: text("status").notNull().default("queued"),
+    error: text("error"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    createdAt: createdAtCol(),
+  },
+  (t) => [index("email_deliveries_org_created_idx").on(t.organisationId, t.createdAt), index("email_deliveries_status_idx").on(t.organisationId, t.status)],
 );
 
 /** Central notification feed (SRS §52) — channels (push/email/SMS) fan out from here. */
