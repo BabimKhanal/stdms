@@ -11,6 +11,7 @@ import { DEFAULT_ROLES, FEATURE_FLAGS, RESOURCES, ACTIONS } from "@edu/shared";
 import { ownerPool, makeDb } from "../src/db/client";
 import * as t from "../src/db/schema";
 import { hashPassword } from "../src/lib/password";
+import { ensureDefaultEmailTemplates } from "../src/modules/organisation/service";
 
 const db = makeDb(ownerPool);
 
@@ -109,6 +110,7 @@ async function main() {
   await db.insert(t.featureFlags).values(
     FEATURE_FLAGS.map((flag) => ({ organisationId: org.id, flag, enabled: true })),
   );
+  await ensureDefaultEmailTemplates(db, org.id);
 
   console.log("→ roles + role permissions...");
   const allPerms = await db.select().from(t.permissions);

@@ -59,10 +59,12 @@ organisationRoutes.post("/email-settings/test", requirePermission("organisation.
   try {
     await sendMail({ to: body.to, subject: "Email configuration test", html: `<p>Your institution email configuration is working.</p>` }, deliverySettings ?? {});
     await svc.recordEmailTest(c.get("db"), orgId, null);
+    await writeAudit(c, { action: "test", entity: "email_settings", entityId: orgId, newValue: { to: body.to, status: "sent" } });
     return ok(c, { sent: true, to: body.to });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Email test failed";
     await svc.recordEmailTest(c.get("db"), orgId, message);
+    await writeAudit(c, { action: "test", entity: "email_settings", entityId: orgId, newValue: { to: body.to, status: "failed", error: message } });
     throw badRequest(message, "email_test_failed");
   }
 });

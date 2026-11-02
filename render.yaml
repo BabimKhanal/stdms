@@ -39,7 +39,17 @@ services:
         sync: false
       - key: RESEND_API_KEY
         sync: false
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: MAILGUN_API_KEY
+        sync: false
+      - key: MAILGUN_DOMAIN
+        sync: false
+      - key: EMAIL_CREDENTIALS_ENCRYPTION_KEY
+        sync: false
       - key: MAIL_FROM
+        sync: false
+      - key: MAIL_FROM_EMAIL
         sync: false
       - key: PASSWORD_RESET_URL
         sync: false
