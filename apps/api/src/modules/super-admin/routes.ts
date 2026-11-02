@@ -112,6 +112,9 @@ superAdminRoutes.put("/organisations/:id", async (c) => {
   );
   return ok(c, organisation);
 });
+superAdminRoutes.get("/organisations/:id/profile", async (c) =>
+  ok(c, await svc.getOrganisationProfile(c.get("db"), c.req.param("id"))),
+);
 superAdminRoutes.get("/organisations/:id/features", async (c) =>
   ok(c, await svc.listFlags(c.get("db"), c.req.param("id"))),
 );

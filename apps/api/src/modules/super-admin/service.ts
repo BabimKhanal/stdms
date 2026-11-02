@@ -1,6 +1,8 @@
-import { count, desc, eq, isNotNull } from "drizzle-orm";
+import { and, count, desc, eq, isNotNull, sum } from "drizzle-orm";
 import type { DB } from "../../lib/types";
 import {
+  auditLogs,
+  files,
   featureFlags,
   organisations,
   platformAuditLogs,
@@ -74,6 +76,62 @@ export async function getOrganisation(db: DB, id: string) {
     .limit(1);
   if (!row) throw notFound("Organisation not found");
   return row;
+}
+export async function getOrganisationProfile(db: DB, id: string) {
+  const organisation = await getOrganisation(db, id);
+  const [
+    [userTotal],
+    [activeUserTotal],
+    [studentTotal],
+    [storageTotal],
+    recentActivity,
+    flags,
+  ] = await Promise.all([
+    db
+      .select({ count: count() })
+      .from(users)
+      .where(eq(users.organisationId, id)),
+    db
+      .select({ count: count() })
+      .from(users)
+      .where(and(eq(users.organisationId, id), eq(users.status, "active"))),
+    db
+      .select({ count: count() })
+      .from(students)
+      .where(eq(students.organisationId, id)),
+    db
+      .select({ bytes: sum(files.size) })
+      .from(files)
+      .where(eq(files.organisationId, id)),
+    db
+      .select({
+        id: auditLogs.id,
+        userName: auditLogs.userName,
+        action: auditLogs.action,
+        entity: auditLogs.entity,
+        entityId: auditLogs.entityId,
+        newValue: auditLogs.newValue,
+        ip: auditLogs.ip,
+        createdAt: auditLogs.createdAt,
+      })
+      .from(auditLogs)
+      .where(eq(auditLogs.organisationId, id))
+      .orderBy(desc(auditLogs.createdAt))
+      .limit(25),
+    db.select().from(featureFlags).where(eq(featureFlags.organisationId, id)),
+  ]);
+
+  return {
+    organisation,
+    usage: {
+      users: Number(userTotal.count),
+      activeUsers: Number(activeUserTotal.count),
+      students: Number(studentTotal.count),
+      storageBytes: Number(storageTotal.bytes ?? 0),
+    },
+    features: flags,
+    recentActivity,
+  };
 }
 export async function listFlags(db: DB, orgId: string) {
   return db

@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import {
   Activity,
   AlertTriangle,
+  ArrowLeft,
   Archive,
   ArrowUpRight,
   Building2,
@@ -12,7 +13,9 @@ import {
   ChevronRight,
   CircleHelp,
   Database,
+  Eye,
   GraduationCap,
+  HardDrive,
   LoaderCircle,
   LogOut,
   Plus,
@@ -63,6 +66,27 @@ type PlatformAudit = {
   createdAt: string;
 };
 type FeatureFlag = { id: string; flag: string; enabled: boolean };
+type TenantOperation = {
+  id: string;
+  userName?: string | null;
+  action: string;
+  entity: string;
+  entityId?: string | null;
+  newValue?: unknown;
+  ip?: string | null;
+  createdAt: string;
+};
+type TenantProfile = {
+  organisation: Omit<Organisation, "userCount" | "studentCount">;
+  usage: {
+    users: number;
+    activeUsers: number;
+    students: number;
+    storageBytes: number;
+  };
+  features: FeatureFlag[];
+  recentActivity: TenantOperation[];
+};
 type TenantForm = {
   name: string;
   slug: string;
@@ -76,7 +100,13 @@ type TenantForm = {
   maxUsers: string;
   maxStorageMb: string;
 };
-type Panel = "overview" | "tenants" | "monitoring" | "backups" | "provisioning";
+type Panel =
+  | "overview"
+  | "tenants"
+  | "tenant-profile"
+  | "monitoring"
+  | "backups"
+  | "provisioning";
 
 const featureCatalog = [
   "students",
@@ -113,6 +143,21 @@ function client() {
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat().format(value);
+}
+
+function formatStorage(bytes: number) {
+  if (bytes < 1024 * 1024)
+    return `${formatNumber(Math.round(bytes / 1024))} KB`;
+  if (bytes < 1024 * 1024 * 1024)
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function operationStatus(value: unknown) {
+  if (!value || typeof value !== "object" || !("status" in value))
+    return undefined;
+  const status = (value as { status?: unknown }).status;
+  return typeof status === "number" ? status : undefined;
 }
 
 function statusTone(status: Organisation["status"]) {
@@ -153,6 +198,14 @@ export function SuperAdminPortal({
   const [form, setForm] = useState<TenantForm>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [featureTenant, setFeatureTenant] = useState<Organisation | null>(null);
+  const [selectedTenant, setSelectedTenant] = useState<Organisation | null>(
+    null,
+  );
+  const [tenantProfile, setTenantProfile] = useState<TenantProfile | null>(
+    null,
+  );
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState("");
   const [featureFlags, setFeatureFlags] = useState<FeatureFlag[]>([]);
   const [featureLoading, setFeatureLoading] = useState(false);
   const [featureError, setFeatureError] = useState("");
@@ -228,6 +281,32 @@ export function SuperAdminPortal({
     };
   }, [featureTenant]);
 
+  useEffect(() => {
+    if (panel !== "tenant-profile" || !selectedTenant) return;
+    let active = true;
+    setProfileLoading(true);
+    setProfileError("");
+    client()
+      .get<TenantProfile>(`/super/organisations/${selectedTenant.id}/profile`)
+      .then((profile) => {
+        if (active) setTenantProfile(profile);
+      })
+      .catch((cause: unknown) => {
+        if (active)
+          setProfileError(
+            cause instanceof Error
+              ? cause.message
+              : "Unable to load tenant operations",
+          );
+      })
+      .finally(() => {
+        if (active) setProfileLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [panel, refreshKey, selectedTenant]);
+
   const activeTenants = organisations.filter(
     (organisation) => organisation.status === "active",
   ).length;
@@ -274,6 +353,12 @@ export function SuperAdminPortal({
       maxStorageMb: String(organisation.maxStorageMb),
     });
     setTenantDialog(true);
+  }
+
+  function openProfile(organisation: Organisation) {
+    setSelectedTenant(organisation);
+    setTenantProfile(null);
+    setPanel("tenant-profile");
   }
 
   async function saveTenant(event: FormEvent<HTMLFormElement>) {
@@ -337,7 +422,9 @@ export function SuperAdminPortal({
     { key: "provisioning", label: "Provisioning", icon: SlidersHorizontal },
   ];
   const heading =
-    navigation.find((item) => item.key === panel)?.label ?? "Overview";
+    panel === "tenant-profile"
+      ? (selectedTenant?.name ?? "Tenant profile")
+      : (navigation.find((item) => item.key === panel)?.label ?? "Overview");
 
   return (
     <div className="min-h-screen bg-[#f3f5f2] text-slate-950">
@@ -697,6 +784,7 @@ export function SuperAdminPortal({
                     .slice(0, 5)}
                   onEdit={openEdit}
                   onFeatures={setFeatureTenant}
+                  onProfile={openProfile}
                 />
               </section>
             </div>
@@ -752,6 +840,7 @@ export function SuperAdminPortal({
                 organisations={visibleOrganisations}
                 onEdit={openEdit}
                 onFeatures={setFeatureTenant}
+                onProfile={openProfile}
                 emptyLabel={
                   loading ? "Loading tenants…" : "No matching tenants."
                 }
@@ -760,6 +849,220 @@ export function SuperAdminPortal({
                 Showing {visibleOrganisations.length} of {organisations.length}{" "}
                 tenants · {suspendedTenants} suspended
               </p>
+            </section>
+          )}
+
+          {panel === "tenant-profile" && selectedTenant && (
+            <section className="space-y-6">
+              <button
+                onClick={() => setPanel("tenants")}
+                className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-950"
+              >
+                <ArrowLeft size={16} /> Tenants
+              </button>
+              <div className="flex flex-col justify-between gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end">
+                <div>
+                  <p className="text-sm font-medium text-emerald-800">
+                    Tenant operations
+                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-3">
+                    <h2 className="text-3xl font-semibold tracking-tight">
+                      {selectedTenant.name}
+                    </h2>
+                    <span
+                      className={`rounded-full border px-2.5 py-1 text-xs font-medium capitalize ${statusTone(selectedTenant.status)}`}
+                    >
+                      {selectedTenant.status}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm text-slate-600">
+                    {selectedTenant.slug} · {selectedTenant.plan} plan ·{" "}
+                    {selectedTenant.academicType}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setFeatureTenant(selectedTenant)}
+                  >
+                    <SlidersHorizontal size={15} />
+                    Module access
+                  </Button>
+                  <Button onClick={() => openEdit(selectedTenant)}>
+                    Manage tenant
+                  </Button>
+                </div>
+              </div>
+              {profileError && (
+                <p
+                  role="alert"
+                  className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800"
+                >
+                  {profileError}
+                </p>
+              )}
+              {profileLoading && !tenantProfile && (
+                <p className="py-10 text-center text-sm text-slate-500">
+                  Loading tenant operations…
+                </p>
+              )}
+              {tenantProfile && (
+                <>
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    <ProfileMetric
+                      label="Users"
+                      value={formatNumber(tenantProfile.usage.users)}
+                      detail={`${formatNumber(tenantProfile.usage.activeUsers)} active accounts`}
+                    />
+                    <ProfileMetric
+                      label="Students"
+                      value={formatNumber(tenantProfile.usage.students)}
+                      detail={`Limit ${formatNumber(tenantProfile.organisation.maxStudents)}`}
+                    />
+                    <ProfileMetric
+                      label="Storage used"
+                      value={formatStorage(tenantProfile.usage.storageBytes)}
+                      detail={`Limit ${formatNumber(tenantProfile.organisation.maxStorageMb)} MB`}
+                      icon={HardDrive}
+                    />
+                    <ProfileMetric
+                      label="Recent operations"
+                      value={formatNumber(tenantProfile.recentActivity.length)}
+                      detail="Latest audited writes"
+                      icon={Activity}
+                    />
+                  </div>
+                  <div className="grid gap-8 xl:grid-cols-[0.85fr_1.15fr]">
+                    <section className="space-y-7">
+                      <div>
+                        <div className="mb-3">
+                          <h3 className="text-base font-semibold">
+                            Account and limits
+                          </h3>
+                          <p className="mt-1 text-sm text-slate-500">
+                            Tenant configuration and current capacity.
+                          </p>
+                        </div>
+                        <div className="divide-y divide-slate-200 border-y border-slate-200">
+                          <ProfileDetail
+                            label="Contact"
+                            value={
+                              tenantProfile.organisation.email || "Not set"
+                            }
+                          />
+                          <ProfileDetail
+                            label="Country / currency"
+                            value={`${tenantProfile.organisation.country ?? "—"} / ${tenantProfile.organisation.currency ?? "—"}`}
+                          />
+                          <ProfileDetail
+                            label="Created"
+                            value={new Date(
+                              tenantProfile.organisation.createdAt,
+                            ).toLocaleDateString()}
+                          />
+                          <ProfileDetail
+                            label="Active users"
+                            value={`${formatNumber(tenantProfile.usage.activeUsers)} / ${formatNumber(tenantProfile.organisation.maxUsers)}`}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="mb-3 flex items-end justify-between gap-3">
+                          <div>
+                            <h3 className="text-base font-semibold">
+                              Module access
+                            </h3>
+                            <p className="mt-1 text-sm text-slate-500">
+                              Tenant feature overrides.
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => setFeatureTenant(selectedTenant)}
+                            className="text-sm font-medium text-emerald-800 hover:text-emerald-950"
+                          >
+                            Configure
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-2 border-y border-slate-200 py-4">
+                          {featureCatalog.map((flag) => {
+                            const enabled =
+                              tenantProfile.features.find(
+                                (item) => item.flag === flag,
+                              )?.enabled ?? true;
+                            return (
+                              <span
+                                key={flag}
+                                className={`rounded-md border px-2.5 py-1 text-xs font-medium capitalize ${enabled ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-slate-100 text-slate-500"}`}
+                              >
+                                {flag}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </section>
+                    <section>
+                      <div className="mb-3">
+                        <h3 className="text-base font-semibold">
+                          Recent operations
+                        </h3>
+                        <p className="mt-1 text-sm text-slate-500">
+                          Audited tenant writes with actor and response outcome.
+                        </p>
+                      </div>
+                      {tenantProfile.recentActivity.length ? (
+                        <div className="divide-y divide-slate-200 border-y border-slate-200">
+                          {tenantProfile.recentActivity.map((operation) => {
+                            const status = operationStatus(operation.newValue);
+                            return (
+                              <div
+                                key={operation.id}
+                                className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 py-3.5"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <p className="break-all text-sm font-medium">
+                                    {operation.action}
+                                  </p>
+                                  <p className="mt-1 text-xs text-slate-500">
+                                    {operation.userName ?? "Unknown user"} ·{" "}
+                                    {operation.entity}
+                                    {operation.entityId
+                                      ? ` · ${operation.entityId}`
+                                      : ""}
+                                  </p>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-3">
+                                  {status !== undefined && (
+                                    <span
+                                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${status < 400 ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"}`}
+                                    >
+                                      {status}
+                                    </span>
+                                  )}
+                                  <time className="text-xs text-slate-500">
+                                    {new Date(
+                                      operation.createdAt,
+                                    ).toLocaleString()}
+                                  </time>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="border-y border-slate-200 py-10 text-center text-sm text-slate-500">
+                          No audited write operations for this tenant yet.
+                        </p>
+                      )}
+                      <p className="mt-3 text-xs text-slate-500">
+                        This timeline tracks writes captured by the audit
+                        middleware; it does not represent read traffic or
+                        historical uptime.
+                      </p>
+                    </section>
+                  </div>
+                </>
+              )}
             </section>
           )}
 
@@ -1299,15 +1602,57 @@ function MonitorCard({
   );
 }
 
+function ProfileMetric({
+  label,
+  value,
+  detail,
+  icon: Icon = Activity,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  icon?: typeof Activity;
+}) {
+  return (
+    <Card className="rounded-lg shadow-none">
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              {label}
+            </p>
+            <p className="mt-3 text-2xl font-semibold">{value}</p>
+            <p className="mt-1 text-xs text-slate-500">{detail}</p>
+          </div>
+          <span className="grid h-9 w-9 place-items-center rounded-lg bg-emerald-100 text-emerald-800">
+            <Icon size={17} />
+          </span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ProfileDetail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
+      <span className="text-slate-500">{label}</span>
+      <span className="font-medium text-slate-900">{value}</span>
+    </div>
+  );
+}
+
 function TenantRows({
   organisations,
   onEdit,
   onFeatures,
+  onProfile,
   emptyLabel = "No tenants have been created yet.",
 }: {
   organisations: Organisation[];
   onEdit: (organisation: Organisation) => void;
   onFeatures: (organisation: Organisation) => void;
+  onProfile: (organisation: Organisation) => void;
   emptyLabel?: string;
 }) {
   if (!organisations.length)
@@ -1362,6 +1707,15 @@ function TenantRows({
               </td>
               <td className="px-3 py-3.5">
                 <div className="flex justify-end gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`View ${organisation.name} profile`}
+                    onClick={() => onProfile(organisation)}
+                  >
+                    <Eye size={14} />
+                    Profile
+                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"
