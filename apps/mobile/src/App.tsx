@@ -9,6 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Navigation } from './navigation';
 import { AuthProvider, useAuth } from './auth';
 import { Login } from './screens/Login';
+import { ForcedPasswordChange } from './screens/ForcedPasswordChange';
 
 Asset.loadAsync([
   ...NavigationAssets,
@@ -37,6 +38,7 @@ function AuthenticatedApp() {
 
   if (loading) return <View style={{ alignItems: 'center', flex: 1, justifyContent: 'center' }}><ActivityIndicator color="#2563eb" size="large" /></View>;
   if (!user) return <Login />;
+  if (user.mustChangePassword) return <ForcedPasswordChange />;
 
   const theme = colorScheme === 'dark' ? DarkTheme : DefaultTheme;
 

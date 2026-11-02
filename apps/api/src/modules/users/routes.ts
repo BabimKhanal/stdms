@@ -7,6 +7,7 @@ import { ok, okList, parse } from "../../lib/http";
 import { requireAuth, requireOrg, requirePermission } from "../../middleware/guards";
 import * as svc from "./service";
 import { writeAudit } from "../../lib/audit";
+import { revokeAllSessions } from "../auth/session";
 
 const db = (c: Context<AppEnv>) => c.get("db");
 const org = (c: Context<AppEnv>) => c.get("orgId")!;
@@ -23,7 +24,8 @@ const userFields = z.object({
   roleIds: z.array(z.uuid()).max(30).optional(),
 });
 const userCreateInput = userFields.extend({ password: z.string().min(8).max(200) }).strict().refine((value) => Boolean(value.email || value.username), { message: "Email or username is required", path: ["email"] });
-const userUpdateInput = userFields.partial().extend({ password: z.string().min(8).max(200).optional() }).strict();
+const userUpdateInput = userFields.partial().strict();
+const passwordResetInput = z.object({ password: z.string().min(8).max(200), reason: z.string().trim().min(3).max(300) }).strict();
 const roleInput = z.object({ name: z.string().trim().min(2).max(60), description: z.string().trim().max(200).nullable().optional(), permissionIds: z.array(z.uuid()).max(500).optional(), key: z.string().trim().regex(/^[a-z0-9_]+$/).max(60).optional() }).strict();
 const roleUpdateInput = roleInput.omit({ key: true });
 
@@ -48,6 +50,14 @@ userRoutes.put("/:id", requirePermission("user.edit"), async (c) => {
   const row = await svc.save(db(c), org(c), actor(c), userId, input);
   await writeAudit(c, { action: "update", entity: "user", entityId: row.id, oldValue: { name: before.name, email: before.email, username: before.username, status: before.status, employeeId: before.employeeId, roleIds: before.roleIds }, newValue: { name: row.name, email: row.email, username: row.username, status: row.status, employeeId: row.employeeId, roleIds: row.roleIds } });
   return ok(c, row);
+});
+userRoutes.post("/:id/reset-password", requirePermission("user.edit"), async (c) => {
+  const userId = id(c.req.param("id"));
+  const input = parse(passwordResetInput, await c.req.json());
+  await revokeAllSessions(userId);
+  const row = await svc.resetPassword(db(c), org(c), actor(c), userId, input.password);
+  await writeAudit(c, { action: "reset_password", entity: "user", entityId: userId, newValue: { reason: input.reason, sessionsRevoked: true } });
+  return ok(c, { id: row.id, mustChangePassword: true, sessionsRevoked: true });
 });
 userRoutes.delete("/:id", requirePermission("user.delete"), async (c) => {
   const userId = id(c.req.param("id"));
@@ -75,13 +85,13 @@ export const roleRoutes = new Hono<AppEnv>(); roleRoutes.use("*", requireAuth, r
 roleRoutes.get("/", requirePermission("user.view"), async (c) => okList(c, await svc.listRoles(db(c), org(c)), 0, 1, 1000));
 roleRoutes.post("/", requirePermission("role.create"), async (c) => {
   const input = parse(roleInput, await c.req.json());
-  const row = await svc.saveRole(db(c), org(c), undefined, input);
+  const row = await svc.saveRole(db(c), org(c), actor(c), undefined, input);
   await writeAudit(c, { action: "create", entity: "role", entityId: row.id, newValue: { name: row.name, key: row.key } });
   return ok(c, row, 201);
 });
 roleRoutes.put("/:id", requirePermission("role.edit"), async (c) => {
   const input = parse(roleUpdateInput, await c.req.json());
-  const row = await svc.saveRole(db(c), org(c), id(c.req.param("id")), input);
+  const row = await svc.saveRole(db(c), org(c), actor(c), id(c.req.param("id")), input);
   await writeAudit(c, { action: "update", entity: "role", entityId: row.id, newValue: { name: row.name, description: row.description } });
   return ok(c, row);
 });

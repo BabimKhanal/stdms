@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { Check, Filter, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Check, Filter, KeyRound, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import Image from "next/image";
 import { EduApiClient } from "@edu/api-client";
 import { CloudinaryUpload } from "./cloudinary-upload";
@@ -14,12 +14,15 @@ import { Modal } from "./ui/modal";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { useToast } from "./ui/toast";
 import { BulkBar, downloadSelectedCsv } from "./table-tools";
+import { RoleManagement } from "./role-management";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
-type User = { id: string; name: string; email?: string | null; username?: string | null; avatarUrl?: string | null; status: string; employeeId?: string | null; roleIds?: string[] };
-type Role = { id: string; name: string; key: string };
+type User = { id: string; name: string; email?: string | null; username?: string | null; avatarUrl?: string | null; status: string; employeeId?: string | null; roleIds?: string[]; mustChangePassword?: boolean };
+type Role = { id: string; name: string; key: string; permissionKeys?: string[] };
 type Employee = { id: string; employeeId: string; name: string };
 type Form = { name: string; email: string; username: string; password: string; avatarUrl: string; status: string; employeeId: string; roleIds: string[] };
 type DeleteTarget = { ids: string[]; names: string[]; owners: string[]; includesSelf: boolean };
+type ResetTarget = { id: string; name: string };
 
 const emptyForm: Form = { name: "", email: "", username: "", password: "", avatarUrl: "", status: "active", employeeId: "", roleIds: [] };
 
@@ -31,7 +34,7 @@ function readCurrentUserId() {
   }
 }
 
-export function UserManagement() {
+export function UserManagement({ permissions, roles: actorRoles }: { permissions: string[]; roles: string[] }) {
   const api = new EduApiClient(undefined, () => localStorage.getItem("edu_access_token"));
   const toast = useToast();
   const [users, setUsers] = useState<User[]>([]);
@@ -45,12 +48,19 @@ export function UserManagement() {
   const [editing, setEditing] = useState<User | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [resetTarget, setResetTarget] = useState<ResetTarget | null>(null);
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetReason, setResetReason] = useState("");
   const [form, setForm] = useState<Form>(emptyForm);
   const [error, setError] = useState("");
   const [metaError, setMetaError] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
+  const canCreate = permissions.includes("user.create");
+  const canEdit = permissions.includes("user.edit");
+  const canDelete = permissions.includes("user.delete");
+  const canManageRoles = permissions.some((permission) => permission.startsWith("role."));
 
   async function load() {
     setLoading(true);
@@ -127,7 +137,7 @@ export function UserManagement() {
       status: form.status,
       employeeId: form.employeeId || null,
       roleIds: form.roleIds,
-      ...(form.password ? { password: form.password } : {}),
+      ...(!editing ? { password: form.password } : {}),
     };
     try {
       await (editing ? api.put(`/users/${editing.id}`, payload) : api.post("/users", payload));
@@ -138,6 +148,27 @@ export function UserManagement() {
       const message = err instanceof Error ? err.message : "Unable to save user";
       setError(message);
       toast.error("Could not save user", message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function confirmPasswordReset(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!resetTarget) return;
+    setSaving(true);
+    setError("");
+    try {
+      await api.post(`/users/${resetTarget.id}/reset-password`, { password: resetPassword, reason: resetReason });
+      toast.success("Temporary password set", `${resetTarget.name} must choose a new password at the next sign-in. Existing sessions were revoked.`);
+      setResetTarget(null);
+      setResetPassword("");
+      setResetReason("");
+      await load();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to reset password";
+      setError(message);
+      toast.error("Could not reset password", message);
     } finally {
       setSaving(false);
     }
@@ -189,6 +220,11 @@ export function UserManagement() {
     setForm((current) => ({ ...current, roleIds: current.roleIds.includes(id) ? current.roleIds.filter((role) => role !== id) : [...current.roleIds, id] }));
   }
 
+  function canAssignRole(role: Role) {
+    if (role.key === "owner") return actorRoles.includes("owner");
+    return (role.permissionKeys ?? []).every((permission) => permissions.includes(permission)) || actorRoles.includes("owner");
+  }
+
   const allSelected = users.length > 0 && selectedIds.length === users.length;
   function toggleAll() {
     setSelectedIds(allSelected ? [] : users.map((user) => user.id));
@@ -205,6 +241,7 @@ export function UserManagement() {
 
   return (
     <div className="space-y-6">
+      <Tabs defaultValue="accounts"><TabsList ariaLabel="Access control sections"><TabsTrigger value="accounts">User accounts</TabsTrigger>{canManageRoles && <TabsTrigger value="roles">Roles & permissions</TabsTrigger>}</TabsList>{canManageRoles && <TabsContent value="roles"><RoleManagement permissions={permissions} onRolesChanged={() => { void Promise.all([api.get<{ data: Role[] }>("/roles").then((result) => setRoles(result.data)), load()]); }} /></TabsContent>}<TabsContent value="accounts">
       <BulkBar count={selectedIds.length} onExport={exportSelected} onClear={() => setSelectedIds([])} />
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
@@ -212,7 +249,7 @@ export function UserManagement() {
           <h2 className="mt-2 text-3xl font-semibold tracking-tight">User management</h2>
           <p className="mt-2 text-sm text-slate-500">Create accounts, assign roles, link staff profiles, and control access.</p>
         </div>
-        <Button onClick={() => start()}><Plus size={16} />Create user</Button>
+        {canCreate && <Button onClick={() => start()}><Plus size={16} />Create user</Button>}
       </div>
 
       {error && <Alert tone="error" title="User management" onDismiss={() => setError("")}>{error}</Alert>}
@@ -228,9 +265,9 @@ export function UserManagement() {
             {selectedIds.length > 0 && (
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium text-slate-600">{selectedIds.length} selected</span>
-                <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => void bulkStatus("active")}><Check size={14} />Activate</Button>
-                <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => void bulkStatus("inactive")}>Deactivate</Button>
-                <Button size="sm" variant="danger" disabled={bulkBusy} onClick={() => requestDelete(selectedIds, users.filter((user) => selectedIds.includes(user.id)).map((user) => user.name))}><Trash2 size={14} />Delete</Button>
+                {canEdit && <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => void bulkStatus("active")}><Check size={14} />Activate</Button>}
+                {canEdit && <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => void bulkStatus("inactive")}>Deactivate</Button>}
+                {canDelete && <Button size="sm" variant="danger" disabled={bulkBusy} onClick={() => requestDelete(selectedIds, users.filter((user) => selectedIds.includes(user.id)).map((user) => user.name))}><Trash2 size={14} />Delete</Button>}
               </div>
             )}
           </div>
@@ -284,12 +321,13 @@ export function UserManagement() {
                     </div>
                   </TableCell>
                   <TableCell label="Roles"><span className="text-sm text-slate-600">{roleNames(user)}</span></TableCell>
-                  <TableCell label="Status"><Badge tone={user.status === "active" ? "green" : "slate"}>{user.status}</Badge></TableCell>
+                  <TableCell label="Status"><div className="flex flex-wrap gap-1"><Badge tone={user.status === "active" ? "green" : "slate"}>{user.status}</Badge>{user.mustChangePassword && <Badge tone="amber">Password change required</Badge>}</div></TableCell>
                   <TableCell label="Employee">{employees.find((employee) => employee.id === user.employeeId)?.name ?? "Not linked"}</TableCell>
                   <TableCell label="Actions">
                     <div className="flex gap-1">
-                      <Button size="sm" variant="ghost" aria-label={`Edit ${user.name}`} onClick={() => start(user)}><Pencil size={15} /></Button>
-                      <Button size="sm" variant="ghost" aria-label={`Delete ${user.name}`} onClick={() => requestDelete([user.id], [user.name])}><Trash2 size={15} /></Button>
+                      {canEdit && <Button size="sm" variant="ghost" aria-label={`Edit ${user.name}`} onClick={() => start(user)}><Pencil size={15} /></Button>}
+                      {canEdit && user.id !== readCurrentUserId() && <Button size="sm" variant="ghost" aria-label={`Reset password for ${user.name}`} onClick={() => setResetTarget({ id: user.id, name: user.name })}><KeyRound size={15} /></Button>}
+                      {canDelete && <Button size="sm" variant="ghost" aria-label={`Delete ${user.name}`} onClick={() => requestDelete([user.id], [user.name])}><Trash2 size={15} /></Button>}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -317,7 +355,7 @@ export function UserManagement() {
           <label className="block md:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Full name</span><Input placeholder="e.g. Anita Sharma" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required minLength={2} maxLength={120} /></label>
           <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Email</span><Input type="email" placeholder="name@school.edu" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /><span className="mt-1 block text-xs text-slate-500">Email or username is required.</span></label>
           <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Username</span><Input placeholder="anita.sharma" value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} minLength={3} maxLength={60} /></label>
-          <label className="block md:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">{editing ? "New password (optional)" : "Temporary password"}</span><Input type="password" placeholder={editing ? "Leave blank to keep the current password" : "At least 8 characters"} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} required={!editing} minLength={8} autoComplete="new-password" /><span className="mt-1 block text-xs text-slate-500">{editing ? "Leave this blank to keep the current password." : "The user must change this password after their first sign-in."}</span></label>
+          {!editing && <label className="block md:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Temporary password</span><Input type="password" placeholder="At least 8 characters" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} required minLength={8} autoComplete="new-password" /><span className="mt-1 block text-xs text-slate-500">The user must replace this temporary password after their first sign-in.</span></label>}
           <div className="md:col-span-2"><CloudinaryUpload folder="users" accept="image/*" value={form.avatarUrl} onChange={(avatarUrl) => setForm({ ...form, avatarUrl })} label="Upload profile image" /></div>
           <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Status</span><select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
           <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Employee link</span><select value={form.employeeId} onChange={(event) => setForm({ ...form, employeeId: event.target.value })} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">No employee link</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name} ({employee.employeeId})</option>)}</select></label>
@@ -326,8 +364,8 @@ export function UserManagement() {
             <p className="mb-3 text-xs text-slate-500">Roles decide which screens and actions are available. Only an owner can assign the owner role.</p>
             <div className="flex flex-wrap gap-2">
               {roles.map((role) => (
-                <label key={role.id} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${form.roleIds.includes(role.id) ? "border-blue-200 bg-blue-50 text-blue-900" : "border-slate-100 bg-slate-50 text-slate-700"}`}>
-                  <input type="checkbox" checked={form.roleIds.includes(role.id)} onChange={() => toggleRole(role.id)} />{role.name}
+                <label key={role.id} title={canAssignRole(role) ? undefined : "This role grants permissions you cannot assign"} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${form.roleIds.includes(role.id) ? "border-blue-200 bg-blue-50 text-blue-900" : "border-slate-100 bg-slate-50 text-slate-700"} ${canAssignRole(role) ? "" : "cursor-not-allowed opacity-50"}`}>
+                  <input type="checkbox" checked={form.roleIds.includes(role.id)} disabled={!canAssignRole(role)} onChange={() => toggleRole(role.id)} />{role.name}
                 </label>
               ))}
               {!roles.length && <span className="text-sm text-slate-500">No roles available.</span>}
@@ -337,9 +375,23 @@ export function UserManagement() {
       </Modal>
 
       <Modal
+        open={Boolean(resetTarget)}
+        title="Reset user password"
+        description={resetTarget ? `Set a temporary password for ${resetTarget.name}. All existing sessions will be signed out.` : undefined}
+        onClose={() => { setResetTarget(null); setResetPassword(""); setResetReason(""); }}
+        footer={<div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setResetTarget(null)}>Cancel</Button><Button type="submit" form="password-reset-form" disabled={saving}>{saving ? "Resetting..." : "Reset password"}</Button></div>}
+      >
+        <form id="password-reset-form" onSubmit={confirmPasswordReset} className="space-y-4">
+          <Alert tone="warning" title="Security-sensitive action">The user will be required to choose a private password before accessing the ERP again.</Alert>
+          <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Temporary password</span><Input type="password" value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} required minLength={8} maxLength={200} autoComplete="new-password" /></label>
+          <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Reason for reset</span><Input value={resetReason} onChange={(event) => setResetReason(event.target.value)} required minLength={3} maxLength={300} placeholder="e.g. User reported a compromised password" /></label>
+        </form>
+      </Modal>
+
+      <Modal
         open={Boolean(deleteTarget)}
         title={deleteTarget && deleteTarget.ids.length > 1 ? `Delete ${deleteTarget.ids.length} accounts?` : "Delete user account?"}
-        description="Deleting an account is permanent. The person will lose access immediately."
+        description="Use deactivation for normal offboarding. Permanent deletion is only for accounts created by mistake and removes access immediately."
         onClose={() => setDeleteTarget(null)}
         footer={
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -354,6 +406,7 @@ export function UserManagement() {
           {deleteTarget?.owners.length ? <Alert tone="warning" title="Owner accounts are protected">This selection includes {deleteTarget.owners.join(", ")}. Only an owner can delete another owner, and at least one active owner must remain.</Alert> : null}
         </div>
       </Modal>
+      </TabsContent></Tabs>
     </div>
   );
 }

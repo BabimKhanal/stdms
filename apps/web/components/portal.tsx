@@ -55,8 +55,9 @@ import { DocumentTemplateWorkspace } from "./document-template-workspace";
 import { EmailSettings } from "./email-settings";
 import { Alert } from "./ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { ForcedPasswordChange } from "./forced-password-change";
 
-type User = { name: string; email?: string | null; orgName?: string | null; roles: string[]; permissions?: string[]; isPlatformAdmin?: boolean; studentId?: string | null };
+type User = { name: string; email?: string | null; orgName?: string | null; roles: string[]; permissions?: string[]; isPlatformAdmin?: boolean; studentId?: string | null; mustChangePassword?: boolean };
 type Notice = { id: string; title: string; body?: string | null; priority?: string; publishAt?: string };
 type CalendarEvent = { id: string; title: string; startDate?: string; endDate?: string | null; startTime?: string | null; venue?: string | null };
 type Dashboard = {
@@ -134,14 +135,26 @@ export function Portal() {
   const router = useRouter();
 
   useEffect(() => {
-    try { const saved = localStorage.getItem("edu_user"); setUser(saved ? JSON.parse(saved) as User : null); }
-    catch { localStorage.removeItem("edu_user"); }
-    finally { setAuthReady(true); }
+    void Promise.resolve().then(async () => {
+      try {
+        const saved = localStorage.getItem("edu_user");
+        if (!saved) { setUser(null); return; }
+        const current = await new EduApiClient(undefined, () => localStorage.getItem("edu_access_token")).get<User>("/auth/me");
+        localStorage.setItem("edu_user", JSON.stringify(current));
+        setUser(current);
+      } catch {
+        ["edu_access_token", "edu_refresh_token", "edu_user"].forEach((key) => localStorage.removeItem(key));
+        setUser(null);
+      } finally {
+        setAuthReady(true);
+      }
+    });
   }, []);
 
   useEffect(() => {
     if (!authReady) return;
     if (!user) { router.replace("/login"); return; }
+    if (user.mustChangePassword) { setDashboardLoading(false); return; }
     let active = true;
     setDashboardLoading(true);
     setDashboardError("");
@@ -167,7 +180,7 @@ export function Portal() {
   }, [authReady, router, user, dashboardVersion]);
 
   useEffect(() => {
-    if (!authReady || !user || !user.permissions?.includes("organisation.edit")) return;
+    if (!authReady || !user || user.mustChangePassword || !user.permissions?.includes("organisation.edit")) return;
     let active = true;
     void new EduApiClient(undefined, () => localStorage.getItem("edu_access_token"))
       .get<OrganisationBranding>("/organisation/branding")
@@ -200,6 +213,8 @@ export function Portal() {
   const current = visibleNav.find((item) => item[2] === section);
   const Icon = current?.[1] ?? LayoutDashboard;
   const primaryColor = branding?.primaryColor ?? "#2563eb";
+
+  if (authReady && user?.mustChangePassword) return <ForcedPasswordChange name={user.name} />;
 
   return (
     <div data-tenant-branding style={{ "--tenant-primary": primaryColor } as CSSProperties} className="min-h-screen bg-[#f6f8fc] text-slate-950">
@@ -349,7 +364,7 @@ export function Portal() {
               : section === "learning" ? (user?.studentId ? <StudentLearning /> : <LearningWorkspace canManage={Boolean(user?.isPlatformAdmin || user?.permissions?.includes("homework.create"))} />)
               : section === "reports" ? <ReportsWorkspace />
               : section === "communication" ? <CommunicationWorkspace />
-              : section === "users" ? <UserManagement />
+              : section === "users" ? <UserManagement permissions={user?.permissions ?? []} roles={user?.roles ?? []} />
               : section === "employees" ? <EmployeeDirectory />
               : section === "branding" && branding && user?.permissions?.includes("organisation.edit") ? <BrandingSettings branding={branding} onSaved={(updated) => { setBranding(updated); setBrandingError(""); }} />
               : section === "email-settings" && user?.permissions?.includes("organisation.edit") ? <EmailSettings />

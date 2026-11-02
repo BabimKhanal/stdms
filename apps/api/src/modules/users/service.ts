@@ -47,15 +47,15 @@ export async function removeEmployee(db: DB, orgId: string, id: string) {
 }
 export async function get(db: DB, orgId: string, id: string) { const [row] = await db.select(safe).from(users).where(and(eq(users.id, id), eq(users.organisationId, orgId))).limit(1); if (!row) throw notFound("User not found"); const assignments = await db.select({ roleId: userRoles.roleId }).from(userRoles).where(eq(userRoles.userId, row.id)); return { ...row, roleIds: assignments.map((assignment) => assignment.roleId) }; }
 
-async function assertOwnerSafety(db: DB, orgId: string, actor: AuthUser, targetIds: string[], action: "remove" | "deactivate") {
+async function assertOwnerSafety(db: DB, orgId: string, actor: AuthUser, targetIds: string[], action: "remove" | "deactivate" | "manage") {
   const [ownerRole] = await db.select({ id: roles.id }).from(roles).where(and(eq(roles.organisationId, orgId), eq(roles.key, "owner"))).limit(1);
   if (!ownerRole) return;
   const owners = await db.select({ userId: userRoles.userId, status: users.status }).from(userRoles).innerJoin(users, eq(userRoles.userId, users.id)).where(and(eq(userRoles.roleId, ownerRole.id), eq(users.organisationId, orgId)));
   const targets = owners.filter((owner) => targetIds.includes(owner.userId));
   if (!targets.length) return;
   const actorIsOwner = actor.isPlatformAdmin || actor.roles.includes("owner");
-  if (!actorIsOwner) throw forbidden("Only an institution owner can remove or deactivate owner accounts");
-  if (remainingActiveOwnerCount(owners, targetIds) < 1) {
+  if (!actorIsOwner) throw forbidden("Only an institution owner can manage owner accounts");
+  if (action !== "manage" && remainingActiveOwnerCount(owners, targetIds) < 1) {
     throw badRequest(`At least one active owner account must remain after this ${action === "remove" ? "deletion" : "change"}`);
   }
 }
@@ -91,6 +91,21 @@ export async function save(db: DB, orgId: string, actor: AuthUser, id: string | 
       if (roleIds) {
         if (orgRoles.filter((role) => roleIds.includes(role.id)).length !== roleIds.length) throw badRequest("One or more selected roles are invalid");
         if (ownerRole && roleIds.includes(ownerRole.id) && !actorIsOwner) throw forbidden("Only an institution owner can assign the owner role");
+        if (!actorIsOwner) {
+          const existingAssignments = existing
+            ? await tx.select({ roleId: userRoles.roleId }).from(userRoles).where(eq(userRoles.userId, existing.id))
+            : [];
+          const existingRoleIds = existingAssignments.map((assignment) => assignment.roleId);
+          const changedRoleIds = [...new Set([...existingRoleIds, ...roleIds])].filter((roleId) => existingRoleIds.includes(roleId) !== roleIds.includes(roleId));
+          const grants = changedRoleIds.length
+            ? await tx.select({ roleId: rolePermissions.roleId, resource: permissions.resource, action: permissions.action })
+              .from(rolePermissions)
+              .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
+              .where(inArray(rolePermissions.roleId, changedRoleIds))
+            : [];
+          const disallowed = grants.find((grant) => !actor.permissions.includes(`${grant.resource}.${grant.action}`));
+          if (disallowed) throw forbidden("You cannot add or remove a role with permissions you do not have");
+        }
         if (ownerRole && existingIsOwner && !roleIds.includes(ownerRole.id)) {
           if (!actorIsOwner) throw forbidden("Only an institution owner can remove the owner role");
           if (existing.id === actor.id) throw badRequest("You cannot remove your own owner role");
@@ -135,6 +150,14 @@ export async function save(db: DB, orgId: string, actor: AuthUser, id: string | 
   }
   return get(db, orgId, savedId);
 }
+export async function resetPassword(db: DB, orgId: string, actor: AuthUser, id: string, password: string) {
+  if (id === actor.id) throw badRequest("Use Change password to update your own password");
+  const [target] = await db.select({ id: users.id }).from(users).where(and(eq(users.id, id), eq(users.organisationId, orgId))).limit(1);
+  if (!target) throw notFound("User not found");
+  await assertOwnerSafety(db, orgId, actor, [id], "manage");
+  const [row] = await db.update(users).set({ passwordHash: await hashPassword(password), mustChangePassword: true }).where(and(eq(users.id, id), eq(users.organisationId, orgId))).returning({ id: users.id });
+  return row;
+}
 export async function remove(db: DB, orgId: string, actor: AuthUser, id: string) {
   const [existing] = await db.select({ id: users.id, name: users.name }).from(users).where(and(eq(users.id, id), eq(users.organisationId, orgId))).limit(1);
   if (!existing) throw notFound("User not found");
@@ -158,7 +181,46 @@ export async function bulkRemove(db: DB, orgId: string, actor: AuthUser, input: 
   const rows = await db.delete(users).where(and(eq(users.organisationId, orgId), inArray(users.id, ids))).returning({ id: users.id });
   return { deleted: rows.length };
 }
-export async function listRoles(db: DB, orgId: string) { return db.select().from(roles).where(eq(roles.organisationId, orgId)).orderBy(asc(roles.name)); }
-export async function saveRole(db: DB, orgId: string, id: string | undefined, input: { name: string; description?: string | null; permissionIds?: string[]; key?: string }) { const { permissionIds, ...data } = input; const values = { ...data, organisationId: orgId } as typeof roles.$inferInsert; const row = id ? (await db.update(roles).set(data).where(and(eq(roles.id, id), eq(roles.organisationId, orgId), eq(roles.isSystem, false))).returning())[0] : (await db.insert(roles).values(values).returning())[0]; if (!row) throw notFound("Role not found"); if (permissionIds) { await db.delete(rolePermissions).where(eq(rolePermissions.roleId, row.id)); if (permissionIds.length) await db.insert(rolePermissions).values(permissionIds.map((permissionId) => ({ roleId: row.id, permissionId }))); } return row; }
-export async function removeRole(db: DB, orgId: string, id: string) { const rows = await db.delete(roles).where(and(eq(roles.id, id), eq(roles.organisationId, orgId), eq(roles.isSystem, false))).returning(); if (!rows.length) throw notFound("Role not found"); }
+export async function listRoles(db: DB, orgId: string) {
+  const rows = await db.select().from(roles).where(eq(roles.organisationId, orgId)).orderBy(asc(roles.name));
+  const grants = await db.select({ roleId: rolePermissions.roleId, permissionId: rolePermissions.permissionId, resource: permissions.resource, action: permissions.action }).from(rolePermissions).innerJoin(roles, eq(rolePermissions.roleId, roles.id)).innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id)).where(eq(roles.organisationId, orgId));
+  const assignments = await db.select({ roleId: userRoles.roleId, userId: userRoles.userId }).from(userRoles).innerJoin(users, eq(userRoles.userId, users.id)).where(eq(users.organisationId, orgId));
+  return rows.map((row) => ({ ...row, permissionIds: grants.filter((grant) => grant.roleId === row.id).map((grant) => grant.permissionId), permissionKeys: grants.filter((grant) => grant.roleId === row.id).map((grant) => `${grant.resource}.${grant.action}`), userCount: assignments.filter((assignment) => assignment.roleId === row.id).length }));
+}
+export async function saveRole(db: DB, orgId: string, actor: AuthUser, id: string | undefined, input: { name: string; description?: string | null; permissionIds?: string[]; key?: string }) {
+  const { permissionIds, ...data } = input;
+  try {
+    const roleId = await db.transaction(async (tx) => {
+      if (permissionIds) {
+        const valid = await tx.select({ id: permissions.id, resource: permissions.resource, action: permissions.action }).from(permissions).where(inArray(permissions.id, [...new Set(permissionIds)]));
+        if (valid.length !== new Set(permissionIds).size) throw badRequest("One or more selected permissions are invalid");
+        if (!actor.isPlatformAdmin && !actor.roles.includes("owner")) {
+          const disallowed = valid.find((item) => !actor.permissions.includes(`${item.resource}.${item.action}`));
+          if (disallowed) throw forbidden("You cannot grant permissions you do not have");
+        }
+      }
+      const values = { ...data, key: data.key ?? data.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "_"), organisationId: orgId } as typeof roles.$inferInsert;
+      const row = id
+        ? (await tx.update(roles).set(data).where(and(eq(roles.id, id), eq(roles.organisationId, orgId), eq(roles.isSystem, false))).returning())[0]
+        : (await tx.insert(roles).values(values).returning())[0];
+      if (!row) throw notFound("Only custom roles can be edited");
+      if (permissionIds) {
+        await tx.delete(rolePermissions).where(eq(rolePermissions.roleId, row.id));
+        if (permissionIds.length) await tx.insert(rolePermissions).values([...new Set(permissionIds)].map((permissionId) => ({ roleId: row.id, permissionId })));
+      }
+      return row.id;
+    });
+    return (await listRoles(db, orgId)).find((role) => role.id === roleId)!;
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    if ((error as { code?: string }).code === "23505") throw conflict("A role with this key already exists");
+    throw error;
+  }
+}
+export async function removeRole(db: DB, orgId: string, id: string) {
+  const [assignment] = await db.select({ id: userRoles.id }).from(userRoles).innerJoin(users, eq(userRoles.userId, users.id)).where(and(eq(userRoles.roleId, id), eq(users.organisationId, orgId))).limit(1);
+  if (assignment) throw conflict("Remove this role from all users before deleting it");
+  const rows = await db.delete(roles).where(and(eq(roles.id, id), eq(roles.organisationId, orgId), eq(roles.isSystem, false))).returning();
+  if (!rows.length) throw notFound("Only unused custom roles can be deleted");
+}
 export async function listPermissions(db: DB) { return db.select().from(permissions).orderBy(asc(permissions.resource), asc(permissions.action)); }

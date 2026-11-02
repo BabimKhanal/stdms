@@ -18,6 +18,7 @@ import { uploadRoutes } from "./modules/uploads/routes";
 import { notificationRoutes } from "./modules/notifications/routes";
 import type { AppEnv } from "./lib/types";
 import { writeAudit } from "./lib/audit";
+import { forbidden } from "./lib/errors";
 
 export const app = new Hono<AppEnv>();
 
@@ -42,6 +43,17 @@ app.use(
 
 // Every request gets a scoped DB connection + RLS session GUCs.
 app.use("*", requestScope);
+
+// Temporary credentials may only be used to establish a session and choose a
+// private password. Enforce this on the API as well as in the clients.
+app.use("/api/v1/*", async (c, next) => {
+  const user = c.get("user");
+  const allowed = ["/api/v1/auth/me", "/api/v1/auth/change-password", "/api/v1/auth/logout", "/api/v1/auth/refresh"];
+  if (user?.mustChangePassword && !allowed.includes(c.req.path)) {
+    throw forbidden("You must change your temporary password before continuing");
+  }
+  await next();
+});
 
 app.use("/api/v1/*", async (c, next) => {
   await next();
