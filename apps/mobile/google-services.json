@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "764908657121",
+    "project_id": "nucleus-62ff7",
+    "storage_bucket": "nucleus-62ff7.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:764908657121:android:4889b43939278294911aa0",
+        "android_client_info": {
+          "package_name": "com.nucleus.education"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBDUfieG33MH225hIzFrIsFo2F3c3EsXkU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

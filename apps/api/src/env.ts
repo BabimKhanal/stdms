@@ -51,8 +51,9 @@ const envSchema = z
     MAIL_FROM_EMAIL: z.string().default("no-reply@example.com"),
     SMS_PROVIDER: z.enum(["console", "webhook"]).default("console"),
     SMS_WEBHOOK_URL: z.string().default(""),
-    PUSH_PROVIDER: z.enum(["console", "webhook"]).default("console"),
+    PUSH_PROVIDER: z.enum(["console", "webhook", "expo"]).default("console"),
     PUSH_WEBHOOK_URL: z.string().default(""),
+    EXPO_ACCESS_TOKEN: z.string().default(""),
     PASSWORD_RESET_URL: z
       .string()
       .default("http://localhost:3000/reset-password"),

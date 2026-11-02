@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Platform } from "react-native";
+import { API_URL } from "../config";
 
 type NetworkState = { online: boolean; checking: boolean };
 
-export function useNetwork(): NetworkState {
+export function useNetwork(): NetworkState & { retry: () => void } {
   const [state, setState] = useState<NetworkState>({
     online: typeof navigator === "undefined" ? true : navigator.onLine,
     checking: false,
@@ -11,14 +12,20 @@ export function useNetwork(): NetworkState {
 
   const check = useCallback(async () => {
     setState((s) => ({ ...s, checking: true }));
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-      await fetch("/", { method: "HEAD", cache: "no-store", signal: controller.signal });
-      clearTimeout(timeout);
-      setState({ online: true, checking: false });
+      const liveUrl = `${API_URL.replace(/\/api\/v1$/, "")}/live`;
+      const response = await fetch(liveUrl, {
+        method: "GET",
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      setState({ online: response.ok, checking: false });
     } catch {
       setState({ online: false, checking: false });
+    } finally {
+      clearTimeout(timeout);
     }
   }, []);
 
@@ -42,5 +49,5 @@ export function useNetwork(): NetworkState {
     };
   }, [check]);
 
-  return state;
+  return { ...state, retry: () => void check() };
 }

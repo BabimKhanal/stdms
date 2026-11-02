@@ -1,20 +1,28 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Text } from "@react-navigation/elements";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   TextInput,
   View,
 } from "react-native";
 import { EduApiClient } from "@edu/api-client";
 import { mobileToken, useAuth } from "../../auth";
 import { API_URL } from "../../config";
+import {
+  disablePushNotifications,
+  enablePushNotifications,
+  readPushPreference,
+  type PushPreference,
+} from "../../lib/push-notifications";
 
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
 
@@ -66,6 +74,47 @@ export function Settings() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
+  const [pushPreference, setPushPreference] = useState<PushPreference>({
+    supported: Platform.OS === "ios" || Platform.OS === "android",
+    enabled: false,
+    permission: "not-determined",
+  });
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    void readPushPreference().then((preference) => {
+      if (active) setPushPreference(preference);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function setPushEnabled(enabled: boolean) {
+    const token = await mobileToken();
+    if (!token) {
+      setPushError("Your session has expired. Please sign in again.");
+      return;
+    }
+    setPushBusy(true);
+    setPushError("");
+    try {
+      if (enabled) await enablePushNotifications(token);
+      else await disablePushNotifications(token);
+      setPushPreference(await readPushPreference());
+    } catch (error) {
+      setPushError(
+        error instanceof Error
+          ? error.message
+          : "Unable to update notifications.",
+      );
+      setPushPreference(await readPushPreference());
+    } finally {
+      setPushBusy(false);
+    }
+  }
 
   function closePassword() {
     setShowPassword(false);
@@ -192,7 +241,10 @@ export function Settings() {
         <Pressable
           accessibilityRole="button"
           onPress={() => setShowPassword(true)}
-          style={({ pressed }) => [styles.detail, pressed && styles.buttonPressed]}
+          style={({ pressed }) => [
+            styles.detail,
+            pressed && styles.buttonPressed,
+          ]}
         >
           <View style={styles.detailIcon}>
             <MaterialCommunityIcons
@@ -211,6 +263,62 @@ export function Settings() {
             size={20}
           />
         </Pressable>
+      </View>
+
+      <Text style={styles.sectionLabel}>Notifications</Text>
+      <View style={styles.card}>
+        <View style={styles.notificationRow}>
+          <View style={styles.detailIcon}>
+            <MaterialCommunityIcons
+              name="bell-outline"
+              color={palette.primary}
+              size={19}
+            />
+          </View>
+          <View style={styles.detailCopy}>
+            <Text style={styles.detailLabel}>School updates</Text>
+            <Text style={styles.detailValue}>
+              {!pushPreference.supported
+                ? "Available in the iOS or Android app"
+                : pushPreference.enabled
+                  ? "Push notifications are on"
+                  : pushPreference.permission === "denied"
+                    ? "Allow notifications in device settings"
+                    : "Notices, attendance, and results"}
+            </Text>
+          </View>
+          {pushBusy ? (
+            <ActivityIndicator color={palette.primary} />
+          ) : (
+            <Switch
+              accessibilityLabel="School push notifications"
+              disabled={!pushPreference.supported}
+              value={pushPreference.enabled}
+              onValueChange={(enabled) => void setPushEnabled(enabled)}
+              trackColor={{ false: "#cbd5e1", true: palette.primary }}
+              thumbColor="#ffffff"
+            />
+          )}
+        </View>
+        {pushPreference.permission === "denied" && !pushPreference.enabled ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => void Linking.openSettings()}
+            style={styles.openSettings}
+          >
+            <Text style={styles.openSettingsText}>Open device settings</Text>
+            <MaterialCommunityIcons
+              name="open-in-new"
+              color={palette.primary}
+              size={15}
+            />
+          </Pressable>
+        ) : null}
+        {pushError ? (
+          <Text accessibilityRole="alert" style={styles.pushError}>
+            {pushError}
+          </Text>
+        ) : null}
       </View>
 
       {/* App Section */}
@@ -264,7 +372,8 @@ export function Settings() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.modalTitle}>Change password</Text>
                 <Text style={styles.modalText}>
-                  Use at least 8 characters. You&apos;ll be signed out afterwards.
+                  Use at least 8 characters. You&apos;ll be signed out
+                  afterwards.
                 </Text>
               </View>
               <Pressable onPress={closePassword} hitSlop={10}>
@@ -389,6 +498,35 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 14,
     padding: 16,
+  },
+  notificationRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 14,
+    minHeight: 76,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  pushError: {
+    color: palette.danger,
+    fontSize: 12,
+    lineHeight: 17,
+    paddingBottom: 14,
+    paddingHorizontal: 16,
+  },
+  openSettings: {
+    alignItems: "center",
+    borderTopColor: palette.border,
+    borderTopWidth: 1,
+    flexDirection: "row",
+    gap: 6,
+    justifyContent: "flex-end",
+    padding: 14,
+  },
+  openSettingsText: {
+    color: palette.primary,
+    fontSize: 12,
+    fontWeight: "700",
   },
   detailIcon: {
     alignItems: "center",

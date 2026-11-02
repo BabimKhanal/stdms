@@ -33,3 +33,16 @@ bunx eas-cli build --platform android --profile production
 ```
 
 `EXPO_PUBLIC_API_URL` is embedded at build time. Do not use `localhost` in a device or store build unless the API is running on that same device.
+
+## Push notifications
+
+Users opt in under **Settings → Notifications**. The app registers the Expo push token to the signed-in account, syncs it on later launches, and revokes it on sign-out. Tapping a push opens the Updates inbox. Existing in-app updates continue to work if push delivery is disabled or unavailable.
+
+Remote push requires an iOS or Android development/production build and a physical device; Android remote push is not available in Expo Go. Configure Android FCM v1 and iOS APNs credentials for the EAS project, then build and install a new native binary after changing `app.json`:
+
+```sh
+bunx eas-cli build --profile development --platform android
+bunx eas-cli build --profile development --platform ios
+```
+
+For delivery, configure `PUSH_PROVIDER=expo` on the API. `EXPO_ACCESS_TOKEN` is optional but recommended for authenticated Expo Push Service requests. Keep EAS/APNs/FCM credentials in their respective provider secret stores; do not commit them. Test first with Expo's notification tool on a development build.

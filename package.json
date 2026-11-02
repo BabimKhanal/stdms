@@ -24,5 +24,8 @@
   "devDependencies": {
     "turbo": "^2.5.4",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "expo-constants": "~56.0.27"
   }
 }
