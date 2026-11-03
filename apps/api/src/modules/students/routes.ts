@@ -26,6 +26,7 @@ import { buildDocumentData } from "../../lib/document-data";
 import { renderTemplatePdf } from "../../lib/document-pdf";
 
 const studentProfileUpdateSchema = studentInputSchema.omit({ academicYearId: true, classId: true, sectionId: true, rollNumber: true, status: true }).partial();
+const studentDocumentInput = z.object({ documentType: z.string().trim().min(2).max(60), title: z.string().trim().min(2).max(120), fileUrl: z.string().trim().url().max(2000), fileName: z.string().trim().max(255).nullable().optional(), mimeType: z.string().trim().max(120).nullable().optional() }).strict();
 
 export const studentRoutes = new Hono<AppEnv>();
 
@@ -79,6 +80,10 @@ studentRoutes.get(
     const orgId = c.get("orgId")!;
     const studentId = c.req.param("id");
     const documentType = c.req.query("type") ?? "identity_card";
+    const templateId = c.req.query("templateId");
+    if (templateId && !z.uuid().safeParse(templateId).success) {
+      throw badRequest("Invalid document template", "validation");
+    }
     if (!DOCUMENT_TYPES.includes(documentType as (typeof DOCUMENT_TYPES)[number])) {
       throw badRequest("Unsupported document type", "validation");
     }
@@ -90,7 +95,7 @@ studentRoutes.get(
         and(
           eq(documentTemplates.organisationId, orgId),
           eq(documentTemplates.documentType, documentType),
-          eq(documentTemplates.isDefault, 1),
+          ...(templateId ? [eq(documentTemplates.id, templateId)] : [eq(documentTemplates.isDefault, 1)]),
         ),
       )
       .limit(1);
@@ -149,6 +154,20 @@ studentRoutes.post("/", requirePermission("student.create"), async (c) => {
     newValue: input,
   });
   return ok(c, row, 201);
+});
+
+studentRoutes.post("/:id/documents", requirePermission("student.edit"), async (c) => {
+  const studentId = c.req.param("id");
+  const input = parse(studentDocumentInput, await c.req.json());
+  const row = await svc.addStudentDocument(c.get("db"), c.get("orgId")!, studentId, c.get("user")!.id, input);
+  await writeAudit(c, { action: "upload", entity: "student_document", entityId: row.id, newValue: { studentId, documentType: input.documentType, title: input.title } });
+  return ok(c, row, 201);
+});
+
+studentRoutes.delete("/:id/documents/:documentId", requirePermission("student.edit"), async (c) => {
+  await svc.deleteStudentDocument(c.get("db"), c.get("orgId")!, c.req.param("id"), c.req.param("documentId"));
+  await writeAudit(c, { action: "delete", entity: "student_document", entityId: c.req.param("documentId") });
+  return ok(c, { deleted: true });
 });
 
 studentRoutes.put("/:id", requirePermission("student.edit"), async (c) => {

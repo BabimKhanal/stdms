@@ -71,7 +71,9 @@ type StudentDetail = StudentRow & {
     isPrimary: boolean;
   }>;
   lifecycleEvents?: Array<{ id: string; action: string; reason: string | null; effectiveDate: string; previousStatus: string | null; newStatus: string | null }>;
+  documents?: Array<{ id: string; documentType: string; title: string; fileUrl: string; fileName: string | null; mimeType: string | null; createdAt: string }>;
 };
+type DocumentTemplateOption = { id: string; name: string; documentType: string; isDefault: number };
 
 const emptyForm = {
   studentId: "",
@@ -118,6 +120,12 @@ function StudentDirectoryContent({
   const [years, setYears] = useState<Option[]>([]);
   const [exams, setExams] = useState<ExamOption[]>([]);
   const [examId, setExamId] = useState("");
+  const [templates, setTemplates] = useState<DocumentTemplateOption[]>([]);
+  const [identityTemplateId, setIdentityTemplateId] = useState("");
+  const [documentType, setDocumentType] = useState("certificate");
+  const [documentTitle, setDocumentTitle] = useState("");
+  const [documentUrl, setDocumentUrl] = useState("");
+  const [documentSaving, setDocumentSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [classFilter, setClassFilter] = useState("");
@@ -147,6 +155,12 @@ function StudentDirectoryContent({
         setSections(sectionResult.data);
         setYears(yearResult.data);
         setExams(examResult.data);
+      })
+      .catch(() => undefined);
+    void api.get<{ data: DocumentTemplateOption[] }>("/organisation/document-templates")
+      .then((result) => {
+        setTemplates(result.data);
+        setIdentityTemplateId(result.data.find((template) => template.documentType === "identity_card" && template.isDefault)?.id ?? result.data.find((template) => template.documentType === "identity_card")?.id ?? "");
       })
       .catch(() => undefined);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -190,7 +204,9 @@ function StudentDirectoryContent({
     try {
       const token = localStorage.getItem("edu_access_token");
       const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
-      const response = await fetch(`${base}/students/${selected.id}/document?type=identity_card`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+       const query = new URLSearchParams({ type: "identity_card" });
+       if (identityTemplateId) query.set("templateId", identityTemplateId);
+       const response = await fetch(`${base}/students/${selected.id}/document?${query}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (!response.ok) { const body = await response.json().catch(() => null) as { error?: string } | null; throw new Error(body?.error ?? "Unable to generate identity card"); }
       const url = URL.createObjectURL(await response.blob());
       const link = document.createElement("a");
@@ -199,6 +215,28 @@ function StudentDirectoryContent({
       link.click();
       URL.revokeObjectURL(url);
     } catch (err) { setError(err instanceof Error ? err.message : "Unable to generate identity card"); }
+  }
+  async function saveStudentDocument() {
+    if (!selected || !documentUrl || !documentTitle.trim()) return;
+    setDocumentSaving(true);
+    try {
+      const row = await api.post<StudentDetail["documents"] extends Array<infer T> ? T : never>(`/students/${selected.id}/documents`, { documentType, title: documentTitle.trim(), fileUrl: documentUrl });
+      setSelected((current) => current ? { ...current, documents: [row, ...(current.documents ?? [])] } : current);
+      setDocumentTitle("");
+      setDocumentUrl("");
+      toast.success("Document saved", "The file is now attached to this student profile.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to save student document");
+    } finally {
+      setDocumentSaving(false);
+    }
+  }
+  async function removeStudentDocument(id: string) {
+    if (!selected) return;
+    try {
+      await api.delete(`/students/${selected.id}/documents/${id}`);
+      setSelected((current) => current ? { ...current, documents: current.documents?.filter((document) => document.id !== id) } : current);
+    } catch (err) { setError(err instanceof Error ? err.message : "Unable to remove student document"); }
   }
   async function downloadTranscript() {
     if (!selected) return;
@@ -652,7 +690,9 @@ function StudentDirectoryContent({
             <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 lg:col-span-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">Student documents</p>
               <p className="mt-1 text-sm text-slate-600">Generate official documents from this student profile.</p>
-              <div className="mt-3 flex flex-wrap gap-2"><Button size="sm" onClick={() => void downloadIdentityCard()}>Download identity card</Button><Button size="sm" variant="outline" onClick={() => void downloadTranscript()}>Download transcript</Button><select value={examId} onChange={(event) => setExamId(event.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs"><option value="">Select marksheet</option>{exams.filter((exam) => exam.status === "published").map((exam) => <option key={exam.id} value={exam.id}>{exam.name}</option>)}</select><Button size="sm" variant="ghost" disabled={!examId} onClick={() => void openMarksheet()}>Print marksheet</Button></div>
+              <div className="mt-3 flex flex-wrap gap-2"><select value={identityTemplateId} onChange={(event) => setIdentityTemplateId(event.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs"><option value="">Default identity card template</option>{templates.filter((template) => template.documentType === "identity_card").map((template) => <option key={template.id} value={template.id}>{template.name}{template.isDefault ? " (default)" : ""}</option>)}</select><Button size="sm" onClick={() => void downloadIdentityCard()}>Download identity card</Button><Button size="sm" variant="outline" onClick={() => void downloadTranscript()}>Download transcript</Button><select value={examId} onChange={(event) => setExamId(event.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs"><option value="">Select marksheet</option>{exams.filter((exam) => exam.status === "published").map((exam) => <option key={exam.id} value={exam.id}>{exam.name}</option>)}</select><Button size="sm" variant="ghost" disabled={!examId} onClick={() => void openMarksheet()}>Print marksheet</Button></div>
+              {canEdit && <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3"><p className="text-sm font-semibold text-slate-800">Attach a candidate document</p><div className="mt-3 grid gap-2 sm:grid-cols-[150px_1fr_auto] sm:items-end"><label className="text-xs font-medium text-slate-600">Type<select value={documentType} onChange={(event) => setDocumentType(event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs"><option value="certificate">Certificate</option><option value="transcript">Transcript</option><option value="marksheet">Marksheet</option><option value="admission">Admission document</option><option value="other">Other</option></select></label><label className="text-xs font-medium text-slate-600">Title<Input value={documentTitle} onChange={(event) => setDocumentTitle(event.target.value)} placeholder="e.g. Previous school certificate" className="mt-1 h-9" /></label><Button type="button" size="sm" disabled={documentSaving || !documentTitle.trim() || !documentUrl} onClick={() => void saveStudentDocument()}>{documentSaving ? "Saving..." : "Save document"}</Button></div><div className="mt-3"><CloudinaryUpload value={documentUrl} onChange={setDocumentUrl} folder="documents" accept="application/pdf,image/*" label="Upload file" /></div></div>}
+              {selected.documents?.length ? <div className="mt-4 space-y-2"><p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Attached documents</p>{selected.documents.map((document) => <div key={document.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3"><div className="min-w-0 flex-1"><a href={document.fileUrl} target="_blank" rel="noreferrer" className="block truncate text-sm font-medium text-blue-700 hover:underline">{document.title}</a><p className="text-xs text-slate-500">{document.documentType} · {document.fileName ?? "Uploaded file"}</p></div>{canEdit && <button type="button" className="text-xs font-semibold text-rose-600" onClick={() => void removeStudentDocument(document.id)}>Remove</button>}</div>)}</div> : null}
             </div>
             <div>
               <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">

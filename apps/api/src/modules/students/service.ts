@@ -14,6 +14,7 @@ import {
   users,
   organisations,
   documentTemplates,
+  studentDocuments,
 } from "../../db/schema";
 import type { StudentInput, GuardianInput } from "@edu/shared";
 import { badRequest, conflict, notFound } from "../../lib/errors";
@@ -220,7 +221,17 @@ export async function getStudent(
   const lifecycleEvents = await db.select({ id: studentLifecycleEvents.id, action: studentLifecycleEvents.action, reason: studentLifecycleEvents.reason, effectiveDate: studentLifecycleEvents.effectiveDate, previousStatus: studentLifecycleEvents.previousStatus, newStatus: studentLifecycleEvents.newStatus, sourceAcademicYearId: studentLifecycleEvents.sourceAcademicYearId, sourceClassId: studentLifecycleEvents.sourceClassId, sourceSectionId: studentLifecycleEvents.sourceSectionId, destinationAcademicYearId: studentLifecycleEvents.destinationAcademicYearId, destinationClassId: studentLifecycleEvents.destinationClassId, destinationSectionId: studentLifecycleEvents.destinationSectionId, createdAt: studentLifecycleEvents.createdAt })
     .from(studentLifecycleEvents)
     .where(and(eq(studentLifecycleEvents.organisationId, orgId), eq(studentLifecycleEvents.studentId, id)))
-    .orderBy(desc(studentLifecycleEvents.effectiveDate), desc(studentLifecycleEvents.createdAt));
+    .orderBy(desc(studentLifecycleEvents.effectiveDate), desc(studentLifecycleEvents.createdAt))
+    .catch((error: unknown) => {
+      if ((error as { code?: string }).code === "42P01") return [];
+      throw error;
+    });
+
+  const documents = await db
+    .select()
+    .from(studentDocuments)
+    .where(and(eq(studentDocuments.studentId, id), eq(studentDocuments.organisationId, orgId)))
+    .orderBy(desc(studentDocuments.createdAt));
 
   const current = history[0] ?? null;
   return {
@@ -235,7 +246,25 @@ export async function getStudent(
     history,
     lifecycleEvents: lifecycleEvents.map((event) => ({ ...event, reason: principal?.studentId || principal?.guardianIds?.length ? null : event.reason })),
     guardians: guardianRows,
+    documents,
   };
+}
+
+export async function addStudentDocument(
+  db: DB,
+  orgId: string,
+  studentId: string,
+  uploadedBy: string,
+  input: { documentType: string; title: string; fileUrl: string; fileName?: string | null; mimeType?: string | null },
+) {
+  const [row] = await db.insert(studentDocuments).values({ organisationId: orgId, studentId, documentType: input.documentType, title: input.title, fileUrl: input.fileUrl, fileName: input.fileName ?? null, mimeType: input.mimeType ?? null, uploadedBy }).returning();
+  if (!row) throw notFound("Student not found");
+  return row;
+}
+
+export async function deleteStudentDocument(db: DB, orgId: string, studentId: string, documentId: string) {
+  const rows = await db.delete(studentDocuments).where(and(eq(studentDocuments.id, documentId), eq(studentDocuments.studentId, studentId), eq(studentDocuments.organisationId, orgId))).returning({ id: studentDocuments.id });
+  if (!rows.length) throw notFound("Student document not found");
 }
 
 function cardEscape(value: unknown) {

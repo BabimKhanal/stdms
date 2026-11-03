@@ -134,6 +134,27 @@
       "when": 1793628174059,
       "tag": "0018_uneven_joshua_kane",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793630000000,
+      "tag": "0019_student_view_permission",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793631000000,
+      "tag": "0020_repair_student_lifecycle_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793632000000,
+      "tag": "0021_student_documents",
+      "breakpoints": true
     }
   ]
 }
