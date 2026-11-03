@@ -10,11 +10,11 @@ import { mobileToken, useAuth } from "../../auth";
 const palette = {
   primary: "#7c3aed",
   primarySoft: "#f5f3ff",
-  bg: "#faf9ff",
+  bg: "#f8fafc",
   ink: "#1e1b4b",
-  inkSoft: "#475569",
-  muted: "#94a3b8",
-  border: "#ede9fe",
+  inkSoft: "#334155",
+  muted: "#64748b",
+  border: "#ddd6fe",
 };
 
 const documents = [

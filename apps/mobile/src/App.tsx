@@ -121,7 +121,7 @@ function AuthenticatedApp() {
       <View
         style={{
           alignItems: "center",
-          backgroundColor: "#faf9ff",
+          backgroundColor: "#f8fafc",
           flex: 1,
           justifyContent: "center",
         }}
@@ -137,9 +137,9 @@ function AuthenticatedApp() {
     ...DefaultTheme,
     colors: {
       ...DefaultTheme.colors,
-      background: "#faf9ff",
+      background: "#f8fafc",
       card: "#ffffff",
-      border: "#ede9fe",
+      border: "#ddd6fe",
       text: "#1e1b4b",
       primary: "#7c3aed",
     },

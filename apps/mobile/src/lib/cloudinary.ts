@@ -73,10 +73,15 @@ export async function uploadToCloudinary(
       },
     },
   );
-  const uploaded = JSON.parse(result.body) as {
+  let uploaded: {
     secure_url?: string;
     error?: { message?: string };
   };
+  try {
+    uploaded = JSON.parse(result.body) as typeof uploaded;
+  } catch {
+    throw new Error(`File upload failed (Cloudinary returned HTTP ${result.status})`);
+  }
   if (result.status < 200 || result.status >= 300 || !uploaded.secure_url) {
     throw new Error(uploaded.error?.message ?? "File upload failed");
   }

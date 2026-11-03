@@ -9,11 +9,11 @@ const palette = {
   primary: "#7c3aed",
   primarySoft: "#f5f3ff",
   primaryBorder: "#ddd6fe",
-  bg: "#faf9ff",
+  bg: "#f8fafc",
   ink: "#1e1b4b",
-  inkSoft: "#475569",
-  muted: "#94a3b8",
-  border: "#f1f0f9",
+  inkSoft: "#334155",
+  muted: "#64748b",
+  border: "#e2e8f0",
   danger: "#e11d48",
   dangerSoft: "#fff1f2",
 };
@@ -43,7 +43,7 @@ export function More() {
     <ScrollView
       contentContainerStyle={[
         styles.container,
-        { paddingBottom: insets.bottom + 108, paddingTop: insets.top + 12 },
+        { paddingBottom: insets.bottom + 24, paddingTop: insets.top + 12 },
       ]}
       showsVerticalScrollIndicator={false}
     >
@@ -202,7 +202,7 @@ function Action({
         </Text>
         <Text style={styles.actionDescription}>{description}</Text>
       </View>
-      <MaterialCommunityIcons name="chevron-right" color="#cbd5e1" size={20} />
+       <MaterialCommunityIcons name="chevron-right" color="#64748b" size={20} />
     </Pressable>
   );
 }

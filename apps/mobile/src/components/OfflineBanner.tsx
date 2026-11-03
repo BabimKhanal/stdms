@@ -9,10 +9,10 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 const palette = {
   primary: "#7c3aed",
-  bg: "#faf9ff",
+  bg: "#f8fafc",
   ink: "#1e1b4b",
-  inkSoft: "#475569",
-  muted: "#94a3b8",
+  inkSoft: "#334155",
+  muted: "#64748b",
   warn: "#d97706",
   warnSoft: "#fffbeb",
 };

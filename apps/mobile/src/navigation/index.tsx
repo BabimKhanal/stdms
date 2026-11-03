@@ -22,11 +22,11 @@ import { useAuth } from "../auth";
 const palette = {
   primary: "#7c3aed",
   primarySoft: "#f5f3ff",
-  bg: "#faf9ff",
+  bg: "#f8fafc",
   ink: "#1e1b4b",
-  inkSoft: "#475569",
-  muted: "#94a3b8",
-  border: "#ede9fe",
+  inkSoft: "#334155",
+  muted: "#64748b",
+  border: "#ddd6fe",
 };
 
 // ── Tab options factory ──────────────────────────────────────────────────
@@ -56,8 +56,8 @@ const tabOptions = (
     />
   ),
   tabBarActiveTintColor: palette.primary,
-  tabBarInactiveTintColor: palette.muted,
-  tabBarItemStyle: { paddingTop: 6 , paddingBottom: 6 },
+  tabBarInactiveTintColor: "#475569",
+  tabBarItemStyle: { paddingTop: 4, paddingBottom: 2 },
   tabBarLabelStyle: {
     fontSize: 11,
     fontWeight: "700" as const,
@@ -65,25 +65,22 @@ const tabOptions = (
   },
   tabBarStyle: {
     backgroundColor: "rgba(255,255,255,0.98)",
-    borderColor: "#ede9fe",
+    borderColor: "#ddd6fe",
     borderRadius: 24,
-    borderTopWidth: 1,
-    // Android can report a zero bottom inset while still drawing a system
-    // navigation controller over the edge-to-edge window.
-    bottom: Math.max(bottomInset + 12, 28),
-    elevation: 10,
-    height: TAB_BAR_HEIGHT,
-    left: 14,
+    borderTopWidth: 0,
+    elevation: 5,
+    height: TAB_BAR_HEIGHT + bottomInset,
+    marginHorizontal: 14,
+    paddingBottom: bottomInset + 6,
     paddingTop: 6,
-    position: "absolute" as const,
-    right: 14,
+    position: "relative" as const,
     shadowColor: palette.primary,
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    shadowOffset: { height: 5, width: 0 },
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { height: 4, width: 0 },
   },
-  tabBarActiveBackgroundColor: palette.primarySoft,
-  tabBarIconStyle: { marginBottom: -2 },
+  tabBarActiveBackgroundColor: "transparent",
+  tabBarIconStyle: { marginBottom: -1 },
 });
 
 const Tab = createBottomTabNavigator();

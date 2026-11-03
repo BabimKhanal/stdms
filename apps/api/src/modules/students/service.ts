@@ -486,15 +486,16 @@ export async function updateStudentProfile(
     photoUrl?: string | null;
   },
 ) {
+  const changes: Partial<typeof students.$inferInsert> = {};
+  if (input.phone !== undefined) changes.phone = input.phone;
+  if (input.email !== undefined) changes.email = input.email;
+  if (input.address !== undefined) changes.address = input.address;
+  if (input.nationality !== undefined) changes.nationality = input.nationality;
+  if (input.photoUrl !== undefined) changes.photoUrl = input.photoUrl;
+
   const [row] = await db
     .update(students)
-    .set({
-      phone: input.phone,
-      email: input.email,
-      address: input.address,
-      nationality: input.nationality,
-      photoUrl: input.photoUrl,
-    })
+    .set(changes)
     .where(and(eq(students.id, id), eq(students.organisationId, orgId)))
     .returning();
   if (!row) throw notFound("Student not found");

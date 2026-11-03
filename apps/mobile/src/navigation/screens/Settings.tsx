@@ -30,11 +30,11 @@ const palette = {
   primary: "#7c3aed",
   primarySoft: "#f5f3ff",
   primaryBorder: "#ddd6fe",
-  bg: "#faf9ff",
+  bg: "#f8fafc",
   ink: "#1e1b4b",
-  inkSoft: "#475569",
-  muted: "#94a3b8",
-  border: "#f1f0f9",
+  inkSoft: "#334155",
+  muted: "#64748b",
+  border: "#e2e8f0",
   warn: "#d97706",
   warnSoft: "#fffbeb",
   danger: "#e11d48",
@@ -259,7 +259,7 @@ export function Settings() {
           </View>
           <MaterialCommunityIcons
             name="chevron-right"
-            color="#cbd5e1"
+            color="#64748b"
             size={20}
           />
         </Pressable>
@@ -295,7 +295,7 @@ export function Settings() {
               disabled={!pushPreference.supported}
               value={pushPreference.enabled}
               onValueChange={(enabled) => void setPushEnabled(enabled)}
-              trackColor={{ false: "#cbd5e1", true: palette.primary }}
+              trackColor={{ false: "#94a3b8", true: palette.primary }}
               thumbColor="#ffffff"
             />
           )}

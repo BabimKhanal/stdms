@@ -52,11 +52,11 @@ const palette = {
   primaryDeep: "#6d28d9",
   primarySoft: "#f5f3ff",
   primaryBorder: "#ddd6fe",
-  bg: "#faf9ff",
+  bg: "#f8fafc",
   ink: "#1e1b4b",
-  inkSoft: "#475569",
-  muted: "#94a3b8",
-  border: "#f1f0f9",
+  inkSoft: "#334155",
+  muted: "#64748b",
+  border: "#e2e8f0",
   danger: "#e11d48",
   dangerSoft: "#fff1f2",
   warning: "#d97706",
@@ -419,7 +419,7 @@ export function Home() {
     <ScrollView
       contentContainerStyle={[
         styles.container,
-        { paddingBottom: insets.bottom + 108, paddingTop: insets.top + 12 },
+        { paddingBottom: insets.bottom + 24, paddingTop: insets.top + 12 },
       ]}
       showsVerticalScrollIndicator={false}
       refreshControl={
@@ -837,7 +837,7 @@ export function Home() {
               </View>
               <MaterialCommunityIcons
                 name="chevron-right"
-                color="#cbd5e1"
+                 color="#64748b"
                 size={20}
               />
             </Pressable>
@@ -950,7 +950,7 @@ function Metric({
         {onPress && (
           <MaterialCommunityIcons
             name="arrow-top-right"
-            color="#cbd5e1"
+            color="#64748b"
             size={15}
           />
         )}
@@ -988,7 +988,7 @@ function QuickAction({
           <Text style={styles.quickDescription}>{description}</Text>
         ) : null}
       </View>
-      <MaterialCommunityIcons name="chevron-right" color="#cbd5e1" size={18} />
+       <MaterialCommunityIcons name="chevron-right" color="#64748b" size={18} />
     </Pressable>
   );
 }
