@@ -118,6 +118,14 @@ export function More() {
           />
         ) : null}
         <Action
+          icon="folder-account-outline"
+          tint="#7c3aed"
+          bg="#f5f3ff"
+          title="My documents"
+          description="View and save your official school documents"
+          onPress={() => navigation.navigate("Documents")}
+        />
+        <Action
           icon="account-circle-outline"
           tint="#059669"
           bg="#ecfdf5"

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { MiddlewareHandler } from "hono";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import {
@@ -20,7 +21,7 @@ import { writeAudit } from "../../lib/audit";
 import * as svc from "./service";
 import { getCurrentYearId } from "../academics/service";
 import { documentTemplates, organisations } from "../../db/schema";
-import { badRequest, notFound } from "../../lib/errors";
+import { badRequest, forbidden, notFound } from "../../lib/errors";
 import { buildDocumentData } from "../../lib/document-data";
 import { renderTemplatePdf } from "../../lib/document-pdf";
 
@@ -29,6 +30,15 @@ const studentProfileUpdateSchema = studentInputSchema.omit({ academicYearId: tru
 export const studentRoutes = new Hono<AppEnv>();
 
 studentRoutes.use("*", requireAuth, requireOrg);
+
+const canViewOwnDocument: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const user = c.get("user")!;
+  if (user.isPlatformAdmin || user.permissions.includes("student.view") || user.studentId === c.req.param("id")) {
+    await next();
+    return;
+  }
+  throw forbidden("You can only view your own student documents");
+};
 
 /* List + search + filter + server-side pagination (SRS §65) */
 studentRoutes.get("/", requirePermission("student.view"), async (c) => {
@@ -63,7 +73,7 @@ studentRoutes.get(
 
 studentRoutes.get(
   "/:id/document",
-  requirePermission("student.view"),
+  canViewOwnDocument,
   async (c) => {
     const db = c.get("db");
     const orgId = c.get("orgId")!;

@@ -10,8 +10,8 @@ if (args.has("--help") || args.has("-h")) {
   console.log(`Usage:
   node scripts/build-android.mjs --apk                 Build installable APK with EAS
   node scripts/build-android.mjs --aab                 Build Play Store AAB with EAS
-  node scripts/build-android.mjs --local --apk         Build APK locally
-  node scripts/build-android.mjs --local --apk --install  Build and install with adb
+  node scripts/build-android.mjs --local --apk         Build release APK locally
+  node scripts/build-android.mjs --local --debug --install  Build debug APK and install with adb
 
 Options:
   --skip-checks    Skip lint and typecheck (not recommended for release builds)`);
@@ -22,6 +22,7 @@ const wantsAab = args.has("--aab");
 const wantsApk = args.has("--apk") || !wantsAab;
 const local = args.has("--local");
 const install = args.has("--install");
+const debug = args.has("--debug");
 const skipChecks = args.has("--skip-checks");
 
 if (wantsAab && args.has("--apk")) {
@@ -30,6 +31,10 @@ if (wantsAab && args.has("--apk")) {
 
 if (local && wantsAab) {
   fail("Local mode currently builds an installable APK only. Use the EAS production profile for an AAB.");
+}
+
+if (debug && !local) {
+  fail("--debug is only available with --local.");
 }
 
 if (install && !local) {
@@ -100,9 +105,16 @@ if (existsSync(gradlew)) {
   }
 }
 
-run(gradle, [...gradleArgs, "--no-daemon", "assembleRelease"], "Build local Android release APK", { cwd: androidDir, env: productionEnv });
+if (debug) {
+  // The connected device is arm64; avoid compiling emulator ABIs during local iteration.
+  gradleArgs = ["--parallel", "-PreactNativeArchitectures=arm64-v8a"];
+}
 
-const apk = resolve(androidDir, "app", "build", "outputs", "apk", "release", "app-release.apk");
+const gradleTask = debug ? "assembleDebug" : "assembleRelease";
+const outputLabel = debug ? "debug" : "release";
+run(gradle, [...gradleArgs, gradleTask], `Build local Android ${outputLabel} APK`, { cwd: androidDir, env: productionEnv });
+
+const apk = resolve(androidDir, "app", "build", "outputs", "apk", outputLabel, `app-${outputLabel}.apk`);
 if (!existsSync(apk)) fail(`Expected APK was not created at ${apk}.`);
 
 console.log(`\nAPK created at:\n${apk}`);

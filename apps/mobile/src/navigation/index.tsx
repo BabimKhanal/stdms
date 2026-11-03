@@ -14,6 +14,7 @@ import { Attendance, Fees, Learning, Results, Timetable } from "./screens/Module
 import { Leave } from "./screens/Leave";
 import { More } from "./screens/More";
 import { Updates } from "./screens/Updates";
+import { Documents } from "./screens/Documents";
 import { useAuth } from "../auth";
 
 // ── Shared palette (matches all screens) ─────────────────────────────────
@@ -183,6 +184,10 @@ const RootStack = createNativeStackNavigator({
           user: (value) => `@${value}`,
         },
       },
+    }),
+    Documents: createNativeStackScreen({
+      screen: Documents,
+      options: { title: "My documents", headerBackTitle: "Back" },
     }),
     Updates: createNativeStackScreen({
       screen: Updates,
