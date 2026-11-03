@@ -96,7 +96,7 @@ export const emailSettings = pgTable(
     providerDomain: text("provider_domain"),
     smtpHost: text("smtp_host"),
     smtpPort: integer("smtp_port"),
-    smtpSecure: boolean("smtp_secure").notNull().default(true),
+    smtpSecure: boolean("smtp_secure").notNull().default(false),
     smtpUsername: text("smtp_username"),
     credentialsEncrypted: text("credentials_encrypted"),
     lastTestedAt: timestamp("last_tested_at", { withTimezone: true }),

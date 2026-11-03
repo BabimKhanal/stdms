@@ -39,7 +39,7 @@ export function Modal({
 
   return (
     <div
-      className="animate-overlay-in fixed inset-0 z-50 flex items-end justify-center bg-slate-950/40 p-2 backdrop-blur-sm sm:items-center sm:p-6"
+      className="animate-overlay-in fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-slate-950/40 p-2 backdrop-blur-sm sm:items-center sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
@@ -52,7 +52,7 @@ export function Modal({
       />
       <section
         className={cn(
-          "animate-modal-in relative z-10 flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl ring-1 ring-slate-900/5 sm:max-h-[92dvh] sm:rounded-3xl",
+          "animate-modal-in relative z-10 flex h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)] min-h-0 w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl ring-1 ring-slate-900/5 sm:h-[92dvh] sm:max-h-[92dvh] sm:rounded-3xl",
           size === "lg" ? "sm:max-w-5xl" : "sm:max-w-3xl",
         )}
       >

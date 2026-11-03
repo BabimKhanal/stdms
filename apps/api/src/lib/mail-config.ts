@@ -48,7 +48,7 @@ export function buildMailConfig(settings: EmailSettingsRow): MailConfig {
     smtp: {
       host: settings.smtpHost ?? null,
       port: settings.smtpPort ?? null,
-      secure: settings.smtpSecure ?? true,
+       secure: settings.smtpSecure ?? settings.smtpPort === 465,
       username: settings.smtpUsername ?? null,
       password: credentials.smtpPassword,
     },

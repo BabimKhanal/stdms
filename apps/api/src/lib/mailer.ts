@@ -99,10 +99,12 @@ export async function sendMail(input: MailInput, config: MailConfig = {}): Promi
     const host = config.smtp?.host;
     const port = config.smtp?.port;
     if (!host || !port) throw new Error("SMTP requires a host and port");
+    // Port 587 negotiates STARTTLS after connecting; port 465 uses implicit TLS.
+    const secure = port === 465 ? true : port === 587 ? false : config.smtp?.secure ?? false;
     const transport = nodemailer.createTransport({
       host,
       port,
-      secure: config.smtp?.secure ?? port === 465,
+      secure,
       auth: config.smtp?.username && config.smtp?.password ? { user: config.smtp.username, pass: config.smtp.password } : undefined,
     });
     try {
@@ -114,6 +116,16 @@ export async function sendMail(input: MailInput, config: MailConfig = {}): Promi
         text: input.text,
         replyTo: config.replyTo ?? undefined,
       });
+    } catch (error) {
+      const code = (error as { code?: string; responseCode?: number }).code;
+      const responseCode = (error as { responseCode?: number }).responseCode;
+      if (responseCode === 535 || code === "EAUTH") {
+        throw new Error("SMTP authentication failed. Check the username/password; Gmail accounts must use an App Password, not the normal account password.");
+      }
+      if (code === "ETIMEDOUT" || code === "ESOCKET" || code === "ECONNREFUSED") {
+        throw new Error(`SMTP connection failed for ${host}:${port}. Use TLS on connect only for port 465; port 587 uses STARTTLS and must be non-secure on connect.`);
+      }
+      throw error;
     } finally {
       transport.close();
     }
