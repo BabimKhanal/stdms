@@ -70,8 +70,10 @@ export function Updates() {
       });
       if (!response.ok)
         throw new Error("Unable to load your updates right now.");
-      const payload = (await response.json()) as { data?: Notification[] };
-      setItems(payload.data ?? []);
+      const payload = (await response.json()) as {
+        data?: { data?: Notification[] };
+      };
+      setItems(payload.data?.data ?? []);
       setError("");
     } catch (err) {
       setError(

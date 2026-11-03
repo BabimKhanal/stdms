@@ -1,6 +1,6 @@
 import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const palette = {
   primary: "#7c3aed",
@@ -67,13 +67,32 @@ export function DatePicker({
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
 
-  if (!selected || !inRange(selected, minDate, maxDate)) {
-    const fallback = today;
-    if (inRange(fallback, minDate, maxDate)) setSelected(fallback);
-  }
+  useEffect(() => {
+    const next = parseDate(value);
+    const nextMin = parseDate(min);
+    const nextMax = parseDate(max);
+    const nextToday = new Date();
+    nextToday.setUTCHours(0, 0, 0, 0);
+    if (next && inRange(next, nextMin, nextMax)) {
+      // Prop changes reset the temporary month selection used by the modal.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSelected(next);
+      return;
+    }
+    if (inRange(nextToday, nextMin, nextMax)) {
+      setSelected(nextToday);
+    }
+  }, [value, min, max]);
 
-  const year = selected?.getUTCFullYear() ?? today.getUTCFullYear();
-  const month = selected?.getUTCMonth() ?? today.getUTCMonth();
+  const displaySelected =
+    selected && inRange(selected, minDate, maxDate)
+      ? selected
+      : inRange(today, minDate, maxDate)
+        ? today
+        : undefined;
+
+  const year = displaySelected?.getUTCFullYear() ?? today.getUTCFullYear();
+  const month = displaySelected?.getUTCMonth() ?? today.getUTCMonth();
 
   const firstOfMonth = new Date(Date.UTC(year, month, 1));
   const startOffset = firstOfMonth.getUTCDay(); // 0 = Sunday
@@ -87,11 +106,16 @@ export function DatePicker({
 
   const changeMonth = (delta: number) => {
     const next = new Date(Date.UTC(year, month + delta, 1));
-    setSelected((current) =>
-      current && inRange(next, minDate, maxDate)
-        ? new Date(Date.UTC(next.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate()))
-        : next,
+    const lastDay = new Date(
+      Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0),
+    ).getUTCDate();
+    const currentDay = Math.min(displaySelected?.getUTCDate() ?? 1, lastDay);
+    let candidate = new Date(
+      Date.UTC(next.getUTCFullYear(), next.getUTCMonth(), currentDay),
     );
+    if (minDate && candidate < minDate) candidate = minDate;
+    if (maxDate && candidate > maxDate) candidate = maxDate;
+    if (inRange(candidate, minDate, maxDate)) setSelected(candidate);
   };
 
   const selectDay = (day: number) => {
@@ -157,7 +181,7 @@ export function DatePicker({
                   styles.day,
                   isSameDay(
                     new Date(Date.UTC(year, month, day)),
-                    selected,
+                    displaySelected,
                   )
                     ? styles.daySelected
                     : null,
@@ -173,7 +197,7 @@ export function DatePicker({
                     : null,
                 ]}
               >
-                <Text style={[styles.dayText, isSameDay(new Date(Date.UTC(year, month, day)), selected) && styles.daySelectedText]}>
+                  <Text style={[styles.dayText, isSameDay(new Date(Date.UTC(year, month, day)), displaySelected) && styles.daySelectedText]}>
                   {day}
                 </Text>
               </TouchableOpacity>
@@ -186,9 +210,9 @@ export function DatePicker({
           </Pressable>
           <Pressable
             accessibilityLabel="Confirm date"
-            disabled={!selected}
-            onPress={() => {
-              if (selected) onChange(fmtYMD(selected));
+             disabled={!displaySelected}
+             onPress={() => {
+               if (displaySelected) onChange(fmtYMD(displaySelected));
               onClose();
             }}
             style={styles.confirm}

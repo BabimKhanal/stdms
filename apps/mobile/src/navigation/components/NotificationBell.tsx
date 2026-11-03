@@ -13,10 +13,18 @@ export function NotificationBell({ onPress }: { onPress: () => void }) {
       const token = await mobileToken();
       if (!token || !active) return;
       const response = await fetch(`${API_URL}/notifications/unread-count`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) return;
       const payload = await response.json() as { data?: { count?: number } };
       if (active) setUnread(Number(payload.data?.count ?? 0));
       socket = new WebSocket(`${API_URL.replace(/^http/, 'ws').replace(/\/api\/v1$/, '')}/ws/notifications?token=${encodeURIComponent(token)}`);
-      socket.onmessage = (event) => { const message = JSON.parse(event.data) as { type: string }; if (message.type === 'notification' && active) setUnread((count) => count + 1); };
+      socket.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data) as { type: string };
+          if (message.type === 'notification' && active) setUnread((count) => count + 1);
+        } catch {
+          // Ignore malformed socket frames.
+        }
+      };
     })().catch(() => undefined);
     return () => { active = false; socket?.close(); };
   }, []);

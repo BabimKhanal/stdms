@@ -186,22 +186,23 @@ export function Login() {
             </Pressable>
           </View>
 
-          {/* Friendly demo hint */}
-          <View style={styles.demoCard}>
-            <View style={styles.demoIcon}>
-              <MaterialCommunityIcons
-                name="lightbulb-on-outline"
-                color={palette.primary}
-                size={16}
-              />
+          {__DEV__ ? (
+            <View style={styles.demoCard}>
+              <View style={styles.demoIcon}>
+                <MaterialCommunityIcons
+                  name="lightbulb-on-outline"
+                  color={palette.primary}
+                  size={16}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.demoLabel}>Development account</Text>
+                <Text style={styles.demoText}>
+                  Use the local seeded account configured for this environment.
+                </Text>
+              </View>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.demoLabel}>Just exploring?</Text>
-              <Text style={styles.demoText}>
-                owner@greenwood.edu.np / Owner@123
-              </Text>
-            </View>
-          </View>
+          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

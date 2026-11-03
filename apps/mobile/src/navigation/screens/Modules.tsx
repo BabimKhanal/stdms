@@ -371,6 +371,7 @@ function ManualPaymentButton({ invoiceId, balance, method }: { invoiceId: string
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState(String(balance));
   const [reference, setReference] = useState("");
+  const [proof, setProof] = useState<SubmissionFile | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   async function submit() {
@@ -380,7 +381,7 @@ function ManualPaymentButton({ invoiceId, balance, method }: { invoiceId: string
     try {
       let token = await mobileToken();
       if (!token) throw new Error("Session expired. Please sign in again.");
-      const payload = { invoiceId, paymentMethodId: method.id, amount: parsedAmount, reference: reference.trim() || null, proofUrl: null };
+      const payload = { invoiceId, paymentMethodId: method.id, amount: parsedAmount, reference: reference.trim() || null, proofUrl: proof?.url ?? null };
       try { await new EduApiClient(API_URL, () => token).post("/fees/submissions", payload); }
       catch (error) {
         if (!(error instanceof Error) || !/unauthori[sz]ed|401|token|session/i.test(error.message)) throw error;
@@ -393,7 +394,31 @@ function ManualPaymentButton({ invoiceId, balance, method }: { invoiceId: string
     } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to submit payment"); }
     finally { setBusy(false); }
   }
-  return <View>{method.qrImageUrl ? <Image source={{ uri: method.qrImageUrl }} style={styles.paymentQr} resizeMode="contain" /> : null}<Text style={styles.payNowInfo}>{method.label}: {[method.bankName, method.accountName, method.accountNumber, method.instructions].filter(Boolean).join(" · ") || "Follow the school payment instructions."}</Text><Pressable onPress={() => setOpen(true)} style={styles.manualPayButton}><MaterialCommunityIcons name="bank-transfer" color={palette.primary} size={16} /><Text style={styles.manualPayText}>I transferred via {method.label}</Text></Pressable>{message ? <Text style={styles.payNowMessage}>{message}</Text> : null}<Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}><View style={styles.modalBackdrop}><View style={styles.paymentModal}><Text style={styles.modalTitle}>{method.label} payment</Text><Text style={styles.payNowInfo}>Transfer to: {[method.bankName, method.accountName, method.accountNumber].filter(Boolean).join(" · ") || "See school instructions"}</Text><TextInput value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="Amount" style={styles.paymentInput} /><TextInput value={reference} onChangeText={setReference} placeholder="Bank reference / voucher number" style={styles.paymentInput} /><View style={styles.modalActions}><Pressable onPress={() => setOpen(false)} style={styles.modalCancel}><Text>Cancel</Text></Pressable><Pressable disabled={busy} onPress={() => void submit()} style={styles.modalSubmit}><Text style={styles.modalSubmitText}>{busy ? "Submitting..." : "Submit payment"}</Text></Pressable></View></View></View></Modal></View>;
+  async function chooseProof() {
+    setMessage("");
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ["image/*", "application/pdf"],
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    if (asset.size && asset.size > 15 * 1024 * 1024) {
+      setMessage("Please choose a proof file smaller than 15 MB.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const token = await mobileToken();
+      if (!token) throw new Error("Session expired. Please sign in again.");
+      setProof(await uploadSubmissionFile(asset, token, "payments"));
+      setMessage("Proof attached.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to upload proof");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return <View>{method.qrImageUrl ? <Image source={{ uri: method.qrImageUrl }} style={styles.paymentQr} resizeMode="contain" /> : null}<Text style={styles.payNowInfo}>{method.label}: {[method.bankName, method.accountName, method.accountNumber, method.instructions].filter(Boolean).join(" · ") || "Follow the school payment instructions."}</Text><Pressable onPress={() => setOpen(true)} style={styles.manualPayButton}><MaterialCommunityIcons name="bank-transfer" color={palette.primary} size={16} /><Text style={styles.manualPayText}>I transferred via {method.label}</Text></Pressable>{message ? <Text style={styles.payNowMessage}>{message}</Text> : null}<Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}><View style={styles.modalBackdrop}><View style={styles.paymentModal}><Text style={styles.modalTitle}>{method.label} payment</Text><Text style={styles.payNowInfo}>Transfer to: {[method.bankName, method.accountName, method.accountNumber].filter(Boolean).join(" · ") || "See school instructions"}</Text><TextInput value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="Amount" style={styles.paymentInput} /><TextInput value={reference} onChangeText={setReference} placeholder="Bank reference / voucher number" style={styles.paymentInput} /><Pressable disabled={busy} onPress={() => void chooseProof()} style={styles.manualPayButton}><MaterialCommunityIcons name="paperclip" color={palette.primary} size={16} /><Text style={styles.manualPayText}>{proof ? `Replace proof: ${proof.name}` : "Attach transfer proof (optional)"}</Text></Pressable><View style={styles.modalActions}><Pressable onPress={() => setOpen(false)} style={styles.modalCancel}><Text>Cancel</Text></Pressable><Pressable disabled={busy} onPress={() => void submit()} style={styles.modalSubmit}><Text style={styles.modalSubmitText}>{busy ? "Submitting..." : "Submit payment"}</Text></Pressable></View></View></View></Modal></View>;
 }
 export function Results() {
   return (
@@ -672,6 +697,7 @@ type SubmissionFile = { url: string; name: string; mimeType: string };
 async function uploadSubmissionFile(
   asset: DocumentPicker.DocumentPickerAsset,
   token: string,
+  folder = "assignments",
 ) {
   const mimeType =
     asset.mimeType ??
@@ -685,7 +711,7 @@ async function uploadSubmissionFile(
     timestamp: number;
     signature: string;
     folder: string;
-  }>("/uploads/sign", { folder: "assignments", resourceType });
+  }>("/uploads/sign", { folder, resourceType });
   const body = new FormData();
   body.append("file", {
     uri: asset.uri,

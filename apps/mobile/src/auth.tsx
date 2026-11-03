@@ -79,7 +79,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const saved = await readStorage(USER_KEY);
       const accessToken = await readStorage(ACCESS_KEY);
       const refreshToken = await readStorage(REFRESH_KEY);
-      if (!saved || !accessToken) return;
+      if (!saved || !accessToken) {
+        await Promise.all([
+          removeStorage(ACCESS_KEY),
+          removeStorage(REFRESH_KEY),
+          removeStorage(USER_KEY),
+        ]);
+        return;
+      }
       const client = new EduApiClient(API_URL, () => accessToken);
       try {
         const current = await client.get<MobileUser>("/auth/me");
