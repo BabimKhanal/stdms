@@ -117,14 +117,16 @@ export function More() {
             onPress={() => navigation.navigate("Leave")}
           />
         ) : null}
-        <Action
-          icon="folder-account-outline"
-          tint="#7c3aed"
-          bg="#f5f3ff"
-          title="My documents"
-          description="View and save your official school documents"
-          onPress={() => navigation.navigate("Documents")}
-        />
+        {user?.studentId ? (
+          <Action
+            icon="folder-account-outline"
+            tint="#7c3aed"
+            bg="#f5f3ff"
+            title="My documents"
+            description="View and save your official school documents"
+            onPress={() => navigation.navigate("Documents")}
+          />
+        ) : null}
         <Action
           icon="account-circle-outline"
           tint="#059669"

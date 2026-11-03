@@ -142,14 +142,27 @@ export function Profile() {
       setMessage("Choose an image smaller than 8 MB.");
       return;
     }
+    const extension = asset.name.toLowerCase().split(".").pop();
+    const mimeTypeByExtension: Record<string, string> = {
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      png: "image/png",
+      webp: "image/webp",
+    };
+    const mimeType = asset.mimeType?.startsWith("image/")
+      ? asset.mimeType
+      : extension
+        ? mimeTypeByExtension[extension]
+        : undefined;
+    if (!mimeType || !mimeTypeByExtension[extension ?? ""]) {
+      setMessage("Unsupported image format. Choose a JPG, PNG, or WEBP image.");
+      return;
+    }
     setUploadingPhoto(true);
     setMessage("");
     try {
       const token = await mobileToken();
       if (!token) throw new Error("Session expired. Please sign in again.");
-      const mimeType = asset.mimeType?.startsWith("image/")
-        ? asset.mimeType
-        : "image/jpeg";
       const signed = await new EduApiClient(API_URL, () => token).post<{
         cloudName: string;
         apiKey: string;
@@ -619,15 +632,15 @@ const styles = StyleSheet.create({
   // Hero
   heroCard: {
     alignItems: "center",
-    backgroundColor: "#5b21b6",
-    borderRadius: 28,
+    backgroundColor: "#9561e8",
+    borderRadius: 24,
     marginTop: 6,
     overflow: "hidden",
     paddingBottom: 24,
     paddingTop: 26,
     position: "relative",
-    shadowColor: "#5b21b6",
-    shadowOpacity: 0.3,
+    shadowColor: "#9561e8",
+    shadowOpacity: 0.22,
     shadowRadius: 16,
     shadowOffset: { height: 8, width: 0 },
     elevation: 6,

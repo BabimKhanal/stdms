@@ -70,10 +70,10 @@ export function Login() {
             <View style={styles.heroBlob} />
             <View style={styles.heroBlobSmall} />
             <View style={styles.badge}>
-              <MaterialCommunityIcons name="school" color="#fff" size={28} />
+              <MaterialCommunityIcons name="school" color={palette.primary} size={28} />
             </View>
             <Text style={styles.eyebrow}>NUCLEUS EDUCATION</Text>
-            <Text style={styles.title}>Welcome back! 👋</Text>
+            <Text style={styles.title}>Welcome back</Text>
             <Text style={styles.subtitle}>
               Sign in with your school account to pick up where you left off.
             </Text>
@@ -215,18 +215,19 @@ const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     justifyContent: "center",
-    padding: 22,
+    paddingHorizontal: 22,
     paddingBottom: 40,
+    paddingTop: 30,
   },
 
   // Hero
   hero: {
-    alignItems: "flex-start",
-    backgroundColor: "#5b21b6",
-    borderRadius: 28,
-    marginBottom: 20,
+    alignItems: "center",
+    backgroundColor: "transparent",
+    marginBottom: 26,
     overflow: "hidden",
-    padding: 24,
+    paddingHorizontal: 10,
+    paddingVertical: 12,
     position: "relative",
     shadowColor: "#5b21b6",
     shadowOpacity: 0.3,
@@ -235,17 +236,17 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   heroBlob: {
-    backgroundColor: "#8b5cf6",
+    backgroundColor: "#c4b5fd",
     borderRadius: 120,
     height: 200,
-    opacity: 0.35,
+    opacity: 0.16,
     position: "absolute",
     right: -60,
     top: -70,
     width: 200,
   },
   heroBlobSmall: {
-    backgroundColor: "#c4b5fd",
+    backgroundColor: "#ddd6fe",
     borderRadius: 60,
     height: 100,
     opacity: 0.2,
@@ -256,31 +257,31 @@ const styles = StyleSheet.create({
   },
   badge: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.2)",
-    borderColor: "rgba(255,255,255,0.25)",
-    borderRadius: 16,
+    backgroundColor: palette.primarySoft,
+    borderColor: palette.primaryBorder,
+    borderRadius: 20,
     borderWidth: 1,
     height: 56,
     justifyContent: "center",
     width: 56,
   },
   eyebrow: {
-    color: "#ddd6fe",
+    color: palette.primary,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 1.5,
     marginTop: 16,
   },
   title: {
-    color: "#fff",
-    fontSize: 30,
+    color: palette.ink,
+    fontSize: 29,
     fontWeight: "800",
     letterSpacing: -0.6,
     lineHeight: 36,
     marginTop: 6,
   },
   subtitle: {
-    color: "#ddd6fe",
+    color: palette.inkSoft,
     fontSize: 14,
     lineHeight: 21,
     marginTop: 10,
@@ -291,10 +292,10 @@ const styles = StyleSheet.create({
   formCard: {
     backgroundColor: "#fff",
     borderColor: palette.border,
-    borderRadius: 24,
+    borderRadius: 22,
     borderWidth: 1,
     gap: 16,
-    padding: 22,
+    padding: 20,
     shadowColor: palette.primary,
     shadowOpacity: 0.06,
     shadowRadius: 12,
@@ -310,7 +311,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   input: {
-    backgroundColor: palette.bg,
+    backgroundColor: "#f8f7fb",
     borderColor: palette.primaryBorder,
     borderRadius: 14,
     borderWidth: 1,
@@ -321,7 +322,7 @@ const styles = StyleSheet.create({
   },
   passwordRow: {
     alignItems: "center",
-    backgroundColor: palette.bg,
+    backgroundColor: "#f8f7fb",
     borderColor: palette.primaryBorder,
     borderRadius: 14,
     borderWidth: 1,
@@ -364,8 +365,8 @@ const styles = StyleSheet.create({
   // Button
   button: {
     alignItems: "center",
-    backgroundColor: palette.primary,
-    borderRadius: 14,
+    backgroundColor: "#9b63e8",
+    borderRadius: 18,
     flexDirection: "row",
     gap: 8,
     height: 54,

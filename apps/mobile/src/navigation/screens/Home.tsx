@@ -707,12 +707,12 @@ const styles = StyleSheet.create({
 
   // Hero
   hero: {
-    backgroundColor: "#5b21b6",
-    borderRadius: 28,
+    backgroundColor: "#9561e8",
+    borderRadius: 24,
     overflow: "hidden",
     padding: 24,
-    shadowColor: "#5b21b6",
-    shadowOpacity: 0.3,
+    shadowColor: "#9561e8",
+    shadowOpacity: 0.22,
     shadowRadius: 16,
     shadowOffset: { height: 8, width: 0 },
     elevation: 6,
