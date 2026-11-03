@@ -9,6 +9,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import * as DocumentPicker from "expo-document-picker";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { EduApiClient } from "@edu/api-client";
 import { API_URL } from "../../config";
@@ -61,6 +62,7 @@ export function Profile() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(Boolean(user?.studentId));
   const [message, setMessage] = useState("");
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [form, setForm] = useState({
     phone: "",
     email: "",
@@ -129,6 +131,72 @@ export function Profile() {
     }
   }
 
+  async function uploadPhoto() {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ["image/*"],
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    if (asset.size && asset.size > 8 * 1024 * 1024) {
+      setMessage("Choose an image smaller than 8 MB.");
+      return;
+    }
+    setUploadingPhoto(true);
+    setMessage("");
+    try {
+      const token = await mobileToken();
+      if (!token) throw new Error("Session expired. Please sign in again.");
+      const mimeType = asset.mimeType?.startsWith("image/")
+        ? asset.mimeType
+        : "image/jpeg";
+      const signed = await new EduApiClient(API_URL, () => token).post<{
+        cloudName: string;
+        apiKey: string;
+        timestamp: number;
+        signature: string;
+        folder: string;
+      }>("/uploads/sign", { folder: "students", resourceType: "image" });
+      const body = new FormData();
+      body.append("file", {
+        uri: asset.uri,
+        name: asset.name,
+        type: mimeType,
+      } as unknown as Blob);
+      body.append("api_key", signed.apiKey);
+      body.append("timestamp", String(signed.timestamp));
+      body.append("signature", signed.signature);
+      body.append("folder", signed.folder);
+      const response = await fetch(
+        `https://api.cloudinary.com/v1_1/${signed.cloudName}/image/upload`,
+        { method: "POST", body },
+      );
+      const uploaded = (await response.json()) as {
+        secure_url?: string;
+        error?: { message?: string };
+      };
+      if (!response.ok || !uploaded.secure_url)
+        throw new Error(uploaded.error?.message ?? "Image upload failed");
+      const updated = await new EduApiClient(API_URL, () => token).put<StudentProfile>(
+        "/auth/profile",
+        {
+          photoUrl: uploaded.secure_url,
+          phone: form.phone.trim() || null,
+          email: form.email.trim() || null,
+          address: form.address.trim() || null,
+          nationality: form.nationality.trim() || null,
+        },
+      );
+      setProfile(updated);
+      setImageFailed(false);
+      setMessage("Profile photo updated");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to update photo");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+
   const displayPhoto = profile?.photoUrl ?? user?.avatarUrl;
 
   return (
@@ -140,7 +208,13 @@ export function Profile() {
       <View style={styles.heroCard}>
         <View style={styles.heroBlob} />
         <View style={styles.heroBlobSmall} />
-        <View style={styles.avatarWrap}>
+        <Pressable
+          accessibilityLabel="Change profile photo"
+          accessibilityRole="button"
+          disabled={uploadingPhoto}
+          onPress={() => void uploadPhoto()}
+          style={styles.avatarWrap}
+        >
           {displayPhoto && !imageFailed ? (
             <Image
               onError={() => setImageFailed(true)}
@@ -153,9 +227,13 @@ export function Profile() {
             </View>
           )}
           <View style={styles.avatarBadge}>
-            <MaterialCommunityIcons name="camera" color="#fff" size={13} />
+            {uploadingPhoto ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <MaterialCommunityIcons name="camera" color="#fff" size={13} />
+            )}
           </View>
-        </View>
+        </Pressable>
         <Text style={styles.name}>
           {profile?.fullName ?? user?.name ?? "User"}
         </Text>

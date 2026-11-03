@@ -1,5 +1,5 @@
 import { Assets as NavigationAssets } from "@react-navigation/elements";
-import { DarkTheme, DefaultTheme } from "@react-navigation/native";
+import { DefaultTheme } from "@react-navigation/native";
 import { Asset } from "expo-asset";
 import { createURL } from "expo-linking";
 import * as ExpoLinking from "expo-linking";
@@ -9,7 +9,7 @@ import { useEffect } from "react";
 import {
   ActivityIndicator,
   Platform,
-  useColorScheme,
+  StatusBar,
   View,
 } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -96,7 +96,6 @@ export function App() {
 }
 
 function AuthenticatedApp() {
-  const colorScheme = useColorScheme();
   const { user, loading } = useAuth();
   const userId = user?.id;
   const { online, checking, retry } = useNetwork();
@@ -119,17 +118,36 @@ function AuthenticatedApp() {
 
   if (loading)
     return (
-      <View style={{ alignItems: "center", flex: 1, justifyContent: "center" }}>
+      <View
+        style={{
+          alignItems: "center",
+          backgroundColor: "#faf9ff",
+          flex: 1,
+          justifyContent: "center",
+        }}
+      >
+        <StatusBar barStyle="dark-content" />
         <ActivityIndicator color="#2563eb" size="large" />
       </View>
     );
   if (!user) return <Login />;
   if (user.mustChangePassword) return <ForcedPasswordChange />;
 
-  const theme = colorScheme === "dark" ? DarkTheme : DefaultTheme;
+  const theme = {
+    ...DefaultTheme,
+    colors: {
+      ...DefaultTheme.colors,
+      background: "#faf9ff",
+      card: "#ffffff",
+      border: "#ede9fe",
+      text: "#1e1b4b",
+      primary: "#7c3aed",
+    },
+  };
 
   return (
     <>
+      <StatusBar barStyle="dark-content" />
       {!online && Platform.OS !== "web" && (
         <OfflineBanner online={false} checking={checking} onRetry={retry} />
       )}

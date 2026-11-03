@@ -59,19 +59,23 @@ const tabOptions = (
     marginTop: 2,
   },
   tabBarStyle: {
-    backgroundColor: "#ffffff",
-    borderTopColor: palette.border,
+    backgroundColor: "rgba(255,255,255,0.98)",
+    borderColor: "#ede9fe",
+    borderRadius: 24,
     borderTopWidth: 1,
+    bottom: 12,
+    elevation: 10,
+    height: 68,
+    left: 14,
     paddingTop: 6,
-    // Slight elevation for a floating feel on Android
-    elevation: 8,
+    position: "absolute" as const,
+    right: 14,
     shadowColor: palette.primary,
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    shadowOffset: { height: -4, width: 0 },
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { height: 5, width: 0 },
   },
-  // Highlights the active tab with a soft pill behind the icon
-  tabBarActiveBackgroundColor: "transparent",
+  tabBarActiveBackgroundColor: palette.primarySoft,
   tabBarIconStyle: { marginBottom: -2 },
 });
 
