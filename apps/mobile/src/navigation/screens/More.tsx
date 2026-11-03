@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../auth";
+import { ProfileAvatar } from "../../components/ProfileAvatar";
 
 const palette = {
   primary: "#7c3aed",
@@ -40,7 +41,10 @@ export function More() {
 
   return (
     <ScrollView
-      contentContainerStyle={[styles.container, { paddingTop: insets.top + 12 }]}
+      contentContainerStyle={[
+        styles.container,
+        { paddingBottom: insets.bottom + 108, paddingTop: insets.top + 12 },
+      ]}
       showsVerticalScrollIndicator={false}
     >
       {/* Header */}
@@ -60,11 +64,7 @@ export function More() {
           pressed && styles.pressedProfile,
         ]}
       >
-        <View style={styles.profileAvatar}>
-          <Text style={styles.profileInitial}>
-            {user?.name?.charAt(0) ?? "U"}
-          </Text>
-        </View>
+          <ProfileAvatar name={user?.name} size={48} uri={user?.avatarUrl} style={styles.profileAvatar} />
         <View style={styles.profileCopy}>
           <Text style={styles.profileName}>{user?.name ?? "User"}</Text>
           <Text style={styles.profileMeta}>

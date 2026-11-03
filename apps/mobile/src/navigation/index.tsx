@@ -6,6 +6,7 @@ import {
   createNativeStackScreen,
 } from "@react-navigation/native-stack";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Home } from "./screens/Home";
 import { NotFound } from "./screens/NotFound";
 import { Profile } from "./screens/Profile";
@@ -29,10 +30,13 @@ const palette = {
 };
 
 // ── Tab options factory ──────────────────────────────────────────────────
+const TAB_BAR_HEIGHT = 68;
+
 const tabOptions = (
   title: string,
   icon: keyof typeof MaterialCommunityIcons.glyphMap,
   iconFocused: keyof typeof MaterialCommunityIcons.glyphMap,
+  bottomInset = 0,
 ) => ({
   title,
   tabBarLabel: title,
@@ -64,9 +68,11 @@ const tabOptions = (
     borderColor: "#ede9fe",
     borderRadius: 24,
     borderTopWidth: 1,
-    bottom: 12,
+    // Android can report a zero bottom inset while still drawing a system
+    // navigation controller over the edge-to-edge window.
+    bottom: Math.max(bottomInset + 12, 28),
     elevation: 10,
-    height: 68,
+    height: TAB_BAR_HEIGHT,
     left: 14,
     paddingTop: 6,
     position: "absolute" as const,
@@ -85,6 +91,7 @@ const Tab = createBottomTabNavigator();
 /** Only show tabs the signed-in role can actually use. */
 function HomeTabs() {
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const can = (...required: string[]) =>
     Boolean(
       user?.isPlatformAdmin ||
@@ -98,52 +105,40 @@ function HomeTabs() {
       <Tab.Screen
         name="Home"
         component={Home}
-        options={tabOptions("Home", "view-dashboard-outline", "view-dashboard")}
+        options={tabOptions("Home", "view-dashboard-outline", "view-dashboard", insets.bottom)}
       />
       {can("homework.view") ? (
         <Tab.Screen
           name="Learning"
           component={Learning}
-          options={tabOptions(
-            "Learning",
-            "book-open-outline",
-            "book-open-page-variant",
-          )}
+          options={tabOptions("Learning", "book-open-outline", "book-open-page-variant", insets.bottom)}
         />
       ) : null}
       {can("attendance.view") ? (
         <Tab.Screen
           name="Attendance"
           component={Attendance}
-          options={tabOptions(
-            "Attendance",
-            "calendar-check-outline",
-            "calendar-check",
-          )}
+          options={tabOptions("Attendance", "calendar-check-outline", "calendar-check", insets.bottom)}
         />
       ) : null}
       {can("timetable.view") ? (
         <Tab.Screen
           name="Timetable"
           component={Timetable}
-          options={tabOptions("Timetable", "calendar-clock-outline", "calendar-clock")}
+          options={tabOptions("Timetable", "calendar-clock-outline", "calendar-clock", insets.bottom)}
         />
       ) : null}
       {can("result.view", "exam.view") ? (
         <Tab.Screen
           name="Results"
           component={Results}
-          options={tabOptions("Results", "chart-box-outline", "chart-box")}
+          options={tabOptions("Results", "chart-box-outline", "chart-box", insets.bottom)}
         />
       ) : null}
       <Tab.Screen
         name="More"
         component={More}
-        options={tabOptions(
-          "More",
-          "dots-horizontal-circle-outline",
-          "dots-horizontal-circle",
-        )}
+        options={tabOptions("More", "dots-horizontal-circle-outline", "dots-horizontal-circle", insets.bottom)}
       />
     </Tab.Navigator>
   );

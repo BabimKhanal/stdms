@@ -46,6 +46,7 @@ async function removeStorage(key: string) {
 
 type AuthContextValue = {
   user: MobileUser | null;
+  updateUser: (patch: Partial<MobileUser>) => Promise<void>;
   loading: boolean;
   signIn: (identifier: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -151,8 +152,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     await clearSession();
   }
+  async function updateUser(patch: Partial<MobileUser>) {
+    if (!user) return;
+    const next = { ...user, ...patch };
+    await writeStorage(USER_KEY, JSON.stringify(next));
+    setUser(next);
+  }
   const value = {
     user,
+    updateUser,
     loading,
     signIn,
     signOut: clearSession,

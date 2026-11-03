@@ -69,7 +69,7 @@ export function Documents() {
   }
 
   return (
-    <ScrollView contentContainerStyle={[styles.container, { paddingTop: insets.top + 12 }]} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 32 }]} showsVerticalScrollIndicator={false}>
       <Text style={styles.eyebrow}>{user?.orgName ?? "Nucleus"}</Text>
       <Text style={styles.title}>My documents</Text>
       <Text style={styles.subtitle}>View and save official documents issued by your institution.</Text>

@@ -12,6 +12,7 @@
     "build:release:apk": "bun x eas-cli build --platform android --profile production-apk --wait",
     "build:production:apk": "node scripts/build-android.mjs --apk",
     "build:production:aab": "node scripts/build-android.mjs --aab",
+    "build:all": "node scripts/build-all.mjs",
     "build:local:apk": "node scripts/build-android.mjs --local --apk",
     "install:local:apk": "node scripts/build-android.mjs --local --apk --install",
     "install:local:debug": "node scripts/build-android.mjs --local --debug --install --skip-checks",

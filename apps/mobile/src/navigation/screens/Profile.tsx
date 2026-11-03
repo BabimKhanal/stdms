@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,9 +10,12 @@ import {
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EduApiClient } from "@edu/api-client";
 import { API_URL } from "../../config";
 import { mobileToken, useAuth } from "../../auth";
+import { ProfileAvatar } from "../../components/ProfileAvatar";
+import { uploadToCloudinary } from "../../lib/cloudinary";
 
 type StudentProfile = {
   fullName: string;
@@ -55,9 +57,9 @@ const palette = {
 };
 
 export function Profile() {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
+  const insets = useSafeAreaInsets();
   const [profile, setProfile] = useState<StudentProfile | null>(null);
-  const [imageFailed, setImageFailed] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(Boolean(user?.studentId));
@@ -163,37 +165,15 @@ export function Profile() {
     try {
       const token = await mobileToken();
       if (!token) throw new Error("Session expired. Please sign in again.");
-      const signed = await new EduApiClient(API_URL, () => token).post<{
-        cloudName: string;
-        apiKey: string;
-        timestamp: number;
-        signature: string;
-        folder: string;
-      }>("/uploads/sign", { folder: "students", resourceType: "image" });
-      const body = new FormData();
-      body.append("file", {
-        uri: asset.uri,
-        name: asset.name,
-        type: mimeType,
-      } as unknown as Blob);
-      body.append("api_key", signed.apiKey);
-      body.append("timestamp", String(signed.timestamp));
-      body.append("signature", signed.signature);
-      body.append("folder", signed.folder);
-      const response = await fetch(
-        `https://api.cloudinary.com/v1_1/${signed.cloudName}/image/upload`,
-        { method: "POST", body },
+      const uploaded = await uploadToCloudinary(
+        { name: asset.name, mimeType, uri: asset.uri },
+        "students",
+        token,
       );
-      const uploaded = (await response.json()) as {
-        secure_url?: string;
-        error?: { message?: string };
-      };
-      if (!response.ok || !uploaded.secure_url)
-        throw new Error(uploaded.error?.message ?? "Image upload failed");
       const updated = await new EduApiClient(API_URL, () => token).put<StudentProfile>(
         "/auth/profile",
         {
-          photoUrl: uploaded.secure_url,
+          photoUrl: uploaded.url,
           phone: form.phone.trim() || null,
           email: form.email.trim() || null,
           address: form.address.trim() || null,
@@ -201,7 +181,7 @@ export function Profile() {
         },
       );
       setProfile(updated);
-      setImageFailed(false);
+      await updateUser({ avatarUrl: uploaded.url });
       setMessage("Profile photo updated");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to update photo");
@@ -214,7 +194,10 @@ export function Profile() {
 
   return (
     <ScrollView
-      contentContainerStyle={styles.container}
+      contentContainerStyle={[
+        styles.container,
+        { paddingBottom: insets.bottom + 32 },
+      ]}
       showsVerticalScrollIndicator={false}
     >
       {/* Hero header with avatar */}
@@ -228,17 +211,12 @@ export function Profile() {
           onPress={() => void uploadPhoto()}
           style={styles.avatarWrap}
         >
-          {displayPhoto && !imageFailed ? (
-            <Image
-              onError={() => setImageFailed(true)}
-              source={{ uri: displayPhoto }}
-              style={styles.avatar}
-            />
-          ) : (
-            <View style={styles.avatarFallback}>
-              <Text style={styles.initial}>{user?.name?.charAt(0) ?? "U"}</Text>
-            </View>
-          )}
+          <ProfileAvatar
+            name={user?.name}
+            size={110}
+            style={styles.avatar}
+            uri={displayPhoto}
+          />
           <View style={styles.avatarBadge}>
             {uploadingPhoto ? (
               <ActivityIndicator color="#fff" size="small" />

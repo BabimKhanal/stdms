@@ -23,6 +23,7 @@ import { Platform } from "react-native";
 import { WebView } from "react-native-webview";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { createMarksheetPdf, type MarksheetResult } from "../../lib/marksheet";
+import { uploadToCloudinary, type CloudinaryFolder } from "../../lib/cloudinary";
 import { EduApiClient } from "@edu/api-client";
 import { mobileToken, refreshMobileSession, useAuth } from "../../auth";
 import { API_URL } from "../../config";
@@ -152,7 +153,7 @@ function ModuleList({
     <ScrollView
       contentContainerStyle={[
         styles.container,
-        { paddingTop: insets.top + 12 },
+        { paddingBottom: insets.bottom + 108, paddingTop: insets.top + 12 },
       ]}
       showsVerticalScrollIndicator={false}
       refreshControl={
@@ -697,42 +698,9 @@ type SubmissionFile = { url: string; name: string; mimeType: string };
 async function uploadSubmissionFile(
   asset: DocumentPicker.DocumentPickerAsset,
   token: string,
-  folder = "assignments",
-) {
-  const mimeType =
-    asset.mimeType ??
-    (asset.name.toLowerCase().endsWith(".pdf")
-      ? "application/pdf"
-      : "image/jpeg");
-  const resourceType = mimeType.startsWith("image/") ? "image" : "raw";
-  const signed = await new EduApiClient(API_URL, () => token).post<{
-    cloudName: string;
-    apiKey: string;
-    timestamp: number;
-    signature: string;
-    folder: string;
-  }>("/uploads/sign", { folder, resourceType });
-  const body = new FormData();
-  body.append("file", {
-    uri: asset.uri,
-    name: asset.name,
-    type: mimeType,
-  } as unknown as Blob);
-  body.append("api_key", signed.apiKey);
-  body.append("timestamp", String(signed.timestamp));
-  body.append("signature", signed.signature);
-  body.append("folder", signed.folder);
-  const response = await fetch(
-    `https://api.cloudinary.com/v1_1/${signed.cloudName}/${resourceType}/upload`,
-    { method: "POST", body },
-  );
-  const result = (await response.json()) as {
-    secure_url?: string;
-    error?: { message?: string };
-  };
-  if (!response.ok || !result.secure_url)
-    throw new Error(result.error?.message ?? "File upload failed");
-  return { url: result.secure_url, name: asset.name, mimeType };
+  folder: CloudinaryFolder = "assignments",
+): Promise<SubmissionFile> {
+  return uploadToCloudinary(asset, folder, token);
 }
 
 function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
