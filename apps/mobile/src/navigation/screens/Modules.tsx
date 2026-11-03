@@ -128,6 +128,7 @@ function ModuleList({
   getTitle,
   getMeta,
   renderExtra,
+  renderDetail,
   renderSummary,
   renderBadge,
   emptyTitle,
@@ -139,6 +140,7 @@ function ModuleList({
   getTitle: (item: Item) => string;
   getMeta: (item: Item) => string;
   renderExtra?: (item: Item) => ReactNode;
+  renderDetail?: (item: Item) => ReactNode;
   renderSummary?: (items: Item[]) => ReactNode;
   renderBadge?: (item: Item) => ReactNode;
   emptyTitle?: string;
@@ -148,8 +150,19 @@ function ModuleList({
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const theme = moduleTheme[title] ?? moduleTheme.Learning;
+  const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+
+  useEffect(() => {
+    if (!selectedItem || Platform.OS !== "web") return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSelectedItem(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedItem]);
 
   return (
+    <>
     <ScrollView
       contentContainerStyle={[
         styles.container,
@@ -202,7 +215,13 @@ function ModuleList({
       ) : items.length ? (
         <View style={styles.list}>
           {items.map((item, index) => (
-            <View key={String(item.id ?? index)} style={styles.card}>
+            <Pressable
+              key={String(item.id ?? index)}
+              accessibilityRole={renderDetail ? "button" : undefined}
+              accessibilityLabel={renderDetail ? `Open ${getTitle(item)}` : undefined}
+              onPress={renderDetail ? () => setSelectedItem(item) : undefined}
+              style={({ pressed }) => [styles.card, pressed && renderDetail && styles.cardPressed]}
+            >
               <View style={styles.cardTop}>
                 <View style={[styles.cardIcon, { backgroundColor: theme.bg }]}>
                   <MaterialCommunityIcons
@@ -221,7 +240,7 @@ function ModuleList({
               <Text style={styles.cardTitle}>{getTitle(item)}</Text>
               <Text style={styles.cardMeta}>{getMeta(item)}</Text>
               {renderExtra?.(item)}
-            </View>
+            </Pressable>
           ))}
         </View>
       ) : (
@@ -240,6 +259,52 @@ function ModuleList({
         </View>
       )}
     </ScrollView>
+    {renderDetail ? (
+      <Modal
+        visible={Boolean(selectedItem)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSelectedItem(null)}
+      >
+        <Pressable
+          style={styles.detailBackdrop}
+          onPress={() => setSelectedItem(null)}
+        >
+          <View
+            style={[styles.detailDrawer, { paddingBottom: insets.bottom + 18 }]}
+            onStartShouldSetResponder={() => true}
+          >
+            <View style={styles.detailHandle} />
+            <View style={styles.detailHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.detailTitle}>
+                  {selectedItem ? getTitle(selectedItem) : "Assignment"}
+                </Text>
+                {selectedItem ? (
+                  <Text style={styles.detailMeta}>{getMeta(selectedItem)}</Text>
+                ) : null}
+              </View>
+              <Pressable
+                accessibilityLabel="Close assignment details"
+                accessibilityRole="button"
+                hitSlop={10}
+                onPress={() => setSelectedItem(null)}
+                style={styles.detailClose}
+              >
+                <MaterialCommunityIcons name="close" color={palette.inkSoft} size={20} />
+              </Pressable>
+            </View>
+            <ScrollView
+              contentContainerStyle={styles.detailContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {selectedItem ? renderDetail(selectedItem) : null}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
+    ) : null}
+    </>
   );
 }
 
@@ -278,7 +343,7 @@ export function Learning() {
         `${String(item.subjectName ?? "Subject")} · assigned ${formatDate(item.assignedDate)} · due ${formatDate(item.submissionDate)}`
       }
       renderBadge={(item) => dueBadge(item.submissionDate)}
-      renderExtra={(item) => <AssignmentDetails item={item} />}
+      renderDetail={(item) => <AssignmentDetails item={item} />}
       emptyTitle="You're all caught up"
       emptyText="New homework will appear here as soon as your teacher posts it."
     />
@@ -1523,6 +1588,7 @@ const styles = StyleSheet.create({
     shadowOffset: { height: 4, width: 0 },
     elevation: 1,
   },
+  cardPressed: { backgroundColor: palette.primarySoft, transform: [{ scale: 0.99 }] },
   cardTop: {
     alignItems: "center",
     flexDirection: "row",
@@ -1685,6 +1751,44 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     marginBottom: 8,
   },
+  detailBackdrop: {
+    backgroundColor: "rgba(15, 23, 42, 0.48)",
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  detailDrawer: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    maxHeight: "88%",
+    paddingHorizontal: 20,
+    paddingTop: 10,
+  },
+  detailHandle: {
+    alignSelf: "center",
+    backgroundColor: palette.border,
+    borderRadius: 4,
+    height: 5,
+    width: 42,
+  },
+  detailHeader: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 12,
+    paddingBottom: 14,
+    paddingTop: 18,
+  },
+  detailTitle: { color: palette.ink, flex: 1, fontSize: 20, fontWeight: "800" },
+  detailMeta: { color: palette.inkSoft, fontSize: 13, lineHeight: 19, marginTop: 5 },
+  detailClose: {
+    alignItems: "center",
+    backgroundColor: palette.bg,
+    borderRadius: 18,
+    height: 36,
+    justifyContent: "center",
+    width: 36,
+  },
+  detailContent: { paddingBottom: 8 },
 
   // Marksheet
   marksheet: { marginTop: 14 },
