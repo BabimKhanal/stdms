@@ -1,7 +1,8 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { File, Paths, Directory } from "expo-file-system";
 import * as Sharing from "expo-sharing";
-import { useState } from "react";
+import * as WebBrowser from "expo-web-browser";
+import { useEffect, useState } from "react";
 import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { API_URL } from "../../config";
@@ -23,12 +24,33 @@ const documents = [
   { type: "marksheet", title: "Marksheet", description: "Your formatted academic result document", icon: "file-table-outline" as const },
   { type: "certificate", title: "Certificate", description: "Certificates issued by your institution", icon: "certificate-outline" as const },
 ];
+type AttachedDocument = {
+  id: string;
+  documentType: string;
+  title: string;
+  fileUrl: string;
+  fileName: string | null;
+  mimeType: string | null;
+};
 
 export function Documents() {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const [attachedDocuments, setAttachedDocuments] = useState<AttachedDocument[]>([]);
+
+  useEffect(() => {
+    if (!user?.studentId) return;
+    void mobileToken()
+      .then((token) => token ? fetch(`${API_URL}/auth/profile`, { headers: { Authorization: `Bearer ${token}` } }) : null)
+      .then(async (response) => {
+        if (!response?.ok) return;
+        const payload = await response.json() as { ok?: boolean; data?: { documents?: AttachedDocument[] } };
+        setAttachedDocuments(payload.data?.documents ?? []);
+      })
+      .catch(() => undefined);
+  }, [user?.studentId]);
 
   async function openDocument(type: string, title: string) {
     if (!user?.studentId) {
@@ -68,6 +90,47 @@ export function Documents() {
     }
   }
 
+  async function previewAttached(item: AttachedDocument) {
+    setBusy(`preview-${item.id}`);
+    setMessage("");
+    try {
+      if (Platform.OS === "web") await Linking.openURL(item.fileUrl);
+      else await WebBrowser.openBrowserAsync(item.fileUrl);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to preview document");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function downloadAttached(item: AttachedDocument) {
+    setBusy(`download-${item.id}`);
+    setMessage("");
+    try {
+      const filename = item.fileName || `${item.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "document"}.pdf`;
+      if (Platform.OS === "web") {
+        const response = await fetch(item.fileUrl);
+        if (!response.ok) throw new Error("Unable to download document");
+        const url = URL.createObjectURL(await response.blob());
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = filename;
+        anchor.click();
+        URL.revokeObjectURL(url);
+      } else {
+        const directory = new Directory(Paths.document, "documents");
+        directory.create({ idempotent: true, intermediates: true });
+        const file = await File.downloadFileAsync(item.fileUrl, new File(directory, filename));
+        if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(file.uri, { dialogTitle: `Save ${item.title}` });
+        else await Linking.openURL(file.uri);
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to download document");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <ScrollView contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 32 }]} showsVerticalScrollIndicator={false}>
       <Text style={styles.eyebrow}>{user?.orgName ?? "Nucleus"}</Text>
@@ -85,6 +148,28 @@ export function Documents() {
           );
         })}
       </View>
+      {attachedDocuments.length ? (
+        <View style={styles.attachedSection}>
+          <Text style={styles.sectionTitle}>Documents from school</Text>
+          {attachedDocuments.map((document) => (
+            <View key={document.id} style={styles.attachedCard}>
+              <View style={styles.attachedIcon}><MaterialCommunityIcons name="file-document-outline" color={palette.primary} size={22} /></View>
+              <View style={styles.attachedCopy}>
+                <Text numberOfLines={1} style={styles.attachedTitle}>{document.title}</Text>
+                <Text style={styles.attachedMeta}>{document.documentType}{document.fileName ? ` · ${document.fileName}` : ""}</Text>
+              </View>
+              <View style={styles.attachedActions}>
+                <Pressable disabled={busy !== null} onPress={() => void previewAttached(document)} accessibilityLabel={`Preview ${document.title}`}>
+                  <MaterialCommunityIcons name={busy === `preview-${document.id}` ? "loading" : "eye-outline"} color={palette.primary} size={21} />
+                </Pressable>
+                <Pressable disabled={busy !== null} onPress={() => void downloadAttached(document)} accessibilityLabel={`Download ${document.title}`}>
+                  <MaterialCommunityIcons name={busy === `download-${document.id}` ? "loading" : "download-outline"} color={palette.inkSoft} size={21} />
+                </Pressable>
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
       {message ? <View style={styles.message}><MaterialCommunityIcons name="information-outline" color={palette.primary} size={18} /><Text style={styles.messageText}>{message}</Text></View> : null}
     </ScrollView>
   );
@@ -104,4 +189,12 @@ const styles = StyleSheet.create({
   description: { color: palette.inkSoft, fontSize: 12, lineHeight: 18, marginTop: 3 },
   message: { alignItems: "center", backgroundColor: palette.primarySoft, borderRadius: 14, flexDirection: "row", gap: 8, marginTop: 18, padding: 13 },
   messageText: { color: palette.inkSoft, flex: 1, fontSize: 13, lineHeight: 18 },
+  attachedSection: { gap: 10, marginTop: 28 },
+  sectionTitle: { color: palette.ink, fontSize: 17, fontWeight: "800" },
+  attachedCard: { alignItems: "center", backgroundColor: "#fff", borderColor: palette.border, borderRadius: 16, borderWidth: 1, flexDirection: "row", gap: 10, padding: 12 },
+  attachedIcon: { alignItems: "center", backgroundColor: palette.primarySoft, borderRadius: 11, height: 42, justifyContent: "center", width: 42 },
+  attachedCopy: { flex: 1, minWidth: 0 },
+  attachedTitle: { color: palette.ink, fontSize: 14, fontWeight: "800" },
+  attachedMeta: { color: palette.inkSoft, fontSize: 11, marginTop: 3 },
+  attachedActions: { alignItems: "center", flexDirection: "row", gap: 14 },
 });
