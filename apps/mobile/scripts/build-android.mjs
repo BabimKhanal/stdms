@@ -85,14 +85,22 @@ if (!existsSync(androidDir)) {
   run("bun", ["x", "expo", "prebuild", "--platform", "android", "--no-install"], "Generate Android native project", { env: productionEnv });
 }
 
-// Use local Gradle installation or GRADLE_HOME environment variable
-const gradleHome = process.env.GRADLE_HOME ? resolve(process.env.GRADLE_HOME) : resolve(root, "gradle-9.4.1");
-const gradle = resolve(gradleHome, "bin", process.platform === "win32" ? "gradle.bat" : "gradle");
-if (!existsSync(gradle)) {
-  fail(`Gradle was not found at ${gradle}. Set GRADLE_HOME to a valid Gradle installation or run without --local to use EAS.`);
+// Use the Gradle wrapper (gradlew) bundled in the android/ directory,
+// or fall back to a standalone Gradle installation via GRADLE_HOME.
+const gradlew = resolve(androidDir, process.platform === "win32" ? "gradlew.bat" : "gradlew");
+let gradle;
+let gradleArgs = [];
+if (existsSync(gradlew)) {
+  gradle = gradlew;
+} else {
+  const gradleHome = process.env.GRADLE_HOME ? resolve(process.env.GRADLE_HOME) : resolve(root, "gradle-9.4.1");
+  gradle = resolve(gradleHome, "bin", process.platform === "win32" ? "gradle.bat" : "gradle");
+  if (!existsSync(gradle)) {
+    fail(`Gradle was not found. Neither the wrapper at ${gradlew} nor a standalone installation at ${gradle} exists. Set GRADLE_HOME to a valid Gradle installation or run without --local to use EAS.`);
+  }
 }
 
-run(gradle, ["--no-daemon", "assembleRelease"], "Build local Android release APK", { cwd: androidDir, env: productionEnv });
+run(gradle, [...gradleArgs, "--no-daemon", "assembleRelease"], "Build local Android release APK", { cwd: androidDir, env: productionEnv });
 
 const apk = resolve(androidDir, "app", "build", "outputs", "apk", "release", "app-release.apk");
 if (!existsSync(apk)) fail(`Expected APK was not created at ${apk}.`);

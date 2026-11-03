@@ -41,7 +41,8 @@
       "expo-sharing",
       "expo-web-browser",
       "expo-video",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-font"
     ],
     "extra": {
       "eas": {
