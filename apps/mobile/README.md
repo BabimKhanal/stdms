@@ -54,3 +54,5 @@ bunx eas-cli build --profile development --platform ios
 ```
 
 For delivery, configure `PUSH_PROVIDER=expo` on the API. `EXPO_ACCESS_TOKEN` is optional but recommended for authenticated Expo Push Service requests. Keep EAS/APNs/FCM credentials in their respective provider secret stores; do not commit them. Test first with Expo's notification tool on a development build.
+
+

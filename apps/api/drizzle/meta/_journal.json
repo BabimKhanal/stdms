@@ -176,6 +176,20 @@
       "when": 1793794457951,
       "tag": "0024_previous_giant_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793804804676,
+      "tag": "0025_supreme_sentinel",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1793804853886,
+      "tag": "0026_broad_thaddeus_ross",
+      "breakpoints": true
     }
   ]
 }
