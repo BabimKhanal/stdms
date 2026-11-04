@@ -11,7 +11,7 @@ if (args.has("--help") || args.has("-h")) {
   node scripts/build-android.mjs --apk                 Build installable APK with EAS
   node scripts/build-android.mjs --aab                 Build Play Store AAB with EAS
   node scripts/build-android.mjs --local --apk         Build release APK locally
-  node scripts/build-android.mjs --local --debug --install  Run Gradle assembleDebug and install with adb
+  node scripts/build-android.mjs --local --apk --install  Run Gradle assembleRelease and install with adb
 
 Options:
   --skip-checks    Skip lint and typecheck (not recommended for release builds)`);

@@ -8,6 +8,7 @@ import { Alert } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
+import { clearAccessTokenCookie } from "../lib/auth-cookie";
 
 export function ForcedPasswordChange({ name }: { name: string }) {
   const router = useRouter();
@@ -27,6 +28,7 @@ export function ForcedPasswordChange({ name }: { name: string }) {
       const api = new EduApiClient(undefined, () => localStorage.getItem("edu_access_token"));
       await api.post("/auth/change-password", { currentPassword, newPassword });
       ["edu_access_token", "edu_refresh_token", "edu_user"].forEach((key) => localStorage.removeItem(key));
+      clearAccessTokenCookie();
       router.replace("/login?passwordChanged=1");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to change password");

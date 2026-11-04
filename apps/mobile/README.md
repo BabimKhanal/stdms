@@ -13,13 +13,13 @@ npm start
 
 Run a native development build with `npm run android`, or use the web target with `npm run web`.
 
-To build the debug APK directly with Gradle and install it on a connected Android device:
+To build the release APK directly with Gradle and install it on a connected Android device:
 
 ```sh
 npm run android:build:install
 ```
 
-This runs `assembleDebug` and then `adb install -r`. Enable USB debugging and verify the device with `adb devices` first.
+This runs `assembleRelease` and then `adb install -r`. Enable USB debugging and verify the device with `adb devices` first.
 
 ## Android APK
 

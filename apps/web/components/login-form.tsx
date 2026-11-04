@@ -7,6 +7,7 @@ import { EduApiClient } from "@edu/api-client";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Alert } from "./ui/alert";
+import { setAccessTokenCookie } from "../lib/auth-cookie";
 
 export function LoginForm() {
   const [identifier, setIdentifier] = useState("owner@greenwood.edu.np");
@@ -23,6 +24,7 @@ export function LoginForm() {
     try {
       const result = await new EduApiClient(undefined, () => null).post<{ accessToken: string; refreshToken: string; user: unknown }>("/auth/login", { identifier: identifier.trim(), password });
       localStorage.setItem("edu_access_token", result.accessToken);
+      setAccessTokenCookie(result.accessToken);
       localStorage.setItem("edu_refresh_token", result.refreshToken);
       localStorage.setItem("edu_user", JSON.stringify(result.user));
       router.replace("/");

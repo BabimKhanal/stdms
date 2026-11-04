@@ -65,6 +65,7 @@ import { Alert } from "./ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { ForcedPasswordChange } from "./forced-password-change";
 import { SuperAdminPortal } from "./super-admin-portal";
+import { clearAccessTokenCookie } from "../lib/auth-cookie";
 
 type User = {
   name: string;
@@ -189,6 +190,7 @@ export function Portal() {
         ["edu_access_token", "edu_refresh_token", "edu_user"].forEach((key) =>
           localStorage.removeItem(key),
         );
+        clearAccessTokenCookie();
         setUser(null);
       } finally {
         setAuthReady(true);
@@ -289,6 +291,7 @@ export function Portal() {
     ["edu_access_token", "edu_refresh_token", "edu_user"].forEach((key) =>
       localStorage.removeItem(key),
     );
+    clearAccessTokenCookie();
     router.replace("/login");
   }
 
