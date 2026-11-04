@@ -363,16 +363,22 @@ function StudentDirectoryContent({
     placeholder: string,
     type = "text",
   ) => (
-    <Input
-      name={name}
-      value={form[name]}
-      onChange={(event) => update(name, event.target.value)}
-      placeholder={placeholder}
-      type={type}
-      required={
-        name === "studentId" || name === "firstName" || name === "lastName"
-      }
-    />
+    <label className="block">
+      <span className="mb-2 block text-sm font-medium text-slate-700">
+        {placeholder}
+        {(name === "studentId" || name === "firstName" || name === "lastName") && <span className="ml-1 text-rose-600">*</span>}
+      </span>
+      <Input
+        name={name}
+        value={form[name]}
+        onChange={(event) => update(name, event.target.value)}
+        placeholder={placeholder}
+        type={type}
+        required={
+          name === "studentId" || name === "firstName" || name === "lastName"
+        }
+      />
+    </label>
   );
   return (
     <div className="space-y-6">
@@ -431,47 +437,47 @@ function StudentDirectoryContent({
               {field("phone", "Phone")}
               {field("email", "Email", "email")}
               {!selected && field("rollNumber", "Roll number", "number")}
-              <select
-                value={form.gender}
-                onChange={(event) => update("gender", event.target.value)}
-                className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
-              >
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="other">Other</option>
-              </select>
-              {!selected && <select
+               <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Gender</span><select
+                 value={form.gender}
+                 onChange={(event) => update("gender", event.target.value)}
+                 className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
+               >
+                 <option value="male">Male</option>
+                 <option value="female">Female</option>
+                 <option value="other">Other</option>
+               </select></label>
+               {!selected && <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Academic year</span><select
                 value={form.academicYearId}
                 onChange={(event) =>
                   update("academicYearId", event.target.value)
                 }
                 className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
               >
-                <option value="">Academic year</option>
+                 <option value="">Select academic year</option>
                 {years.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>
                 ))}
-              </select>}
-              {!selected && <select
+               </select></label>}
+               {!selected && <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Class</span><select
                 value={form.classId}
                 onChange={(event) => update("classId", event.target.value)}
                 className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
               >
-                <option value="">Class</option>
+                 <option value="">Select class</option>
                 {classes.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>
                 ))}
-              </select>}
-              {!selected && <select
+               </select></label>}
+               {!selected && <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Section</span><select
                 value={form.sectionId}
                 onChange={(event) => update("sectionId", event.target.value)}
                 className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
               >
-                <option value="">Section</option>
+                 <option value="">Select section</option>
                 {sections
                   .filter(
                     (item) => !form.classId || item.classId === form.classId,
@@ -482,13 +488,13 @@ function StudentDirectoryContent({
                       {item.name}
                     </option>
                   ))}
-              </select>}
-              <textarea
-                value={form.address}
-                onChange={(event) => update("address", event.target.value)}
-                placeholder="Address"
-                className="min-h-24 rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm sm:col-span-2"
-              />
+               </select></label>}
+               <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Address</span><textarea
+                 value={form.address}
+                 onChange={(event) => update("address", event.target.value)}
+                 placeholder="Address"
+                 className="min-h-24 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm"
+               /></label>
               <Button disabled={saving}>
                 {saving
                   ? "Saving..."

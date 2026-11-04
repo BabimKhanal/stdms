@@ -64,6 +64,14 @@ const platformEmailInput = z.object({
   apiKey: z.string().max(500).optional(),
   smtpPassword: z.string().max(500).optional(),
 });
+const platformTemplateInput = z.object({
+  key: z.string().trim().min(1).max(80).regex(/^[a-z0-9_]+$/),
+  name: z.string().trim().min(1).max(120),
+  subject: z.string().trim().min(1).max(300),
+  htmlBody: z.string().min(1).max(100000),
+  textBody: z.string().max(50000).nullable(),
+  isActive: z.boolean(),
+});
 async function auditPlatformAction(
   c: Context<AppEnv>,
   action: string,
@@ -182,6 +190,43 @@ superAdminRoutes.post("/email-settings/test", async (c) => {
   const result = await svc.testPlatformEmail(c.get("db"), body.to);
   await auditPlatformAction(c, "platform_email.test", "platform_email_settings", "default", null, result);
   return ok(c, result);
+});
+superAdminRoutes.get("/email-templates", async (c) =>
+  ok(c, await svc.listPlatformEmailTemplates(c.get("db"))),
+);
+superAdminRoutes.post("/email-templates", async (c) => {
+  const input = parse(platformTemplateInput, await c.req.json());
+  const row = await svc.savePlatformEmailTemplate(c.get("db"), c.get("user")!.id, undefined, input);
+  await auditPlatformAction(c, "platform_email_template.created", "platform_email_template", row.id, null, { key: row.key, name: row.name });
+  return ok(c, row, 201);
+});
+superAdminRoutes.put("/email-templates/:id", async (c) => {
+  const input = parse(platformTemplateInput.omit({ key: true }), await c.req.json());
+  const row = await svc.savePlatformEmailTemplate(c.get("db"), c.get("user")!.id, c.req.param("id"), { key: "", ...input });
+  await auditPlatformAction(c, "platform_email_template.updated", "platform_email_template", row.id, null, { name: row.name, isActive: row.isActive });
+  return ok(c, row);
+});
+superAdminRoutes.delete("/email-templates/:id", async (c) => {
+  await svc.deletePlatformEmailTemplate(c.get("db"), c.req.param("id"));
+  await auditPlatformAction(c, "platform_email_template.deleted", "platform_email_template", c.req.param("id"), null, null);
+  return ok(c, { deleted: true });
+});
+superAdminRoutes.post("/email-templates/preview", async (c) =>
+  ok(c, await svc.previewPlatformEmail(c.get("db"), parse(z.object({ subject: z.string().max(300), htmlBody: z.string().max(100000), textBody: z.string().max(50000).nullable().optional() }), await c.req.json()))),
+);
+superAdminRoutes.get("/email-deliveries", async (c) =>
+  ok(c, await svc.listPlatformEmailDeliveries(c.get("db"))),
+);
+superAdminRoutes.post("/email-deliveries/broadcast", async (c) => {
+  const input = parse(z.object({ templateKey: z.string().min(1).max(80), title: z.string().trim().min(1).max(300), body: z.string().trim().min(1).max(100000), organisationIds: z.array(z.string().uuid()).max(10000).optional() }), await c.req.json());
+  const result = await svc.sendPlatformBroadcast(c.get("db"), c.get("user")!.id, input);
+  await auditPlatformAction(c, "platform_email.broadcast", "platform_email_delivery", "broadcast", null, result);
+  return ok(c, result, 201);
+});
+superAdminRoutes.post("/email-deliveries/:id/retry", async (c) => {
+  const row = await svc.retryPlatformEmailDelivery(c.get("db"), c.req.param("id"), c.get("user")!.id);
+  await auditPlatformAction(c, "platform_email.retry", "platform_email_delivery", row.id, null, { status: row.status });
+  return ok(c, row);
 });
 superAdminRoutes.get("/audit", async (c) =>
   ok(c, await svc.listPlatformAudit(c.get("db"))),

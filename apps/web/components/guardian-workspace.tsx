@@ -277,15 +277,15 @@ export function GuardianWorkspace() {
                 onSubmit={saveGuardian}
                 className="mb-5 grid gap-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-2"
               >
-                <Input
+                <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Parent full name</span><Input
                   placeholder="Parent full name"
                   value={form.fullName}
                   onChange={(event) =>
                     setForm({ ...form, fullName: event.target.value })
                   }
                   required
-                />
-                <select
+                /></label>
+                <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Relationship</span><select
                   value={form.relationship}
                   onChange={(event) =>
                     setForm({ ...form, relationship: event.target.value })
@@ -296,36 +296,36 @@ export function GuardianWorkspace() {
                   <option value="mother">Mother</option>
                   <option value="guardian">Guardian</option>
                   <option value="other">Other</option>
-                </select>
-                <Input
+                </select></label>
+                <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Phone</span><Input
                   placeholder="Phone"
                   value={form.phone}
                   onChange={(event) =>
                     setForm({ ...form, phone: event.target.value })
                   }
-                />
-                <Input
+                /></label>
+                <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Email</span><Input
                   placeholder="Email"
                   type="email"
                   value={form.email}
                   onChange={(event) =>
                     setForm({ ...form, email: event.target.value })
                   }
-                />
-                <Input
+                /></label>
+                <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Address</span><Input
                   placeholder="Address"
                   value={form.address}
                   onChange={(event) =>
                     setForm({ ...form, address: event.target.value })
                   }
-                />
-                <Input
+                /></label>
+                <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Occupation</span><Input
                   placeholder="Occupation"
                   value={form.occupation}
                   onChange={(event) =>
                     setForm({ ...form, occupation: event.target.value })
                   }
-                />
+                /></label>
                 <Button disabled={saving}>
                   {saving ? "Saving..." : "Save parent"}
                 </Button>

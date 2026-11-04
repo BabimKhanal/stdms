@@ -33,6 +33,7 @@ import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TablePagination, TableRow } from "./ui/table";
 import { PlatformEmailSettings } from "./platform-email-settings";
+import { PlatformEmailCenter } from "./platform-email-center";
 
 type PlatformUser = { name: string; email?: string | null };
 type Organisation = {
@@ -1392,7 +1393,7 @@ export function SuperAdminPortal({
               </div>
             </section>
           )}
-          {panel === "email-config" && <PlatformEmailSettings />}
+          {panel === "email-config" && <div className="space-y-8"><PlatformEmailSettings /><PlatformEmailCenter /></div>}
         </main>
       </div>
 

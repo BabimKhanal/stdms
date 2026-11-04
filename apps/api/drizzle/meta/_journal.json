@@ -169,6 +169,13 @@
       "when": 1793793698116,
       "tag": "0023_shocking_blindfold",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793794457951,
+      "tag": "0024_previous_giant_girl",
+      "breakpoints": true
     }
   ]
 }

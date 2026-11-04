@@ -380,12 +380,12 @@ export function LearningWorkspace({
               className="absolute left-3 top-3 text-slate-400"
               size={16}
             />
-            <Input
+           <Input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search title, class or subject"
-              className="pl-9"
-            />
+             className="pl-9"
+           />
           </div>
         </div>
       }
@@ -498,63 +498,63 @@ function Editor({
       </CardHeader>
       <CardContent>
         <form onSubmit={save} className="grid gap-4 sm:grid-cols-2">
-          <Input
+           <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Assignment title</span><Input
             value={draft.title}
             onChange={(event) => updateDraft("title", event.target.value)}
             placeholder="Assignment title"
             required
-          />
-          <Input
+           /></label>
+           <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Assigned date</span><Input
             value={draft.assignedDate}
             onChange={(event) =>
               updateDraft("assignedDate", event.target.value)
             }
             type="date"
             required
-          />
-          <Input
+           /></label>
+           <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Submission date <span className="font-normal text-slate-400">(optional)</span></span><Input
             value={draft.submissionDate}
             onChange={(event) =>
               updateDraft("submissionDate", event.target.value)
             }
             type="date"
-          />
-          <Input
+           /></label>
+           <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Maximum marks</span><Input
             value={draft.maxMarks}
             onChange={(event) => updateDraft("maxMarks", event.target.value)}
             type="number"
             min="0"
             placeholder="Maximum marks"
-          />
-          <Select
+           /></label>
+           <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Class</span><Select
             value={draft.classId}
             onChange={(value) => updateDraft("classId", value)}
             options={classes}
             placeholder="Class"
-          />
-          <Select
+           /></label>
+           <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Section</span><Select
             value={draft.sectionId}
             onChange={(value) => updateDraft("sectionId", value)}
             options={classSections}
             placeholder="Section"
-          />
-          <Select
+           /></label>
+           <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Subject</span><Select
             value={draft.subjectId}
             onChange={(value) => updateDraft("subjectId", value)}
             options={subjects}
             placeholder="Subject"
-          />
-          <Input
+           /></label>
+           <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Learning link <span className="font-normal text-slate-400">(optional)</span></span><Input
             value={draft.link}
             onChange={(event) => updateDraft("link", event.target.value)}
             placeholder="Learning link (optional)"
-          />
-          <textarea
+           /></label>
+           <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Instructions and description</span><textarea
             value={draft.description}
             onChange={(event) => updateDraft("description", event.target.value)}
             placeholder="Instructions, goals and description"
-            className="min-h-36 rounded-xl border border-slate-200 px-3 py-3 text-sm leading-6 sm:col-span-2"
-          />
+             className="min-h-36 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm leading-6"
+           /></label>
           <div className="rounded-2xl border border-dashed border-blue-200 bg-blue-50/40 p-4 sm:col-span-2">
             <p className="mb-1 text-sm font-semibold text-slate-800">
               Learning resources

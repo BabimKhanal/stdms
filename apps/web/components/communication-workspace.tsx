@@ -264,20 +264,20 @@ export function CommunicationWorkspace() {
           </CardHeader>
           <CardContent>
             <form onSubmit={sendBulkMessage} className="grid gap-4 sm:grid-cols-2">
-              <Input name="subject" placeholder="Email subject" required minLength={3} maxLength={200} className="sm:col-span-2" />
-              <textarea
+              <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Email subject</span><Input name="subject" placeholder="Email subject" required minLength={3} maxLength={200} /></label>
+              <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Message</span><textarea
                 name="body"
                 placeholder="Write your message"
                 required
                 minLength={1}
                 maxLength={10000}
-                className="min-h-36 rounded-xl border border-slate-200 px-3.5 py-3 text-sm sm:col-span-2"
-              />
-              <select name="audience" defaultValue="everyone" className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm">
+                className="min-h-36 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm"
+              /></label>
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Audience</span><select name="audience" defaultValue="everyone" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">
                 {audiences.map((audience) => (
                   <option key={audience} value={audience} className="capitalize">{audience}</option>
                 ))}
-              </select>
+              </select></label>
               <p className="self-center text-xs leading-5 text-slate-500">The broadcast creates an in-app notification and sends email when a production mail provider is configured.</p>
               <div className="sm:col-span-2">
                 <Button disabled={saving}>{saving ? "Sending..." : "Send broadcast"}</Button>
@@ -294,29 +294,29 @@ export function CommunicationWorkspace() {
           </CardHeader>
           <CardContent>
             <form onSubmit={createNotice} className="grid gap-4 sm:grid-cols-2">
-              <Input name="title" placeholder="Notice title" required minLength={3} className="sm:col-span-2" />
-              <textarea
+              <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Notice title</span><Input name="title" placeholder="Notice title" required minLength={3} /></label>
+              <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Notice message</span><textarea
                 name="body"
                 placeholder="What should the school community know?"
                 required
                 minLength={3}
-                className="min-h-28 rounded-xl border border-slate-200 px-3.5 py-3 text-sm sm:col-span-2"
-              />
-              <select name="priority" defaultValue="normal" className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm">
+                className="min-h-28 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm"
+              /></label>
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Priority</span><select name="priority" defaultValue="normal" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">
                 {priorities.map((priority) => (
                   <option key={priority} value={priority} className="capitalize">
                     {priority}
                   </option>
                 ))}
-              </select>
-              <select name="audience" defaultValue="everyone" className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm">
+              </select></label>
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Audience</span><select name="audience" defaultValue="everyone" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">
                 {audiences.map((audience) => (
                   <option key={audience} value={audience} className="capitalize">
                     {audience}
                   </option>
                 ))}
-              </select>
-              <Input name="publishAt" type="datetime-local" aria-label="Publish date" />
+              </select></label>
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Publish date and time <span className="font-normal text-slate-400">(optional)</span></span><Input name="publishAt" type="datetime-local" /></label>
               <div className="sm:col-span-2">
                 <Button disabled={saving}>{saving ? "Publishing..." : "Publish notice"}</Button>
               </div>
@@ -332,17 +332,17 @@ export function CommunicationWorkspace() {
           </CardHeader>
           <CardContent>
             <form onSubmit={createEvent} className="grid gap-4 sm:grid-cols-2">
-              <Input name="title" placeholder="Event title" required minLength={3} className="sm:col-span-2" />
-              <textarea
+              <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Event title</span><Input name="title" placeholder="Event title" required minLength={3} /></label>
+              <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Description <span className="font-normal text-slate-400">(optional)</span></span><textarea
                 name="description"
                 placeholder="Short description (optional)"
-                className="min-h-24 rounded-xl border border-slate-200 px-3.5 py-3 text-sm sm:col-span-2"
-              />
-              <Input name="startDate" type="date" required aria-label="Start date" />
-              <Input name="endDate" type="date" aria-label="End date" />
-              <Input name="startTime" type="time" aria-label="Start time" />
-              <Input name="endTime" type="time" aria-label="End time" />
-              <Input name="venue" placeholder="Venue (optional)" className="sm:col-span-2" />
+                className="min-h-24 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm"
+              /></label>
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Start date</span><Input name="startDate" type="date" required /></label>
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">End date <span className="font-normal text-slate-400">(optional)</span></span><Input name="endDate" type="date" /></label>
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Start time <span className="font-normal text-slate-400">(optional)</span></span><Input name="startTime" type="time" /></label>
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">End time <span className="font-normal text-slate-400">(optional)</span></span><Input name="endTime" type="time" /></label>
+              <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Venue <span className="font-normal text-slate-400">(optional)</span></span><Input name="venue" placeholder="Venue" /></label>
               <div className="sm:col-span-2">
                 <Button disabled={saving}>{saving ? "Saving..." : "Add event"}</Button>
               </div>

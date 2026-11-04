@@ -1,4 +1,4 @@
-import { and, count, desc, eq, isNotNull, sum } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, sum } from "drizzle-orm";
 import type { DB } from "../../lib/types";
 import {
   auditLogs,
@@ -8,6 +8,8 @@ import {
   organisations,
   platformAuditLogs,
   platformEmailSettings,
+  platformEmailDeliveries,
+  platformEmailTemplates,
   students,
   users,
 } from "../../db/schema";
@@ -17,6 +19,7 @@ import { env } from "../../env";
 import { encryptEmailCredential } from "../../lib/email-credentials";
 import { buildMailConfig, readEmailCredentials } from "../../lib/mail-config";
 import { sendMail } from "../../lib/mailer";
+import { DEFAULT_EMAIL_TEMPLATES, renderEmailHtml, renderEmailSubject, renderEmailText } from "../../lib/email-template";
 export async function listOrganisations(db: DB) {
   const [rows, userCounts, studentCounts] = await Promise.all([
     db.select().from(organisations).orderBy(organisations.createdAt),
@@ -309,4 +312,117 @@ export async function testPlatformEmail(db: DB, to: string) {
     buildMailConfig(settings),
   );
   return { sent: true, to };
+}
+
+export async function ensurePlatformEmailTemplates(db: DB) {
+  await db.insert(platformEmailTemplates).values([
+    {
+      key: "maintenance_notification",
+      name: "Maintenance notification",
+      subject: "Scheduled maintenance: {{title}}",
+      htmlBody: "<h2>{{title}}</h2><p>Hello {{schoolName}},</p><p>{{body}}</p><p>We will share another update when service is restored.</p>",
+      textBody: "{{title}}\n\nHello {{schoolName}},\n\n{{body}}\n\nWe will share another update when service is restored.",
+      isActive: true,
+    },
+    ...DEFAULT_EMAIL_TEMPLATES.filter((template) => template.key === "bulk_message" || template.key === "default").map((template) => ({
+      key: template.key,
+      name: `Platform ${template.name}`,
+      subject: template.subject,
+      htmlBody: template.htmlBody,
+      textBody: template.textBody,
+      isActive: true,
+    })),
+  ]).onConflictDoNothing();
+}
+
+export async function listPlatformEmailTemplates(db: DB) {
+  await ensurePlatformEmailTemplates(db);
+  return db.select().from(platformEmailTemplates).orderBy(platformEmailTemplates.name);
+}
+
+export async function savePlatformEmailTemplate(
+  db: DB,
+  userId: string,
+  id: string | undefined,
+  input: { key: string; name: string; subject: string; htmlBody: string; textBody: string | null; isActive: boolean },
+) {
+  if (id) {
+    const [row] = await db.update(platformEmailTemplates).set({ name: input.name, subject: input.subject, htmlBody: input.htmlBody, textBody: input.textBody, isActive: input.isActive }).where(eq(platformEmailTemplates.id, id)).returning();
+    if (!row) throw notFound("Platform email template not found");
+    return row;
+  }
+  const [row] = await db.insert(platformEmailTemplates).values({ ...input, createdBy: userId }).returning();
+  return row;
+}
+
+export async function deletePlatformEmailTemplate(db: DB, id: string) {
+  const rows = await db.delete(platformEmailTemplates).where(eq(platformEmailTemplates.id, id)).returning({ id: platformEmailTemplates.id });
+  if (!rows.length) throw notFound("Platform email template not found");
+}
+
+async function platformMailConfig(db: DB) {
+  const [row] = await db.select().from(platformEmailSettings).limit(1);
+  return row ? buildMailConfig(row) : undefined;
+}
+
+export async function previewPlatformEmail(db: DB, input: { subject: string; htmlBody: string; textBody?: string | null }) {
+  const [organisation] = await db.select({ name: organisations.name }).from(organisations).where(eq(organisations.status, "active")).limit(1);
+  const vars = { title: "Maintenance update", body: "This is a preview of your platform message.", schoolName: organisation?.name ?? "Tenant organisation", recipientName: "Tenant administrator", appUrl: env.WEB_ORIGIN, date: new Date().toISOString().slice(0, 10) };
+  return { subject: renderEmailSubject(input.subject, vars), html: renderEmailHtml(input.htmlBody, vars), text: input.textBody ? renderEmailText(input.textBody, vars) : undefined };
+}
+
+export async function listPlatformEmailDeliveries(db: DB) {
+  return db.select({
+    id: platformEmailDeliveries.id,
+    organisationId: platformEmailDeliveries.organisationId,
+    organisationName: organisations.name,
+    templateKey: platformEmailDeliveries.templateKey,
+    toEmail: platformEmailDeliveries.toEmail,
+    subject: platformEmailDeliveries.subject,
+    provider: platformEmailDeliveries.provider,
+    status: platformEmailDeliveries.status,
+    error: platformEmailDeliveries.error,
+    sentAt: platformEmailDeliveries.sentAt,
+    createdAt: platformEmailDeliveries.createdAt,
+  }).from(platformEmailDeliveries).leftJoin(organisations, eq(platformEmailDeliveries.organisationId, organisations.id)).orderBy(desc(platformEmailDeliveries.createdAt)).limit(200);
+}
+
+export async function sendPlatformBroadcast(
+  db: DB,
+  userId: string,
+  input: { templateKey: string; title: string; body: string; organisationIds?: string[] },
+) {
+  const [template] = await db.select().from(platformEmailTemplates).where(and(eq(platformEmailTemplates.key, input.templateKey), eq(platformEmailTemplates.isActive, true))).limit(1);
+  if (!template) throw notFound("Active platform email template not found");
+  const conditions = [inArray(organisations.status, ["active", "trial"]), isNotNull(organisations.email)];
+  if (input.organisationIds?.length) conditions.push(inArray(organisations.id, input.organisationIds));
+  const recipients = await db.select({ id: organisations.id, name: organisations.name, email: organisations.email }).from(organisations).where(and(...conditions));
+  const config = await platformMailConfig(db);
+  if (config?.enabled === false) throw badRequest("Platform email is disabled", "email_disabled");
+  const provider = config?.provider ?? env.MAILER_PROVIDER;
+  const deliveries = await Promise.all(recipients.map(async (recipient) => {
+    const vars = { title: input.title, body: input.body, schoolName: recipient.name, recipientName: "Tenant administrator", appUrl: env.WEB_ORIGIN, date: new Date().toISOString().slice(0, 10) };
+    const content = { subject: renderEmailSubject(template.subject, vars), html: renderEmailHtml(template.htmlBody, vars), text: template.textBody ? renderEmailText(template.textBody, vars) : undefined };
+    try {
+      await sendMail({ to: recipient.email!, subject: content.subject, html: content.html, text: content.text }, config);
+      return { organisationId: recipient.id, templateKey: template.key, toEmail: recipient.email!, subject: content.subject, htmlBody: content.html, textBody: content.text ?? null, provider, status: "sent" as const, error: null, createdBy: userId, sentAt: new Date() };
+    } catch (error) {
+      return { organisationId: recipient.id, templateKey: template.key, toEmail: recipient.email!, subject: content.subject, htmlBody: content.html, textBody: content.text ?? null, provider, status: "failed" as const, error: error instanceof Error ? error.message : "Email delivery failed", createdBy: userId, sentAt: null };
+    }
+  }));
+  if (deliveries.length) await db.insert(platformEmailDeliveries).values(deliveries);
+  return { total: deliveries.length, sent: deliveries.filter((delivery) => delivery.status === "sent").length, failed: deliveries.filter((delivery) => delivery.status === "failed").length };
+}
+
+export async function retryPlatformEmailDelivery(db: DB, id: string, userId: string) {
+  const [delivery] = await db.select().from(platformEmailDeliveries).where(eq(platformEmailDeliveries.id, id)).limit(1);
+  if (!delivery) throw notFound("Platform email delivery not found");
+  try {
+    await sendMail({ to: delivery.toEmail, subject: delivery.subject, html: delivery.htmlBody ?? "", text: delivery.textBody ?? undefined }, await platformMailConfig(db));
+    const [row] = await db.update(platformEmailDeliveries).set({ status: "sent", error: null, sentAt: new Date(), createdBy: userId }).where(eq(platformEmailDeliveries.id, id)).returning();
+    return row;
+  } catch (error) {
+    const [row] = await db.update(platformEmailDeliveries).set({ status: "failed", error: error instanceof Error ? error.message : "Email delivery failed", createdBy: userId }).where(eq(platformEmailDeliveries.id, id)).returning();
+    return row;
+  }
 }

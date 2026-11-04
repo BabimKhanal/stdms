@@ -131,6 +131,48 @@ export const platformEmailSettings = pgTable(
   (table) => [uniqueIndex("platform_email_settings_singleton_uq").on(table.singleton)],
 );
 
+/** Reusable platform-owned email templates for tenant communication. */
+export const platformEmailTemplates = pgTable(
+  "platform_email_templates",
+  {
+    id: idCol(),
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    subject: text("subject").notNull(),
+    htmlBody: text("html_body").notNull(),
+    textBody: text("text_body"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAtCol(),
+    updatedAt: updatedAtCol(),
+  },
+  (table) => [uniqueIndex("platform_email_templates_key_uq").on(table.key)],
+);
+
+/** Per-tenant delivery history for platform broadcasts and notifications. */
+export const platformEmailDeliveries = pgTable(
+  "platform_email_deliveries",
+  {
+    id: idCol(),
+    organisationId: uuid("organisation_id").references(() => organisations.id, { onDelete: "set null" }),
+    templateKey: text("template_key"),
+    toEmail: text("to_email").notNull(),
+    subject: text("subject").notNull(),
+    htmlBody: text("html_body"),
+    textBody: text("text_body"),
+    provider: text("provider").notNull(),
+    status: text("status").notNull().default("queued"),
+    error: text("error"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    createdAt: createdAtCol(),
+  },
+  (table) => [
+    index("platform_email_deliveries_created_idx").on(table.createdAt),
+    index("platform_email_deliveries_status_idx").on(table.status),
+  ],
+);
+
 /** Tenant-configurable transactional and broadcast email templates. */
 export const emailTemplates = pgTable(
   "email_templates",
