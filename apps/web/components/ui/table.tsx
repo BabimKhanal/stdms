@@ -10,7 +10,7 @@ export function Table({ className, stack = false, ...props }: TableProps) {
     <div className="table-scroll relative overflow-x-auto">
       <table
         className={cn(
-          "w-full min-w-[640px] border-separate border-spacing-0 text-left text-sm",
+          "w-full min-w-[640px] border-separate border-spacing-0 text-left text-[13px]",
           stack && "max-md:min-w-0 max-md:[&_thead]:hidden",
           className,
         )}
@@ -24,7 +24,7 @@ export function TableHeader({ className, ...props }: React.HTMLAttributes<HTMLTa
   return (
     <thead
       className={cn(
-        "border-b border-slate-100 bg-slate-50/60 text-[11px] uppercase tracking-wide text-slate-400",
+        "border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-[0.08em] text-slate-500",
         className,
       )}
       {...props}
@@ -48,7 +48,7 @@ export function TableRow({ className, ...props }: React.HTMLAttributes<HTMLTable
   return (
     <tr
       className={cn(
-        "transition-colors hover:bg-slate-50/70 max-md:block max-md:rounded-2xl max-md:border max-md:border-slate-200 max-md:bg-white max-md:p-4 max-md:shadow-sm",
+        "transition-colors hover:bg-blue-50/30 max-md:block max-md:rounded-xl max-md:border max-md:border-slate-200 max-md:bg-white max-md:p-4",
         className,
       )}
       {...props}
@@ -57,7 +57,7 @@ export function TableRow({ className, ...props }: React.HTMLAttributes<HTMLTable
 }
 
 export function TableHead({ className, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) {
-  return <th className={cn("px-5 py-3 font-semibold", className)} {...props} />;
+  return <th className={cn("px-4 py-2.5 font-semibold", className)} {...props} />;
 }
 
 export function TableCell({
@@ -69,7 +69,7 @@ export function TableCell({
     <td
       data-label={label}
       className={cn(
-        "px-5 py-4 align-middle text-slate-700",
+        "px-4 py-3 align-middle text-slate-700",
         label &&
           "max-md:flex max-md:items-start max-md:justify-between max-md:gap-4 max-md:px-0 max-md:py-1.5 max-md:text-right max-md:before:min-w-24 max-md:before:shrink-0 max-md:before:text-left max-md:before:text-[11px] max-md:before:font-semibold max-md:before:uppercase max-md:before:tracking-wide max-md:before:text-slate-400 max-md:before:content-[attr(data-label)]",
         className,

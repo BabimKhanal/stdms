@@ -7,6 +7,7 @@ import { Alert } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 
 type LeaveRequest = {
   id: string;
@@ -38,6 +39,7 @@ export function LeaveWorkspace({ canApprove }: { canApprove: boolean }) {
   const [rows, setRows] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [reviewing, setReviewing] = useState<string | null>(null);
+  const [filter, setFilter] = useState<LeaveRequest["status"] | "all">("all");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -74,6 +76,7 @@ export function LeaveWorkspace({ canApprove }: { canApprove: boolean }) {
   }
 
   const pending = rows.filter((row) => row.status === "pending");
+  const filteredRows = filter === "all" ? rows : rows.filter((row) => row.status === filter);
 
   return (
     <div className="space-y-5">
@@ -113,34 +116,34 @@ export function LeaveWorkspace({ canApprove }: { canApprove: boolean }) {
             {pending.length === 0 ? (
               <p className="text-sm text-slate-500">No pending requests for your assigned learners.</p>
             ) : (
-              <div className="space-y-3">
-                {pending.map((row) => (
-                  <LeaveRow
-                    key={row.id}
-                    row={row}
-                    reviewing={reviewing === row.id}
-                    onReview={review}
-                  />
-                ))}
-              </div>
+              <LeaveTable rows={pending} reviewing={reviewing} onReview={review} />
             )}
           </CardContent>
         </Card>
       )}
 
       <Card>
-        <CardHeader><CardTitle>Request history</CardTitle></CardHeader>
+        <CardHeader className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+          <CardTitle>Request history</CardTitle>
+          <select
+            value={filter}
+            onChange={(event) => setFilter(event.target.value as LeaveRequest["status"] | "all")}
+            className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700"
+            aria-label="Filter leave requests"
+          >
+            <option value="all">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </CardHeader>
         <CardContent>
           {loading ? (
             <p className="py-8 text-center text-sm text-slate-500">Loading leave requests...</p>
-          ) : rows.length === 0 ? (
+          ) : filteredRows.length === 0 ? (
             <p className="py-8 text-center text-sm text-slate-500">No leave requests found.</p>
           ) : (
-            <div className="space-y-3">
-              {rows.map((row) => (
-                <LeaveRow key={row.id} row={row} />
-              ))}
-            </div>
+            <LeaveTable rows={filteredRows} />
           )}
         </CardContent>
       </Card>
@@ -148,38 +151,54 @@ export function LeaveWorkspace({ canApprove }: { canApprove: boolean }) {
   );
 }
 
-function LeaveRow({
-  row,
-  reviewing = false,
+function LeaveTable({
+  rows,
+  reviewing,
   onReview,
 }: {
-  row: LeaveRequest;
-  reviewing?: boolean;
+  rows: LeaveRequest[];
+  reviewing?: string | null;
   onReview?: (id: string, status: "approved" | "rejected") => void;
 }) {
   return (
-    <div className="flex flex-col justify-between gap-3 rounded-2xl border border-slate-200 p-4 lg:flex-row lg:items-center">
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="font-semibold text-slate-900">{row.applicantName ?? "Leave applicant"}</p>
-          <Badge tone={statusTone(row.status)}>{row.status}</Badge>
-        </div>
-        <p className="mt-1 text-sm font-medium capitalize text-slate-700">
-          {leaveLabel(row)} · {row.fromDate} to {row.toDate}
-        </p>
-        <p className="mt-1 text-sm text-slate-500">{row.reason}</p>
-        {row.reviewComment && <p className="mt-1 text-xs text-slate-500">Review note: {row.reviewComment}</p>}
-      </div>
-      {row.status === "pending" && onReview && (
-        <div className="flex shrink-0 gap-2">
-          <Button size="sm" disabled={reviewing} onClick={() => void onReview(row.id, "approved")}>
-            <Check size={15} /> Approve
-          </Button>
-          <Button size="sm" variant="outline" disabled={reviewing} onClick={() => void onReview(row.id, "rejected")}>
-            <X size={15} /> Reject
-          </Button>
-        </div>
-      )}
-    </div>
+    <Table stack>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Applicant</TableHead>
+          <TableHead>Leave type</TableHead>
+          <TableHead>Dates</TableHead>
+          <TableHead>Reason</TableHead>
+          <TableHead>Status</TableHead>
+          <TableHead className="text-right">Actions</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((row) => (
+          <TableRow key={row.id}>
+            <TableCell label="Applicant" className="font-semibold text-slate-900">
+              {row.applicantName ?? "Leave applicant"}
+            </TableCell>
+            <TableCell label="Leave type" className="capitalize">{leaveLabel(row)}</TableCell>
+            <TableCell label="Dates" className="whitespace-nowrap">{row.fromDate} to {row.toDate}</TableCell>
+            <TableCell label="Reason" className="max-w-xs truncate">{row.reason}</TableCell>
+            <TableCell label="Status"><Badge tone={statusTone(row.status)}>{row.status}</Badge></TableCell>
+            <TableCell label="Actions" className="text-right">
+              {row.status === "pending" && onReview ? (
+                <span className="inline-flex gap-2">
+                  <Button size="sm" disabled={reviewing === row.id} onClick={() => void onReview(row.id, "approved")}>
+                    <Check size={15} /> Approve
+                  </Button>
+                  <Button size="sm" variant="outline" disabled={reviewing === row.id} onClick={() => void onReview(row.id, "rejected")}>
+                    <X size={15} /> Reject
+                  </Button>
+                </span>
+              ) : row.reviewComment ? (
+                <span className="text-xs text-slate-500">{row.reviewComment}</span>
+              ) : null}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }
