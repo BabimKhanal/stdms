@@ -38,6 +38,9 @@ export function More() {
     user?.studentId &&
       (user?.isPlatformAdmin || user?.permissions?.includes("leave.create")),
   );
+  const canViewCalendar = Boolean(
+    user?.isPlatformAdmin || user?.permissions?.includes("event.view"),
+  );
 
   return (
     <ScrollView
@@ -115,6 +118,16 @@ export function More() {
             title="Leave requests"
             description="Apply for leave and track approvals"
             onPress={() => navigation.navigate("Leave")}
+          />
+        ) : null}
+        {canViewCalendar ? (
+          <Action
+            icon="calendar-month-outline"
+            tint="#2563eb"
+            bg="#eff6ff"
+            title="Calendar"
+            description="Events, holidays, exams, and important dates"
+            onPress={() => navigation.navigate("Calendar")}
           />
         ) : null}
         {user?.studentId ? (

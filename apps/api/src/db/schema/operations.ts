@@ -122,6 +122,7 @@ export const homework = pgTable(
       .references(() => subjects.id, { onDelete: "cascade" }),
     teacherId: uuid("teacher_id").references(() => users.id, { onDelete: "set null" }),
     title: text("title").notNull(),
+    eventType: text("event_type").notNull().default("event"),
     description: text("description"),
     assignedDate: date("assigned_date").notNull(),
     submissionDate: date("submission_date"),

@@ -7,6 +7,7 @@ import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { API_URL } from "../../config";
 import { mobileToken, useAuth } from "../../auth";
+import { EduApiClient } from "@edu/api-client";
 
 const palette = {
   primary: "#7c3aed",
@@ -43,13 +44,12 @@ export function Documents() {
   useEffect(() => {
     if (!user?.studentId) return;
     void mobileToken()
-      .then((token) => token ? fetch(`${API_URL}/auth/profile`, { headers: { Authorization: `Bearer ${token}` } }) : null)
-      .then(async (response) => {
-        if (!response?.ok) return;
-        const payload = await response.json() as { ok?: boolean; data?: { documents?: AttachedDocument[] } };
-        setAttachedDocuments(payload.data?.documents ?? []);
+      .then((token) => {
+        if (!token) throw new Error("Session expired. Please sign in again.");
+        return new EduApiClient(API_URL, () => token).get<{ documents?: AttachedDocument[] }>("/auth/profile");
       })
-      .catch(() => undefined);
+      .then((profile) => setAttachedDocuments(profile?.documents ?? []))
+      .catch((error: unknown) => setMessage(error instanceof Error ? error.message : "Unable to load school documents"));
   }, [user?.studentId]);
 
   async function openDocument(type: string, title: string) {

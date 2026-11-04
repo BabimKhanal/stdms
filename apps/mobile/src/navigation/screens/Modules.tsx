@@ -349,6 +349,28 @@ export function Learning() {
     />
   );
 }
+
+export function Calendar() {
+  return (
+    <ModuleList
+      title="Calendar"
+      subtitle="Events, holidays, exams, and important school dates."
+      path="/events"
+      getTitle={(item) => String(item.title ?? "Calendar item")}
+      getMeta={(item) => `${capitalize(String(item.eventType ?? "event"))} · ${formatDate(item.startDate)}${item.venue ? ` · ${String(item.venue)}` : ""}`}
+      renderBadge={(item) => <StatusBadge label={capitalize(String(item.eventType ?? "event"))} tone={item.eventType === "holiday" ? "ok" : item.eventType === "deadline" ? "danger" : "info"} />}
+      renderDetail={(item) => (
+        <View style={styles.descriptionBox}>
+          <Text style={styles.descriptionLabel}>{capitalize(String(item.eventType ?? "event"))}</Text>
+          <Text style={styles.descriptionText}>{String(item.description ?? "No additional details.")}</Text>
+          <Text style={[styles.fileHint, { marginTop: 10 }]}>{formatDate(item.startDate)}{item.endDate && item.endDate !== item.startDate ? ` to ${formatDate(item.endDate)}` : ""}</Text>
+        </View>
+      )}
+      emptyTitle="No calendar items"
+      emptyText="School events and holidays will appear here when published."
+    />
+  );
+}
 export function Fees() {
   return (
     <ModuleList
@@ -1436,7 +1458,7 @@ function VideoPreview({ url }: { url: string }) {
   return (
     <VideoView
       player={player}
-      style={{ backgroundColor: "#0f172a", flex: 1, minHeight: 280, width: "100%" }}
+      style={styles.previewVideo}
       nativeControls
       fullscreenOptions={{ enable: true }}
       allowsPictureInPicture
@@ -1492,7 +1514,9 @@ function PreviewModal({
             resizeMode="contain"
           />
         ) : isVideo ? (
-          <VideoPreview url={url} />
+          <View style={styles.previewMedia}>
+            <VideoPreview url={url} />
+          </View>
         ) : Platform.OS === "web" ? (
           <iframe
             title={label}
@@ -1509,14 +1533,16 @@ function PreviewModal({
             mediaPlaybackRequiresUserAction={false}
           />
         )}
-        <Pressable onPress={onDownload} style={styles.previewDownload}>
+        <View style={styles.previewFooter}>
+          <Pressable onPress={onDownload} style={styles.previewDownload}>
           <MaterialCommunityIcons
             name="download-outline"
             color="#fff"
             size={18}
           />
           <Text style={styles.previewDownloadText}>Save file</Text>
-        </Pressable>
+          </Pressable>
+        </View>
       </View>
     </Modal>
   );
@@ -2002,7 +2028,10 @@ const styles = StyleSheet.create({
     width: 40,
   },
   previewImage: { flex: 1, width: "100%" },
+  previewMedia: { flex: 1, minHeight: 0, width: "100%" },
+  previewVideo: { backgroundColor: "#0f172a", flex: 1, minHeight: 280, width: "100%" },
   previewWebView: { backgroundColor: "#fff", flex: 1 },
+  previewFooter: { backgroundColor: "#f8fafc", paddingBottom: 4 },
   previewDownload: {
     alignItems: "center",
     backgroundColor: palette.primary,

@@ -35,6 +35,7 @@ type Notice = {
 type CalendarEvent = {
   id: string;
   title: string;
+  eventType?: "event" | "holiday" | "exam" | "deadline" | "meeting" | "other";
   description?: string | null;
   startDate: string;
   endDate?: string | null;
@@ -46,6 +47,7 @@ type CalendarEvent = {
 
 const audiences = ["everyone", "students", "parents", "teachers", "staff"];
 const priorities = ["low", "normal", "high", "urgent"] as const;
+const eventTypes = ["event", "holiday", "exam", "deadline", "meeting", "other"] as const;
 
 function readPermissions(): string[] {
   try {
@@ -150,13 +152,14 @@ export function CommunicationWorkspace() {
     try {
       await api.post("/events", {
         title: form.get("title"),
+        eventType: form.get("eventType"),
         description: form.get("description") || null,
         startDate: form.get("startDate"),
         endDate: form.get("endDate") || null,
         startTime: form.get("startTime") || null,
         endTime: form.get("endTime") || null,
         venue: form.get("venue") || null,
-        audiences: ["everyone"],
+        audiences: [form.get("audience")],
       });
       formElement.reset();
       setShowForm(false);
@@ -333,6 +336,8 @@ export function CommunicationWorkspace() {
           <CardContent>
             <form onSubmit={createEvent} className="grid gap-4 sm:grid-cols-2">
               <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Event title</span><Input name="title" placeholder="Event title" required minLength={3} /></label>
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Calendar type</span><select name="eventType" defaultValue="event" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">{eventTypes.map((type) => <option key={type} value={type}>{type[0].toUpperCase() + type.slice(1)}</option>)}</select></label>
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Audience</span><select name="audience" defaultValue="everyone" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">{audiences.map((audience) => <option key={audience} value={audience} className="capitalize">{audience}</option>)}</select></label>
               <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Description <span className="font-normal text-slate-400">(optional)</span></span><textarea
                 name="description"
                 placeholder="Short description (optional)"
@@ -409,8 +414,8 @@ export function CommunicationWorkspace() {
                       <CalendarDays size={19} />
                     </span>
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">
-                        {formatDate(event.startDate)}
+                       <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">
+                         {(event.eventType ?? "event").replaceAll("_", " ")} · {formatDate(event.startDate)}
                       </p>
                       <h3 className="mt-1 text-base font-semibold text-slate-900">{event.title}</h3>
                     </div>

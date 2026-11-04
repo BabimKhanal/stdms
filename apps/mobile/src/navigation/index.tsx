@@ -11,7 +11,7 @@ import { Home } from "./screens/Home";
 import { NotFound } from "./screens/NotFound";
 import { Profile } from "./screens/Profile";
 import { Settings } from "./screens/Settings";
-import { Attendance, Fees, Learning, Results, Timetable } from "./screens/Modules";
+import { Attendance, Calendar, Fees, Learning, Results, Timetable } from "./screens/Modules";
 import { Leave } from "./screens/Leave";
 import { More } from "./screens/More";
 import { Updates } from "./screens/Updates";
@@ -180,6 +180,10 @@ const RootStack = createNativeStackNavigator({
     Documents: createNativeStackScreen({
       screen: Documents,
       options: { title: "My documents", headerBackTitle: "Back" },
+    }),
+    Calendar: createNativeStackScreen({
+      screen: Calendar,
+      options: { title: "Calendar", headerBackTitle: "Back" },
     }),
     Updates: createNativeStackScreen({
       screen: Updates,
