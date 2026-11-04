@@ -9,6 +9,7 @@ import {
   BookOpen,
   BriefcaseBusiness,
   CalendarCheck,
+  ClipboardCheck,
   ChevronDown,
   CreditCard,
   FileText,
@@ -41,6 +42,7 @@ import { StudentLearning } from "./student-learning";
 import { AcademicWorkspace } from "./academic-workspace";
 import { GuardianWorkspace } from "./guardian-workspace";
 import { AttendanceWorkspace } from "./attendance-workspace";
+import { LeaveWorkspace } from "./leave-workspace";
 import { UserManagement } from "./user-management";
 import { ReportsWorkspace } from "./reports-workspace";
 import { CommunicationWorkspace } from "./communication-workspace";
@@ -117,6 +119,7 @@ const navGroups: NavGroup[] = [
     items: [
       ["Academics", GraduationCap, "academics"],
       ["Attendance", CalendarCheck, "attendance"],
+      ["Leave requests", ClipboardCheck, "leave"],
       ["Learning", BookOpen, "learning"],
       ["Exams & results", BarChart3, "exams"],
       ["Reports", LineChart, "reports"],
@@ -537,6 +540,12 @@ export function Portal() {
               <AcademicWorkspace />
             ) : section === "attendance" ? (
               <AttendanceWorkspace />
+            ) : section === "leave" ? (
+              <LeaveWorkspace
+                canApprove={Boolean(
+                  user?.isPlatformAdmin || user?.permissions?.includes("leave.approve"),
+                )}
+              />
             ) : section === "fees" ? (
               <FeeWorkspace
                 canManage={Boolean(
@@ -1160,6 +1169,7 @@ const permissionNav: Record<string, string> = {
   guardians: "guardian.view",
   academics: "academic.view",
   attendance: "attendance.view",
+  leave: "leave.view",
   learning: "homework.view",
   fees: "invoice.view",
   exams: "exam.view",

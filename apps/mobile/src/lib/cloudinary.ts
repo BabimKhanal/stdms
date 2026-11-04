@@ -32,9 +32,18 @@ export type CloudinaryUpload = {
 };
 
 function inferMimeType(asset: UploadAsset) {
-  if (asset.mimeType) return asset.mimeType;
   const extension = asset.name.toLowerCase().split(".").pop();
+  if (
+    asset.mimeType &&
+    asset.mimeType !== "application/octet-stream" &&
+    asset.mimeType !== "binary/octet-stream"
+  )
+    return asset.mimeType;
   if (extension === "pdf") return "application/pdf";
+  if (extension === "mp4") return "video/mp4";
+  if (extension === "webm") return "video/webm";
+  if (extension === "mov") return "video/quicktime";
+  if (extension === "m4v") return "video/x-m4v";
   if (extension === "png") return "image/png";
   if (extension === "webp") return "image/webp";
   return "image/jpeg";
@@ -54,7 +63,11 @@ export async function uploadToCloudinary(
   token: string,
 ): Promise<CloudinaryUpload> {
   const mimeType = inferMimeType(asset);
-  const resourceType = mimeType.startsWith("image/") ? "image" : "raw";
+  const resourceType = mimeType.startsWith("image/")
+    ? "image"
+    : mimeType.startsWith("video/")
+      ? "video"
+      : "raw";
   const signed = await new EduApiClient(API_URL, () => token).post<SignResponse>(
     "/uploads/sign",
     { folder, resourceType },

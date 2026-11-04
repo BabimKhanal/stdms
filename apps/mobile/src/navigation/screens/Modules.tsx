@@ -276,7 +276,7 @@ function ModuleList({
           >
             <View style={styles.detailHandle} />
             <View style={styles.detailHeader}>
-              <View style={{ flex: 1 }}>
+              <View style={styles.detailHeaderCopy}>
                 <Text style={styles.detailTitle}>
                   {selectedItem ? getTitle(selectedItem) : "Assignment"}
                 </Text>
@@ -463,7 +463,7 @@ function ManualPaymentButton({ invoiceId, balance, method }: { invoiceId: string
   async function chooseProof() {
     setMessage("");
     const result = await DocumentPicker.getDocumentAsync({
-      type: ["image/*", "application/pdf"],
+      type: ["image/*", "video/*", "application/pdf"],
       copyToCacheDirectory: true,
     });
     if (result.canceled) return;
@@ -1429,6 +1429,7 @@ function VideoPreview({ url }: { url: string }) {
       nativeControls
       fullscreenOptions={{ enable: true }}
       allowsPictureInPicture
+      playsInline
       contentFit="contain"
     />
   );
@@ -1757,12 +1758,16 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   detailDrawer: {
+    alignSelf: "center",
     backgroundColor: "#fff",
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
     maxHeight: "88%",
+    maxWidth: "100%",
+    overflow: "hidden",
     paddingHorizontal: 20,
     paddingTop: 10,
+    width: "100%",
   },
   detailHandle: {
     alignSelf: "center",
@@ -1778,7 +1783,13 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     paddingTop: 18,
   },
-  detailTitle: { color: palette.ink, flex: 1, fontSize: 20, fontWeight: "800" },
+  detailHeaderCopy: { flex: 1, minWidth: 0 },
+  detailTitle: {
+    color: palette.ink,
+    flexShrink: 1,
+    fontSize: 20,
+    fontWeight: "800",
+  },
   detailMeta: { color: palette.inkSoft, fontSize: 13, lineHeight: 19, marginTop: 5 },
   detailClose: {
     alignItems: "center",
