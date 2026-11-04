@@ -7,11 +7,16 @@ import {
   featureFlags,
   organisations,
   platformAuditLogs,
+  platformEmailSettings,
   students,
   users,
 } from "../../db/schema";
 import { badRequest, conflict, notFound } from "../../lib/errors";
 import { ensureDefaultEmailTemplates } from "../organisation/service";
+import { env } from "../../env";
+import { encryptEmailCredential } from "../../lib/email-credentials";
+import { buildMailConfig, readEmailCredentials } from "../../lib/mail-config";
+import { sendMail } from "../../lib/mailer";
 export async function listOrganisations(db: DB) {
   const [rows, userCounts, studentCounts] = await Promise.all([
     db.select().from(organisations).orderBy(organisations.createdAt),
@@ -197,4 +202,111 @@ export async function listBackupJobs(db: DB) {
     .from(backupJobs)
     .orderBy(desc(backupJobs.startedAt))
     .limit(50);
+}
+
+function publicPlatformEmailSettings(row: typeof platformEmailSettings.$inferSelect | null) {
+  const credentials = readEmailCredentials(row?.credentialsEncrypted);
+  return {
+    id: row?.id ?? null,
+    provider: row?.provider ?? env.MAILER_PROVIDER,
+    enabled: row?.enabled ?? true,
+    fromName: row?.fromName ?? "Platform alerts",
+    fromEmail: row?.fromEmail ?? env.MAIL_FROM_EMAIL,
+    replyTo: row?.replyTo ?? null,
+    footer: row?.footer ?? null,
+    providerDomain: row?.providerDomain ?? null,
+    smtpHost: row?.smtpHost ?? null,
+    smtpPort: row?.smtpPort ?? 587,
+    smtpSecure: row?.smtpSecure ?? false,
+    smtpUsername: row?.smtpUsername ?? null,
+    hasApiKey: Boolean(credentials.apiKey),
+    hasSmtpPassword: Boolean(credentials.smtpPassword),
+    updatedAt: row?.updatedAt ?? null,
+  };
+}
+
+export async function getPlatformEmailSettings(db: DB) {
+  const [row] = await db.select().from(platformEmailSettings).limit(1);
+  return publicPlatformEmailSettings(row ?? null);
+}
+
+export async function savePlatformEmailSettings(
+  db: DB,
+  input: {
+    provider: string;
+    enabled: boolean;
+    fromName: string;
+    fromEmail: string;
+    replyTo?: string | null;
+    footer?: string | null;
+    providerDomain?: string | null;
+    smtpHost?: string | null;
+    smtpPort?: number | null;
+    smtpSecure?: boolean;
+    smtpUsername?: string | null;
+    apiKey?: string;
+    smtpPassword?: string;
+  },
+) {
+  const [existing] = await db.select().from(platformEmailSettings).limit(1);
+  const credentials = readEmailCredentials(existing?.credentialsEncrypted);
+  if (input.apiKey !== undefined) {
+    if (input.apiKey) credentials.apiKey = input.apiKey;
+    else delete credentials.apiKey;
+  }
+  if (input.smtpPassword !== undefined) {
+    if (input.smtpPassword) credentials.smtpPassword = input.smtpPassword;
+    else delete credentials.smtpPassword;
+  }
+  const credentialsEncrypted = Object.keys(credentials).length
+    ? encryptEmailCredential(JSON.stringify(credentials))
+    : null;
+  const values = {
+    singleton: "default",
+    provider: input.provider,
+    enabled: input.enabled,
+    fromName: input.fromName,
+    fromEmail: input.fromEmail,
+    replyTo: input.replyTo ?? null,
+    footer: input.footer ?? null,
+    providerDomain: input.providerDomain ?? null,
+    smtpHost: input.smtpHost ?? null,
+    smtpPort: input.smtpPort ?? null,
+    smtpSecure: input.smtpSecure ?? false,
+    smtpUsername: input.smtpUsername ?? null,
+    credentialsEncrypted,
+    updatedAt: new Date(),
+  };
+  const [row] = existing
+    ? await db.update(platformEmailSettings).set(values).where(eq(platformEmailSettings.id, existing.id)).returning()
+    : await db.insert(platformEmailSettings).values(values).returning();
+  return publicPlatformEmailSettings(row);
+}
+
+export async function testPlatformEmail(db: DB, to: string) {
+  const [row] = await db.select().from(platformEmailSettings).limit(1);
+  const settings = row ?? {
+    provider: env.MAILER_PROVIDER,
+    enabled: true,
+    fromName: "Platform alerts",
+    fromEmail: env.MAIL_FROM_EMAIL,
+    replyTo: null,
+    footer: null,
+    providerDomain: null,
+    smtpHost: null,
+    smtpPort: null,
+    smtpSecure: false,
+    smtpUsername: null,
+    credentialsEncrypted: null,
+  };
+  await sendMail(
+    {
+      to,
+      subject: "Platform alert email test",
+      html: "<h2>Platform alert email is configured</h2><p>This is a test message from the Super Admin console.</p>",
+      text: "Platform alert email is configured. This is a test message from the Super Admin console.",
+    },
+    buildMailConfig(settings),
+  );
+  return { sent: true, to };
 }

@@ -49,6 +49,21 @@ const organisationInput = z.object({
 const updateOrganisationInput = organisationInput
   .partial()
   .refine((value) => Object.keys(value).length > 0);
+const platformEmailInput = z.object({
+  provider: z.enum(["console", "resend", "sendgrid", "mailgun", "smtp"]),
+  enabled: z.boolean(),
+  fromName: z.string().trim().min(1).max(120),
+  fromEmail: z.email(),
+  replyTo: z.union([z.email(), z.literal("")]).nullable().optional(),
+  footer: z.string().max(1000).nullable().optional(),
+  providerDomain: z.string().max(255).nullable().optional(),
+  smtpHost: z.string().max(255).nullable().optional(),
+  smtpPort: z.number().int().min(1).max(65535).nullable().optional(),
+  smtpSecure: z.boolean().optional(),
+  smtpUsername: z.string().max(255).nullable().optional(),
+  apiKey: z.string().max(500).optional(),
+  smtpPassword: z.string().max(500).optional(),
+});
 async function auditPlatformAction(
   c: Context<AppEnv>,
   action: string,
@@ -147,6 +162,27 @@ superAdminRoutes.get("/stats", async (c) =>
   ok(c, await svc.stats(c.get("db"))),
 );
 superAdminRoutes.get("/health", async (c) => ok(c, await readiness()));
+superAdminRoutes.get("/email-settings", async (c) =>
+  ok(c, await svc.getPlatformEmailSettings(c.get("db"))),
+);
+superAdminRoutes.put("/email-settings", async (c) => {
+  const input = parse(platformEmailInput, await c.req.json());
+  const saved = await svc.savePlatformEmailSettings(c.get("db"), input);
+  await auditPlatformAction(c, "platform_email.updated", "platform_email_settings", saved.id ?? "default", null, {
+    provider: saved.provider,
+    enabled: saved.enabled,
+    fromEmail: saved.fromEmail,
+    hasApiKey: saved.hasApiKey,
+    hasSmtpPassword: saved.hasSmtpPassword,
+  });
+  return ok(c, saved);
+});
+superAdminRoutes.post("/email-settings/test", async (c) => {
+  const body = parse(z.object({ to: z.email() }), await c.req.json());
+  const result = await svc.testPlatformEmail(c.get("db"), body.to);
+  await auditPlatformAction(c, "platform_email.test", "platform_email_settings", "default", null, result);
+  return ok(c, result);
+});
 superAdminRoutes.get("/audit", async (c) =>
   ok(c, await svc.listPlatformAudit(c.get("db"))),
 );

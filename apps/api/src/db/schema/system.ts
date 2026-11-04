@@ -107,6 +107,30 @@ export const emailSettings = pgTable(
   (t) => [uniqueIndex("email_settings_org_uq").on(t.organisationId)],
 );
 
+/** Global outbound email identity used by platform alerts. */
+export const platformEmailSettings = pgTable(
+  "platform_email_settings",
+  {
+    id: idCol(),
+    singleton: text("singleton").notNull().default("default"),
+    provider: text("provider").notNull().default("console"),
+    enabled: boolean("enabled").notNull().default(true),
+    fromName: text("from_name").notNull(),
+    fromEmail: text("from_email").notNull(),
+    replyTo: text("reply_to"),
+    footer: text("footer"),
+    providerDomain: text("provider_domain"),
+    smtpHost: text("smtp_host"),
+    smtpPort: integer("smtp_port"),
+    smtpSecure: boolean("smtp_secure").notNull().default(false),
+    smtpUsername: text("smtp_username"),
+    credentialsEncrypted: text("credentials_encrypted"),
+    createdAt: createdAtCol(),
+    updatedAt: updatedAtCol(),
+  },
+  (table) => [uniqueIndex("platform_email_settings_singleton_uq").on(table.singleton)],
+);
+
 /** Tenant-configurable transactional and broadcast email templates. */
 export const emailTemplates = pgTable(
   "email_templates",

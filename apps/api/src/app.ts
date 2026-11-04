@@ -21,6 +21,7 @@ import { writeAudit } from "./lib/audit";
 import { forbidden } from "./lib/errors";
 import { readiness } from "./lib/health";
 import { randomUUID } from "node:crypto";
+import { alertPlatformAdmins } from "./lib/operation-alert";
 
 export const app = new Hono<AppEnv>();
 
@@ -30,6 +31,33 @@ app.use("*", async (c, next) => {
   const startedAt = Date.now();
   try {
     await next();
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(c.req.method) && c.res.status >= 400) {
+      void alertPlatformAdmins(c.get("db"), {
+        requestId,
+        method: c.req.method,
+        path: c.req.path,
+        status: c.res.status,
+        organisationId: c.get("orgId") ?? null,
+        userId: c.get("user")?.id ?? null,
+        userName: c.get("user")?.name ?? null,
+        error: `HTTP ${c.res.status}`,
+      });
+    }
+  } catch (error) {
+    const status = (error as { status?: number }).status ?? 500;
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(c.req.method) && status >= 400) {
+      void alertPlatformAdmins(c.get("db"), {
+        requestId,
+        method: c.req.method,
+        path: c.req.path,
+        status,
+        organisationId: c.get("orgId") ?? null,
+        userId: c.get("user")?.id ?? null,
+        userName: c.get("user")?.name ?? null,
+        error: error instanceof Error ? error.message : "Request failed",
+      });
+    }
+    throw error;
   } finally {
     console.log(JSON.stringify({ level: "info", event: "http_request", requestId, method: c.req.method, path: c.req.path, status: c.res?.status ?? 500, durationMs: Date.now() - startedAt, userId: c.get("user")?.id ?? null, organisationId: c.get("orgId") ?? null }));
   }

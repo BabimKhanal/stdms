@@ -18,6 +18,7 @@ import {
   HardDrive,
   LoaderCircle,
   LogOut,
+  Mail,
   Plus,
   RefreshCw,
   Search,
@@ -31,6 +32,7 @@ import { EduApiClient } from "@edu/api-client";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TablePagination, TableRow } from "./ui/table";
+import { PlatformEmailSettings } from "./platform-email-settings";
 
 type PlatformUser = { name: string; email?: string | null };
 type Organisation = {
@@ -122,7 +124,8 @@ type Panel =
   | "tenant-profile"
   | "monitoring"
   | "backups"
-  | "provisioning";
+  | "provisioning"
+  | "email-config";
 
 const featureCatalog = [
   "students",
@@ -495,6 +498,7 @@ export function SuperAdminPortal({
     { key: "monitoring", label: "Monitoring", icon: Server },
     { key: "backups", label: "Backups", icon: Archive },
     { key: "provisioning", label: "Provisioning", icon: SlidersHorizontal },
+    { key: "email-config", label: "Alert email", icon: Mail },
   ];
   const heading =
     panel === "tenant-profile"
@@ -1388,6 +1392,7 @@ export function SuperAdminPortal({
               </div>
             </section>
           )}
+          {panel === "email-config" && <PlatformEmailSettings />}
         </main>
       </div>
 
