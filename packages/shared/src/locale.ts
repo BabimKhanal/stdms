@@ -21,7 +21,7 @@ export function formatLocaleDate(
   if (Number.isNaN(date.getTime())) return String(value);
 
   if (locale === "ne") {
-    const bsDate = formatBikramSambatDate(date, options);
+    const bsDate = formatBikramSambatDate(date, options, typeof value === "string" ? value : undefined);
     if (bsDate) return bsDate;
   }
 
@@ -43,8 +43,10 @@ const BS_MONTHS = [
   ["चैत", "चैत्र"],
 ] as const;
 
-function formatBikramSambatDate(date: Date, options: Intl.DateTimeFormatOptions) {
-  const adDate = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+function formatBikramSambatDate(date: Date, options: Intl.DateTimeFormatOptions, source?: string) {
+  const adDate = /^\d{4}-\d{2}-\d{2}/.test(source ?? "")
+    ? source!.slice(0, 10)
+    : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 
   try {
     const bs = new DateConverter(adDate).toBs();

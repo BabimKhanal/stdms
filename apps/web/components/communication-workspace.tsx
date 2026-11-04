@@ -20,7 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { useToast } from "./ui/toast";
-import { formatAppDate } from "../lib/locale";
+import { formatAppDate, translate } from "../lib/locale";
 
 type Notice = {
   id: string;
@@ -230,10 +230,10 @@ export function CommunicationWorkspace() {
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <p className="text-sm font-medium text-blue-600">Community updates</p>
-          <h2 className="mt-2 text-3xl font-semibold tracking-tight">Community messaging</h2>
+          <p className="text-sm font-medium text-blue-600">{translate("Community updates")}</p>
+          <h2 className="mt-2 text-3xl font-semibold tracking-tight">{translate("Community messaging")}</h2>
           <p className="mt-2 text-sm text-slate-500">
-            Share announcements, send targeted broadcasts, and keep the school calendar in one place.
+            {translate("Share announcements, send targeted broadcasts, and keep the school calendar in one place.")}
           </p>
         </div>
         {canCreate && (
@@ -255,20 +255,20 @@ export function CommunicationWorkspace() {
         }}
       >
         <TabsList ariaLabel="Community messaging">
-          <TabsTrigger value="notices" icon={<Megaphone size={15} />} badge={notices.length}>Notices</TabsTrigger>
-          <TabsTrigger value="events" icon={<CalendarDays size={15} />} badge={events.length}>Events</TabsTrigger>
-          <TabsTrigger value="bulk" icon={<Mail size={15} />}>Bulk message</TabsTrigger>
+           <TabsTrigger value="notices" icon={<Megaphone size={15} />} badge={notices.length}>{translate("Notices")}</TabsTrigger>
+           <TabsTrigger value="events" icon={<CalendarDays size={15} />} badge={events.length}>{translate("Events")}</TabsTrigger>
+           <TabsTrigger value="bulk" icon={<Mail size={15} />}>{translate("Bulk message")}</TabsTrigger>
         </TabsList>
       </Tabs>
 
       {showForm && tab === "bulk" && canCreateNotice && (
         <Card className="border-blue-200">
           <CardHeader>
-            <CardTitle>Send a targeted broadcast</CardTitle>
+             <CardTitle>{translate("Send a targeted broadcast")}</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={sendBulkMessage} className="grid gap-4 sm:grid-cols-2">
-              <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Email subject</span><Input name="subject" placeholder="Email subject" required minLength={3} maxLength={200} /></label>
+               <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">{translate("Email subject")}</span><Input name="subject" placeholder={translate("Email subject")} required minLength={3} maxLength={200} /></label>
               <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Message</span><textarea
                 name="body"
                 placeholder="Write your message"
@@ -277,9 +277,9 @@ export function CommunicationWorkspace() {
                 maxLength={10000}
                 className="min-h-36 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm"
               /></label>
-              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Audience</span><select name="audience" defaultValue="everyone" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">
+               <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">{translate("Audience")}</span><select name="audience" defaultValue="everyone" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">
                 {audiences.map((audience) => (
-                  <option key={audience} value={audience} className="capitalize">{audience}</option>
+                   <option key={audience} value={audience} className="capitalize">{translate(audience)}</option>
                 ))}
               </select></label>
               <p className="self-center text-xs leading-5 text-slate-500">The broadcast creates an in-app notification and sends email when a production mail provider is configured.</p>
@@ -294,11 +294,11 @@ export function CommunicationWorkspace() {
       {showForm && tab === "notices" && canCreateNotice && (
         <Card className="border-blue-200">
           <CardHeader>
-            <CardTitle>Publish a notice</CardTitle>
+             <CardTitle>{translate("Publish a notice")}</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={createNotice} className="grid gap-4 sm:grid-cols-2">
-              <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Notice title</span><Input name="title" placeholder="Notice title" required minLength={3} /></label>
+               <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">{translate("Notice title")}</span><Input name="title" placeholder={translate("Notice title")} required minLength={3} /></label>
               <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Notice message</span><textarea
                 name="body"
                 placeholder="What should the school community know?"
@@ -306,7 +306,7 @@ export function CommunicationWorkspace() {
                 minLength={3}
                 className="min-h-28 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm"
               /></label>
-              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Priority</span><select name="priority" defaultValue="normal" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">
+               <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">{translate("Priority")}</span><select name="priority" defaultValue="normal" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">
                 {priorities.map((priority) => (
                   <option key={priority} value={priority} className="capitalize">
                     {priority}

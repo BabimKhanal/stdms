@@ -67,6 +67,7 @@ import { ForcedPasswordChange } from "./forced-password-change";
 import { SuperAdminPortal } from "./super-admin-portal";
 import { clearAccessTokenCookie } from "../lib/auth-cookie";
 import { LocaleSwitcher } from "./locale-switcher";
+import { translate } from "../lib/locale";
 
 type User = {
   name: string;
@@ -392,7 +393,7 @@ export function Portal() {
             return (
               <div key={group.title} className="pt-4 first:pt-2">
                 <p className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                  {group.title}
+                   {translate(group.title)}
                 </p>
                 <div className="space-y-0.5">
                   {items.map(([label, ItemIcon, key]) => {
@@ -412,7 +413,7 @@ export function Portal() {
                               : "text-slate-400 transition group-hover:text-slate-600"
                           }
                         />
-                        <span className="truncate">{label}</span>
+                         <span className="truncate">{translate(label)}</span>
                       </button>
                     );
                   })}
@@ -427,7 +428,7 @@ export function Portal() {
             className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-500 transition hover:bg-rose-50 hover:text-rose-600"
           >
             <LogOut size={17} />
-            Sign out
+             {translate("Sign out")}
           </button>
         </div>
       </aside>
@@ -444,12 +445,12 @@ export function Portal() {
                 <Menu size={18} />
               </button>
               <span className="hidden max-w-[110px] truncate rounded-lg bg-white px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400 ring-1 ring-slate-200 sm:block">
-                Workspace
+                 {translate("Workspace")}
               </span>
               <div className="flex min-w-0 items-center gap-2">
                 <Icon size={18} className="shrink-0 text-blue-600" />
                 <span className="truncate font-semibold tracking-tight">
-                  {current?.[0] ?? "Overview"}
+                   {translate(current?.[0] ?? "Overview")}
                 </span>
               </div>
             </div>
@@ -502,14 +503,14 @@ export function Portal() {
                         className="mt-1 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
                       >
                         <KeyRound size={16} />
-                        Change password
+                         {translate("Change password")}
                       </button>
                       <button
                         onClick={logout}
                         className="mt-1 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-rose-600 transition hover:bg-rose-50"
                       >
                         <LogOut size={16} />
-                        Sign out
+                         {translate("Sign out")}
                       </button>
                     </div>
                   </>
@@ -647,10 +648,10 @@ export function Portal() {
               <div className="space-y-5">
                 <div>
                   <p className="text-sm font-medium text-blue-600">
-                    Finance configuration
+                     {translate("Finance configuration")}
                   </p>
                   <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
-                    Payment settings
+                     {translate("Payment settings")}
                   </h2>
                   <p className="mt-2 text-sm text-slate-500">
                     Connect gateways, publish manual payment instructions, and
@@ -663,10 +664,10 @@ export function Portal() {
                       value="gateways"
                       icon={<CreditCard size={15} />}
                     >
-                      Online gateways
+                      {translate("Online gateways")}
                     </TabsTrigger>
                     <TabsTrigger value="manual" icon={<CreditCard size={15} />}>
-                      Manual payments
+                      {translate("Manual payments")}
                     </TabsTrigger>
                     <TabsTrigger
                       value="access"
