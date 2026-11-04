@@ -1,15 +1,16 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, ShieldCheck, Trash2, Users } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { EduApiClient } from "@edu/api-client";
 import { Alert } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Card, CardContent } from "./ui/card";
 import { Input } from "./ui/input";
 import { Modal } from "./ui/modal";
 import { useToast } from "./ui/toast";
+import { Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TablePagination, TableRow, TableSkeleton } from "./ui/table";
 
 type Role = { id: string; key: string; name: string; description?: string | null; isSystem: boolean; permissionIds: string[]; userCount: number };
 type Permission = { id: string; resource: string; action: string; name: string };
@@ -27,6 +28,7 @@ export function RoleManagement({ permissions: actorPermissions, onRolesChanged }
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
   const canCreate = actorPermissions.includes("role.create");
   const canEdit = actorPermissions.includes("role.edit");
   const canDelete = actorPermissions.includes("role.delete");
@@ -40,6 +42,7 @@ export function RoleManagement({ permissions: actorPermissions, onRolesChanged }
         api.get<{ data: Permission[] }>("/roles/permissions"),
       ]);
       setRoles(roleResult.data);
+      setPage(1);
       setCatalogue(permissionResult.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load roles and permissions");
@@ -54,6 +57,9 @@ export function RoleManagement({ permissions: actorPermissions, onRolesChanged }
     (result[item.resource] ??= []).push(item);
     return result;
   }, {})), [catalogue]);
+  const pageSize = 8;
+  const totalPages = Math.max(1, Math.ceil(roles.length / pageSize));
+  const visibleRoles = roles.slice((page - 1) * pageSize, page * pageSize);
 
   function start(role?: Role) {
     setEditing(role ?? null);
@@ -119,14 +125,26 @@ export function RoleManagement({ permissions: actorPermissions, onRolesChanged }
         {canCreate && <Button onClick={() => start()}><Plus size={16} />Create custom role</Button>}
       </div>
       {error && <Alert tone="error" title="Roles and permissions" onDismiss={() => setError("")}>{error}</Alert>}
-      {loading ? <Card><CardContent className="p-8 text-center text-sm text-slate-500">Loading roles...</CardContent></Card> : (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {roles.map((role) => <Card key={role.id}>
-            <CardHeader><div className="flex items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><CardTitle>{role.name}</CardTitle><Badge tone={role.isSystem ? "blue" : "slate"}>{role.isSystem ? "System" : "Custom"}</Badge></div><p className="mt-2 text-sm text-slate-500">{role.description || "No description provided."}</p></div><ShieldCheck className="text-blue-600" size={22} /></div></CardHeader>
-            <CardContent><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex gap-4 text-sm text-slate-600"><span className="flex items-center gap-1.5"><Users size={15} />{role.userCount} users</span><span>{role.permissionIds.length} permissions</span></div>{!role.isSystem && <div className="flex gap-1">{canEdit && <Button size="sm" variant="ghost" onClick={() => start(role)}><Pencil size={14} />Edit</Button>}{canDelete && <Button size="sm" variant="ghost" disabled={saving || role.userCount > 0} title={role.userCount ? "Remove this role from all users first" : undefined} onClick={() => void remove(role)}><Trash2 size={14} />Delete</Button>}</div>}</div></CardContent>
-          </Card>)}
-        </div>
-      )}
+      <Card>
+        <CardContent className="p-0">
+          <Table stack>
+            <TableHeader><TableRow><TableHead>Role</TableHead><TableHead>Type</TableHead><TableHead>Description</TableHead><TableHead>Users</TableHead><TableHead>Permissions</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {loading ? <TableSkeleton rows={5} columns={6} /> : roles.length === 0 ? <TableEmpty colSpan={6}>No roles found.</TableEmpty> : visibleRoles.map((role) => (
+                <TableRow key={role.id}>
+                  <TableCell label="Role"><p className="font-semibold text-slate-900">{role.name}</p><p className="mt-0.5 text-xs text-slate-400">{role.key}</p></TableCell>
+                  <TableCell label="Type"><Badge tone={role.isSystem ? "blue" : "slate"}>{role.isSystem ? "System" : "Custom"}</Badge></TableCell>
+                  <TableCell label="Description" className="max-w-sm text-slate-500">{role.description || "No description provided."}</TableCell>
+                  <TableCell label="Users">{role.userCount}</TableCell>
+                  <TableCell label="Permissions">{role.permissionIds.length}</TableCell>
+                  <TableCell label="Actions" className="text-right">{!role.isSystem && <span className="inline-flex gap-1">{canEdit && <Button size="sm" variant="ghost" onClick={() => start(role)}><Pencil size={14} />Edit</Button>}{canDelete && <Button size="sm" variant="ghost" disabled={saving || role.userCount > 0} title={role.userCount ? "Remove this role from all users first" : undefined} onClick={() => void remove(role)}><Trash2 size={14} />Delete</Button>}</span>}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          <TablePagination page={page} totalPages={totalPages} onChange={setPage} summary={`${(page - 1) * pageSize + 1}-${Math.min(page * pageSize, roles.length)} of ${roles.length} roles`} />
+        </CardContent>
+      </Card>
       <Modal open={open} title={editing ? "Edit custom role" : "Create custom role"} description="Select only the access needed for this responsibility." onClose={close} size="lg" footer={<div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={close}>Cancel</Button><Button type="submit" form="role-form" disabled={saving}>{saving ? "Saving..." : "Save role"}</Button></div>}>
         <form id="role-form" onSubmit={save} className="space-y-5">
           <div className="grid gap-4 sm:grid-cols-2"><label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Role name</span><Input value={name} onChange={(event) => setName(event.target.value)} required minLength={2} maxLength={60} /></label><label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Description</span><Input value={description} onChange={(event) => setDescription(event.target.value)} maxLength={200} /></label></div>

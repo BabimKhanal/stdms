@@ -97,7 +97,7 @@ roleRoutes.put("/:id", requirePermission("role.edit"), async (c) => {
 });
 roleRoutes.delete("/:id", requirePermission("role.delete"), async (c) => {
   const roleId = id(c.req.param("id"));
-  await svc.removeRole(db(c), org(c), roleId);
+  await svc.removeRole(db(c), org(c), actor(c), roleId);
   await writeAudit(c, { action: "delete", entity: "role", entityId: roleId });
   return ok(c, { deleted: true });
 });

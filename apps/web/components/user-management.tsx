@@ -11,7 +11,7 @@ import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 import { Modal } from "./ui/modal";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TablePagination, TableRow, TableEmpty } from "./ui/table";
 import { useToast } from "./ui/toast";
 import { BulkBar, downloadSelectedCsv } from "./table-tools";
 import { RoleManagement } from "./role-management";
@@ -57,10 +57,11 @@ export function UserManagement({ permissions, roles: actorRoles }: { permissions
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [page, setPage] = useState(1);
   const canCreate = permissions.includes("user.create");
   const canEdit = permissions.includes("user.edit");
   const canDelete = permissions.includes("user.delete");
-  const canManageRoles = permissions.some((permission) => permission.startsWith("role."));
+  const canManageRoles = actorRoles.includes("owner");
 
   async function load() {
     setLoading(true);
@@ -73,6 +74,7 @@ export function UserManagement({ permissions, roles: actorRoles }: { permissions
       if (employeeId) params.set("employeeId", employeeId);
       const result = await api.get<{ data: User[] }>(`/users${params.size ? `?${params}` : ""}`);
       setUsers(result.data);
+      setPage(1);
       setSelectedIds([]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load users");
@@ -136,7 +138,7 @@ export function UserManagement({ permissions, roles: actorRoles }: { permissions
       avatarUrl: form.avatarUrl || null,
       status: form.status,
       employeeId: form.employeeId || null,
-      roleIds: form.roleIds,
+      ...(actorRoles.includes("owner") ? { roleIds: form.roleIds } : {}),
       ...(!editing ? { password: form.password } : {}),
     };
     try {
@@ -220,12 +222,14 @@ export function UserManagement({ permissions, roles: actorRoles }: { permissions
     setForm((current) => ({ ...current, roleIds: current.roleIds.includes(id) ? current.roleIds.filter((role) => role !== id) : [...current.roleIds, id] }));
   }
 
-  function canAssignRole(role: Role) {
-    if (role.key === "owner") return actorRoles.includes("owner");
-    return (role.permissionKeys ?? []).every((permission) => permissions.includes(permission)) || actorRoles.includes("owner");
+  function canAssignRole() {
+    return actorRoles.includes("owner");
   }
 
   const allSelected = users.length > 0 && selectedIds.length === users.length;
+  const pageSize = 10;
+  const totalPages = Math.max(1, Math.ceil(users.length / pageSize));
+  const visibleUsers = users.slice((page - 1) * pageSize, page * pageSize);
   function toggleAll() {
     setSelectedIds(allSelected ? [] : users.map((user) => user.id));
   }
@@ -308,7 +312,7 @@ export function UserManagement({ permissions, roles: actorRoles }: { permissions
               </TableRow>
             </TableHeader>
             <TableBody>
-              {users.map((user) => (
+                {loading ? null : !users.length ? <TableEmpty colSpan={6}>No users match these filters.</TableEmpty> : visibleUsers.map((user) => (
                 <TableRow key={user.id}>
                   <TableCell label="Select"><input aria-label={`Select ${user.name}`} type="checkbox" checked={selectedIds.includes(user.id)} onChange={() => setSelectedIds((current) => current.includes(user.id) ? current.filter((id) => id !== user.id) : [...current, user.id])} /></TableCell>
                   <TableCell label="User">
@@ -334,7 +338,7 @@ export function UserManagement({ permissions, roles: actorRoles }: { permissions
               ))}
             </TableBody>
           </Table>
-          {loading ? <p className="p-8 text-center text-sm text-slate-500">Loading users...</p> : !users.length && <p className="p-8 text-center text-sm text-slate-500">No users match these filters.</p>}
+          {loading ? <p className="p-8 text-center text-sm text-slate-500">Loading users...</p> : <TablePagination page={page} totalPages={totalPages} onChange={setPage} summary={`${(page - 1) * pageSize + 1}-${Math.min(page * pageSize, users.length)} of ${users.length} accounts`} />}
         </CardContent>
       </Card>
 
@@ -364,8 +368,8 @@ export function UserManagement({ permissions, roles: actorRoles }: { permissions
             <p className="mb-3 text-xs text-slate-500">Roles decide which screens and actions are available. Only an owner can assign the owner role.</p>
             <div className="flex flex-wrap gap-2">
               {roles.map((role) => (
-                <label key={role.id} title={canAssignRole(role) ? undefined : "This role grants permissions you cannot assign"} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${form.roleIds.includes(role.id) ? "border-blue-200 bg-blue-50 text-blue-900" : "border-slate-100 bg-slate-50 text-slate-700"} ${canAssignRole(role) ? "" : "cursor-not-allowed opacity-50"}`}>
-                  <input type="checkbox" checked={form.roleIds.includes(role.id)} disabled={!canAssignRole(role)} onChange={() => toggleRole(role.id)} />{role.name}
+                  <label key={role.id} title={canAssignRole() ? undefined : "Only an institution owner can assign roles"} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${form.roleIds.includes(role.id) ? "border-blue-200 bg-blue-50 text-blue-900" : "border-slate-100 bg-slate-50 text-slate-700"} ${canAssignRole() ? "" : "cursor-not-allowed opacity-50"}`}>
+                    <input type="checkbox" checked={form.roleIds.includes(role.id)} disabled={!canAssignRole()} onChange={() => toggleRole(role.id)} />{role.name}
                 </label>
               ))}
               {!roles.length && <span className="text-sm text-slate-500">No roles available.</span>}
