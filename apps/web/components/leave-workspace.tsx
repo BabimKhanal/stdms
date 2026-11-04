@@ -55,7 +55,7 @@ export function LeaveWorkspace({ canApprove }: { canApprove: boolean }) {
   }
 
   useEffect(() => {
-    void load();
+    void Promise.resolve().then(() => load());
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function review(id: string, status: "approved" | "rejected") {
