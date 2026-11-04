@@ -16,6 +16,7 @@
     "build:local:apk": "node scripts/build-android.mjs --local --apk",
     "install:local:apk": "node scripts/build-android.mjs --local --apk --install",
     "install:local:debug": "node scripts/build-android.mjs --local --debug --install --skip-checks",
+    "android:build:install": "node scripts/build-android.mjs --local --debug --install --skip-checks",
     "typecheck": "tsc --noEmit",
     "lint": "expo lint"
   },
