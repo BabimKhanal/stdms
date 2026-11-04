@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Download, Plus, Search } from "lucide-react";
 import { EduApiClient } from "@edu/api-client";
 import { downloadCsv } from "../lib/csv";
+import { translate } from "../lib/locale";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
@@ -333,20 +334,19 @@ export function ExamWorkspace({ canManage = true, canApprove = false }: { canMan
       <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <p className="text-sm font-medium text-blue-600">
-            Assessment workspace
+             {translate("Assessment workspace")}
           </p>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight">
-            Exams & results
+             {translate("Exams & results")}
           </h2>
           <p className="mt-2 text-sm text-slate-500">
-            Configure examinations, allocate subjects, enter marks and review
-            results.
+             {translate("Configure examinations, allocate subjects, enter marks and review results.")}
           </p>
         </div>
         {canManage && (
           <Button onClick={() => setShowExamForm(!showExamForm)}>
             <Plus size={16} />
-            {showExamForm ? "Close" : "Create exam"}
+             {showExamForm ? translate("Close") : translate("Create exam")}
           </Button>
         )}
       </header>
@@ -365,7 +365,7 @@ export function ExamWorkspace({ canManage = true, canApprove = false }: { canMan
       {canManage && showExamForm && (
         <Card>
           <CardHeader>
-            <CardTitle>Create examination</CardTitle>
+             <CardTitle>{translate("Create examination")}</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={createExam} className="grid gap-4 sm:grid-cols-2">
@@ -404,7 +404,7 @@ export function ExamWorkspace({ canManage = true, canApprove = false }: { canMan
       <div className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
         <Card>
           <CardHeader className="space-y-3">
-            <CardTitle>Examinations</CardTitle>
+             <CardTitle>{translate("Examinations")}</CardTitle>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Search

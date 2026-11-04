@@ -22,6 +22,7 @@ import {
   TableRow,
 } from "./ui/table";
 import { downloadCsv } from "../lib/csv";
+import { translate } from "../lib/locale";
 import { Modal } from "./ui/modal";
 
 type Option = {
@@ -385,18 +386,18 @@ function StudentDirectoryContent({
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <p className="text-sm font-medium text-blue-600">
-            Student information system
+             {translate("Student information system")}
           </p>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight">
-            Students
+             {translate("Students")}
           </h2>
           <p className="mt-2 text-sm text-slate-500">
-            Complete learner profiles, enrolment history, and guardians.
+             {translate("Complete learner profiles, enrolment history, and guardians.")}
           </p>
         </div>
         {canCreate && <Button onClick={beginCreate}>
           <UserPlus size={16} />
-          Add student
+           {translate("Add student")}
         </Button>}
       </div>
       {error && (
@@ -407,7 +408,7 @@ function StudentDirectoryContent({
       {showForm && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>{selected ? "Edit student" : "Add student"}</CardTitle>
+             <CardTitle>{selected ? translate("Edit student") : translate("Add student")}</CardTitle>
             <Button
               size="sm"
               variant="ghost"

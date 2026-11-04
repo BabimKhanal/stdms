@@ -8,6 +8,7 @@ import { useToast } from "./ui/toast";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
+import { translate } from "../lib/locale";
 
 type Employee = {
   id: string;
@@ -100,8 +101,8 @@ export function EmployeeDirectory() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div><p className="text-sm font-medium text-blue-600">People operations</p><h2 className="mt-2 text-3xl font-semibold tracking-tight">Staff profiles</h2><p className="mt-2 text-sm text-slate-500">Maintain teaching and non-teaching employee records separately from login accounts.</p></div>
-        <Button onClick={() => start()}><Plus size={16} />Add staff member</Button>
+        <div><p className="text-sm font-medium text-blue-600">{translate("People operations")}</p><h2 className="mt-2 text-3xl font-semibold tracking-tight">{translate("Staff profiles")}</h2><p className="mt-2 text-sm text-slate-500">{translate("Maintain teaching and non-teaching employee records separately from login accounts.")}</p></div>
+        <Button onClick={() => start()}><Plus size={16} />{translate("Add staff member")}</Button>
       </div>
       {error && <Alert tone="error" title="Staff profiles" onDismiss={() => setError("")}>{error}</Alert>}
       {showForm && <Card><CardHeader><CardTitle>{editing ? "Edit staff profile" : "New staff profile"}</CardTitle></CardHeader><CardContent><form onSubmit={save} className="grid gap-3 sm:grid-cols-2"><Input placeholder="Employee ID" value={form.employeeId} onChange={(event) => update("employeeId", event.target.value)} required /><Input placeholder="Full name" value={form.fullName} onChange={(event) => update("fullName", event.target.value)} required /><Input placeholder="Department" value={form.department} onChange={(event) => update("department", event.target.value)} /><Input placeholder="Designation" value={form.designation} onChange={(event) => update("designation", event.target.value)} /><Input placeholder="Phone" value={form.phone} onChange={(event) => update("phone", event.target.value)} /><Input type="email" placeholder="Email" value={form.email} onChange={(event) => update("email", event.target.value)} /><select value={form.staffType} onChange={(event) => update("staffType", event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="teaching">Teaching</option><option value="non_teaching">Non-teaching</option><option value="support">Support</option><option value="administrative">Administrative</option></select><select value={form.employmentType} onChange={(event) => update("employmentType", event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="full_time">Full time</option><option value="part_time">Part time</option><option value="contract">Contract</option><option value="probation">Probation</option></select>{editing && <select value={form.status} onChange={(event) => update("status", event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="active">Active</option><option value="on_leave">On leave</option><option value="resigned">Resigned</option><option value="terminated">Terminated</option></select>}<div className="flex gap-2"><Button type="submit">Save profile</Button><Button type="button" variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button></div></form></CardContent></Card>}

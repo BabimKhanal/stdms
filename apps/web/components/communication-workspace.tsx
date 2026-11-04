@@ -21,6 +21,7 @@ import { Input } from "./ui/input";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { useToast } from "./ui/toast";
 import { formatAppDate, translate } from "../lib/locale";
+import { loadTrisambatHolidays } from "../lib/trisambat";
 
 type Notice = {
   id: string;
@@ -44,6 +45,7 @@ type CalendarEvent = {
   endTime?: string | null;
   venue?: string | null;
   audiences?: string[];
+  source?: "school" | "trisambat";
 };
 
 const audiences = ["everyone", "students", "parents", "teachers", "staff"];
@@ -98,12 +100,13 @@ export function CommunicationWorkspace() {
     setLoading(true);
     setError("");
     try {
-      const [noticeResult, eventResult] = await Promise.all([
+      const [noticeResult, eventResult, holidayEvents] = await Promise.all([
         api.get<{ data: Notice[] }>("/notices"),
         api.get<{ data: CalendarEvent[] }>("/events"),
+        loadTrisambatHolidays(),
       ]);
       setNotices(noticeResult.data);
-      setEvents(eventResult.data);
+      setEvents([...eventResult.data, ...holidayEvents]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load notices and events");
     } finally {
@@ -405,9 +408,13 @@ export function CommunicationWorkspace() {
           </Card>
         )
       ) : tab === "events" && events.length ? (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {events.map((event) => (
-            <Card key={event.id} className="h-full">
+        <div className="space-y-3">
+          {events.some((event) => event.source === "trisambat") && (
+            <p className="text-xs text-slate-500">{translate("Public holidays powered by Trisambat")}</p>
+          )}
+          <div className="grid gap-4 lg:grid-cols-2">
+            {events.map((event) => (
+              <Card key={event.id} className="h-full">
               <CardContent className="flex h-full flex-col p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
@@ -421,7 +428,7 @@ export function CommunicationWorkspace() {
                       <h3 className="mt-1 text-base font-semibold text-slate-900">{event.title}</h3>
                     </div>
                   </div>
-                  {canDeleteEvent && (
+                   {canDeleteEvent && event.source !== "trisambat" && (
                     <Button size="sm" variant="ghost" aria-label={`Delete ${event.title}`} onClick={() => void removeEvent(event.id)}>
                       <Trash2 size={14} />
                     </Button>
@@ -447,8 +454,9 @@ export function CommunicationWorkspace() {
                   )}
                 </div>
               </CardContent>
-            </Card>
-          ))}
+              </Card>
+            ))}
+          </div>
         </div>
       ) : tab === "events" ? (
         <Card>

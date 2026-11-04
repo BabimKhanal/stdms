@@ -21,6 +21,7 @@ import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 import { CloudinaryMultiUpload } from "./cloudinary-upload";
+import { translate } from "../lib/locale";
 import {
   Table,
   TableBody,
@@ -309,20 +310,19 @@ export function LearningWorkspace({
             <span className="grid h-8 w-8 place-items-center rounded-xl bg-blue-500/20">
               <Sparkles size={16} />
             </span>
-            Learning studio
+             {translate("Learning studio")}
           </div>
           <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            Make every assignment feel clear.
+             {translate("Make every assignment feel clear.")}
           </h2>
           <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">
-            Create focused learning experiences with rich instructions, helpful
-            resources, and a clear path to completion.
+             {translate("Create focused learning experiences with rich instructions, helpful resources, and a clear path to completion.")}
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
             {canManage && (
               <Button onClick={beginCreate}>
                 <Plus size={16} />
-                Create assignment
+                 {translate("Create assignment")}
               </Button>
             )}
             <span className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-3.5 text-sm text-slate-200">

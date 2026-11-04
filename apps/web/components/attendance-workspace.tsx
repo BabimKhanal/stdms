@@ -9,6 +9,7 @@ import { Alert } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
+import { translate } from "../lib/locale";
 import {
   Table,
   TableBody,
@@ -256,12 +257,12 @@ export function AttendanceWorkspace() {
     <div className="space-y-6">
       <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <p className="text-sm font-medium text-blue-600">Daily operations</p>
+          <p className="text-sm font-medium text-blue-600">{translate("Daily operations")}</p>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight">
-            Attendance
+            {translate("Attendance")}
           </h2>
           <p className="mt-2 text-sm text-slate-500">
-            Mark today’s register, review history, and export records.
+            {translate("Mark today’s register, review history, and export records.")}
           </p>
         </div>
         <Button
@@ -270,7 +271,7 @@ export function AttendanceWorkspace() {
           disabled={!visible.length}
         >
           <Download size={15} />
-          Export records
+          {translate("Export records")}
         </Button>
       </header>
       {error && (
@@ -304,10 +305,10 @@ export function AttendanceWorkspace() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Check size={18} className="text-blue-600" />
-            Mark class attendance
+             {translate("Mark class attendance")}
           </CardTitle>
           <p className="text-sm text-slate-500">
-            Select a class, load its students, and save the complete register.
+             {translate("Select a class, load its students, and save the complete register.")}
           </p>
         </CardHeader>
         <CardContent>

@@ -16,6 +16,7 @@ import { useToast } from "./ui/toast";
 import { BulkBar, downloadSelectedCsv } from "./table-tools";
 import { RoleManagement } from "./role-management";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { translate } from "../lib/locale";
 
 type User = { id: string; name: string; email?: string | null; username?: string | null; avatarUrl?: string | null; status: string; employeeId?: string | null; roleIds?: string[]; mustChangePassword?: boolean };
 type Role = { id: string; name: string; key: string; permissionKeys?: string[] };
@@ -249,11 +250,11 @@ export function UserManagement({ permissions, roles: actorRoles }: { permissions
       <BulkBar count={selectedIds.length} onExport={exportSelected} onClear={() => setSelectedIds([])} />
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <p className="text-sm font-medium text-blue-600">Access control</p>
-          <h2 className="mt-2 text-3xl font-semibold tracking-tight">User management</h2>
-          <p className="mt-2 text-sm text-slate-500">Create accounts, assign roles, link staff profiles, and control access.</p>
+           <p className="text-sm font-medium text-blue-600">{translate("Access control")}</p>
+           <h2 className="mt-2 text-3xl font-semibold tracking-tight">{translate("User management")}</h2>
+           <p className="mt-2 text-sm text-slate-500">{translate("Create accounts, assign roles, link staff profiles, and control access.")}</p>
         </div>
-        {canCreate && <Button onClick={() => start()}><Plus size={16} />Create user</Button>}
+         {canCreate && <Button onClick={() => start()}><Plus size={16} />{translate("Create user")}</Button>}
       </div>
 
       {error && <Alert tone="error" title="User management" onDismiss={() => setError("")}>{error}</Alert>}
@@ -263,7 +264,7 @@ export function UserManagement({ permissions, roles: actorRoles }: { permissions
         <CardHeader className="space-y-4">
           <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
             <div>
-              <CardTitle>Accounts</CardTitle>
+               <CardTitle>{translate("Accounts")}</CardTitle>
               <p className="mt-1 text-sm text-slate-500">{users.length} matching account{users.length === 1 ? "" : "s"}</p>
             </div>
             {selectedIds.length > 0 && (
