@@ -710,7 +710,7 @@ function ExamsSection({
   canManage: boolean;
   canApprove: boolean;
 }) {
-  if (!canApprove) return <ExamWorkspace canManage={canManage} />;
+  if (!canApprove) return <ExamWorkspace canManage={canManage} canApprove={false} />;
   return (
     <Tabs defaultValue="exams">
       <TabsList ariaLabel="Examination sections">
@@ -722,7 +722,7 @@ function ExamsSection({
         </TabsTrigger>
       </TabsList>
       <TabsContent value="exams">
-        <ExamWorkspace canManage={canManage} />
+         <ExamWorkspace canManage={canManage} canApprove={canApprove} />
       </TabsContent>
       <TabsContent value="approvals">
         <ExamApprovalPanel />

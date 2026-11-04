@@ -39,7 +39,7 @@ type Result = {
   passed: boolean;
 };
 type Student = { id: string; fullName?: string; studentId?: string };
-export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
+export function ExamWorkspace({ canManage = true, canApprove = false }: { canManage?: boolean; canApprove?: boolean }) {
   const api = new EduApiClient(undefined, () =>
     localStorage.getItem("edu_access_token"),
   );
@@ -192,6 +192,23 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
       setSaving(false);
     }
   }
+  async function approveExam() {
+    if (!selected) return;
+    setSaving(true);
+    setError("");
+    try {
+      const approved = await api.post<Exam>(`/exams/${selected.id}/approve`, {});
+      const updated = { ...selected, ...approved, status: "completed" };
+      setSelected(updated);
+      await load();
+      await openExam(updated);
+      toast.success("Examination approved", "Marks are locked and the results can now be published.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to approve examination");
+    } finally {
+      setSaving(false);
+    }
+  }
   async function openReportCard(studentId: string) {
     if (!selected) return;
     setError("");
@@ -302,8 +319,8 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
           </CardHeader>
           <CardContent>
             <form onSubmit={createExam} className="grid gap-4 sm:grid-cols-2">
-              <Input name="name" placeholder="Exam name" required />
-              <select
+               <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Exam name</span><Input name="name" placeholder="e.g. First Term Examination" required /></label>
+               <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Exam type</span><select
                 name="type"
                 defaultValue="term"
                 className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
@@ -312,21 +329,21 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
                 <option value="mid_term">Mid-term</option>
                 <option value="term">Term exam</option>
                 <option value="final">Final exam</option>
-              </select>
-              <select
+               </select></label>
+               <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Academic year</span><select
                 name="academicYearId"
                 required
                 className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
               >
-                <option value="">Academic year</option>
+                 <option value="">Select academic year</option>
                 {years.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>
                 ))}
-              </select>
-              <Input name="startDate" type="date" />
-              <Input name="endDate" type="date" />
+               </select></label>
+               <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Start date <span className="font-normal text-slate-400">(optional)</span></span><Input name="startDate" type="date" /></label>
+               <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">End date <span className="font-normal text-slate-400">(optional)</span></span><Input name="endDate" type="date" /></label>
               <Button disabled={saving}>
                 {saving ? "Saving..." : "Create examination"}
               </Button>
@@ -351,7 +368,7 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
                   className="pl-9"
                 />
               </div>
-              <select
+                     <select
                 value={status}
                 onChange={(event) => setStatus(event.target.value)}
                 className="h-11 rounded-xl border border-slate-200 bg-white px-2 text-xs"
@@ -360,7 +377,7 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
                 <option value="draft">Draft</option>
                 <option value="published">Published</option>
                 <option value="completed">Completed</option>
-              </select>
+               </select>
               <Button
                 variant="outline"
                 onClick={() =>
@@ -422,9 +439,19 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
             <CardTitle>
               {selected ? `${selected.name} results` : "Select an examination"}
             </CardTitle>
-            {selected && canManage && (
+            {selected && (canManage || canApprove) && (
               <div className="flex flex-wrap gap-2">
-                {selected.status !== "published" && (
+                 {selected.status !== "published" && selected.status !== "completed" && canApprove && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void approveExam()}
+                    disabled={saving}
+                  >
+                    {saving ? "Approving..." : "Approve & lock"}
+                  </Button>
+                )}
+                {selected.status === "completed" && canApprove && (
                   <Button
                     size="sm"
                     onClick={() => void publishExam()}
@@ -433,14 +460,15 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
                     {saving ? "Publishing..." : "Publish results"}
                   </Button>
                 )}
-                <Button
+                {selected.status !== "published" && !canApprove && <span className="self-center text-xs text-slate-500">An approver must lock this exam before results can be published.</span>}
+                {canManage && <Button
                   size="sm"
                   variant="outline"
                   onClick={() => setShowSubjectForm(!showSubjectForm)}
                 >
                   <Plus size={15} />
                   Subject
-                </Button>
+                </Button>}
               </div>
             )}
           </CardHeader>
@@ -480,7 +508,7 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
                     onSubmit={addSubject}
                     className="mb-5 grid gap-3 rounded-2xl bg-blue-50/40 p-4 sm:grid-cols-2"
                   >
-                    <select
+                     <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Class</span><select
                       name="classId"
                       required
                       className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
@@ -491,8 +519,8 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
                           {item.name}
                         </option>
                       ))}
-                    </select>
-                    <select
+                      </select></label>
+                     <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Subject</span><select
                       name="subjectId"
                       required
                       className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
@@ -503,19 +531,19 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
                           {item.name}
                         </option>
                       ))}
-                    </select>
-                    <Input
+                     </select></label>
+                     <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Full marks</span><Input
                       name="fullMarks"
                       type="number"
                       min="1"
                       defaultValue="100"
-                    />
-                    <Input
+                     /></label>
+                     <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Pass marks</span><Input
                       name="passMarks"
                       type="number"
                       min="1"
                       defaultValue="35"
-                    />
+                     /></label>
                     <Button disabled={saving}>Add subject</Button>
                   </form>
                 )}
