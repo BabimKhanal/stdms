@@ -717,6 +717,15 @@ function formatDate(value: unknown) {
       });
 }
 
+function playableVideoUrl(url: string) {
+  return /\/video\/upload\//i.test(url)
+    ? url.replace(
+        /\/video\/upload\//i,
+        "/video/upload/f_mp4,vc_h264,q_auto/",
+      )
+    : url;
+}
+
 function AssignmentDetails({ item }: { item: Item }) {
   const description =
     typeof item.description === "string" ? item.description : "";
@@ -1421,16 +1430,20 @@ const submissionStyles = StyleSheet.create({
 });
 
 function VideoPreview({ url }: { url: string }) {
-  const player = useVideoPlayer(url);
+  const player = useVideoPlayer(playableVideoUrl(url), (videoPlayer) => {
+    videoPlayer.play();
+  });
   return (
     <VideoView
       player={player}
-      style={{ backgroundColor: "#0f172a", flex: 1, width: "100%" }}
+      style={{ backgroundColor: "#0f172a", flex: 1, minHeight: 280, width: "100%" }}
       nativeControls
       fullscreenOptions={{ enable: true }}
       allowsPictureInPicture
       playsInline
       contentFit="contain"
+      surfaceType="textureView"
+      useExoShutter={false}
     />
   );
 }
@@ -1453,7 +1466,7 @@ function PreviewModal({
   onDownload: () => void;
 }) {
   const viewerUrl =
-    !isImage && !isVideo && !/\.pdf(\?|$)/i.test(url)
+    !isImage && !isVideo
       ? `https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(url)}`
       : url;
   return (
@@ -1490,6 +1503,8 @@ function PreviewModal({
           <WebView
             source={{ uri: viewerUrl }}
             style={styles.previewWebView}
+            originWhitelist={["*"]}
+            javaScriptEnabled
             allowsFullscreenMedia
             mediaPlaybackRequiresUserAction={false}
           />

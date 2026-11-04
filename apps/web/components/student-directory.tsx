@@ -654,9 +654,9 @@ function StudentDirectoryContent({
         </CardContent>
       </Card>
       {selected && !showForm && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/30 p-4 backdrop-blur-sm sm:p-8"><div className="mx-auto max-w-5xl">
-        <Card>
-          <CardHeader className="flex flex-row items-start justify-between">
+         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/30 p-3 backdrop-blur-sm sm:p-5"><div className="mx-auto max-w-4xl">
+         <Card className="max-h-[calc(100vh-1.5rem)] overflow-hidden sm:max-h-[calc(100vh-2.5rem)]">
+           <CardHeader className="flex flex-row items-start justify-between gap-4 p-4 sm:p-5">
             <div className="flex items-center gap-4">
               {selected.photoUrl ? (
                 <img
@@ -692,16 +692,16 @@ function StudentDirectoryContent({
               </Button>
             </div>
           </CardHeader>
-          <CardContent className="grid gap-6 lg:grid-cols-3">
-            <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 lg:col-span-3">
-              <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">Student documents</p>
-              <p className="mt-1 text-sm text-slate-600">Generate official documents from this student profile.</p>
-              <div className="mt-3 flex flex-wrap gap-2"><select value={identityTemplateId} onChange={(event) => setIdentityTemplateId(event.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs"><option value="">Default identity card template</option>{templates.filter((template) => template.documentType === "identity_card").map((template) => <option key={template.id} value={template.id}>{template.name}{template.isDefault ? " (default)" : ""}</option>)}</select><Button size="sm" onClick={() => void downloadIdentityCard()}>Download identity card</Button><Button size="sm" variant="outline" onClick={() => void downloadTranscript()}>Download transcript</Button><select value={examId} onChange={(event) => setExamId(event.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs"><option value="">Select marksheet</option>{exams.filter((exam) => exam.status === "published").map((exam) => <option key={exam.id} value={exam.id}>{exam.name}</option>)}</select><Button size="sm" variant="ghost" disabled={!examId} onClick={() => void openMarksheet()}>Print marksheet</Button></div>
-              {canEdit && <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3"><p className="text-sm font-semibold text-slate-800">Attach a candidate document</p><div className="mt-3 grid gap-2 sm:grid-cols-[150px_1fr_auto] sm:items-end"><label className="text-xs font-medium text-slate-600">Type<select value={documentType} onChange={(event) => setDocumentType(event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs"><option value="certificate">Certificate</option><option value="transcript">Transcript</option><option value="marksheet">Marksheet</option><option value="admission">Admission document</option><option value="other">Other</option></select></label><label className="text-xs font-medium text-slate-600">Title<Input value={documentTitle} onChange={(event) => setDocumentTitle(event.target.value)} placeholder="e.g. Previous school certificate" className="mt-1 h-9" /></label><Button type="button" size="sm" disabled={documentSaving || !documentTitle.trim() || !documentUrl} onClick={() => void saveStudentDocument()}>{documentSaving ? "Saving..." : "Save document"}</Button></div><div className="mt-3"><CloudinaryUpload value={documentUrl} onChange={setDocumentUrl} folder="documents" accept="application/pdf,image/*" label="Upload file" /></div></div>}
-              {selected.documents?.length ? <div className="mt-4 space-y-2"><p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Attached documents</p>{selected.documents.map((document) => <div key={document.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3"><div className="min-w-0 flex-1"><a href={document.fileUrl} target="_blank" rel="noreferrer" className="block truncate text-sm font-medium text-blue-700 hover:underline">{document.title}</a><p className="text-xs text-slate-500">{document.documentType} · {document.fileName ?? "Uploaded file"}</p></div>{canEdit && <button type="button" className="text-xs font-semibold text-rose-600" onClick={() => void removeStudentDocument(document.id)}>Remove</button>}</div>)}</div> : null}
-            </div>
-            <div>
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+           <CardContent className="max-h-[calc(100vh-9rem)] overflow-y-auto p-4 sm:p-5">
+             <div className="grid gap-4 lg:grid-cols-3">
+             <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-3 lg:col-span-3">
+               <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1"><p className="text-xs font-semibold uppercase tracking-wider text-blue-700">Student documents</p><p className="text-xs text-slate-500">Generate or attach files</p></div>
+               <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] lg:grid-cols-[minmax(170px,1fr)_auto_auto_minmax(150px,1fr)_auto]"><select value={identityTemplateId} onChange={(event) => setIdentityTemplateId(event.target.value)} className="h-9 min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-xs"><option value="">Default identity card template</option>{templates.filter((template) => template.documentType === "identity_card").map((template) => <option key={template.id} value={template.id}>{template.name}{template.isDefault ? " (default)" : ""}</option>)}</select><Button size="sm" onClick={() => void downloadIdentityCard()}>Download ID card</Button><Button size="sm" variant="outline" onClick={() => void downloadTranscript()}>Transcript</Button><select value={examId} onChange={(event) => setExamId(event.target.value)} className="h-9 min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-xs"><option value="">Select marksheet</option>{exams.filter((exam) => exam.status === "published").map((exam) => <option key={exam.id} value={exam.id}>{exam.name}</option>)}</select><Button size="sm" variant="ghost" disabled={!examId} onClick={() => void openMarksheet()}>Print marksheet</Button></div>
+               {canEdit && <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3"><p className="text-sm font-semibold text-slate-800">Attach a document</p><div className="mt-2 grid gap-2 sm:grid-cols-[130px_minmax(0,1fr)_auto] sm:items-end"><label className="text-xs font-medium text-slate-600">Type<select value={documentType} onChange={(event) => setDocumentType(event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs"><option value="certificate">Certificate</option><option value="transcript">Transcript</option><option value="marksheet">Marksheet</option><option value="admission">Admission document</option><option value="other">Other</option></select></label><label className="text-xs font-medium text-slate-600">Title<Input value={documentTitle} onChange={(event) => setDocumentTitle(event.target.value)} placeholder="e.g. Previous school certificate" className="mt-1 h-9" /></label><Button type="button" size="sm" disabled={documentSaving || !documentTitle.trim() || !documentUrl} onClick={() => void saveStudentDocument()}>{documentSaving ? "Saving..." : "Save"}</Button></div><div className="mt-2"><CloudinaryUpload value={documentUrl} onChange={setDocumentUrl} folder="documents" accept="application/pdf,image/*" label="Upload file" /></div></div>}
+               {selected.documents?.length ? <div className="mt-3 space-y-2"><p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Attached documents</p>{selected.documents.map((document) => <div key={document.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-2.5"><div className="min-w-0 flex-1"><a href={document.fileUrl} target="_blank" rel="noreferrer" className="block truncate text-sm font-medium text-blue-700 hover:underline">{document.title}</a><p className="text-xs text-slate-500">{document.documentType} · {document.fileName ?? "Uploaded file"}</p></div>{canEdit && <button type="button" className="text-xs font-semibold text-rose-600" onClick={() => void removeStudentDocument(document.id)}>Remove</button>}</div>)}</div> : null}
+             </div>
+             <div className="rounded-xl border border-slate-100 bg-white p-3 lg:col-span-1">
+               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Personal details
               </p>
               <Detail label="Date of birth" value={selected.dateOfBirth} />
@@ -709,8 +709,8 @@ function StudentDirectoryContent({
               <Detail label="Blood group" value={selected.bloodGroup} />
               <Detail label="Nationality" value={selected.nationality} />
             </div>
-            <div>
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+             <div className="rounded-xl border border-slate-100 bg-white p-3">
+               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Contact and admission
               </p>
               <Detail label="Phone" value={selected.phone} />
@@ -718,8 +718,8 @@ function StudentDirectoryContent({
               <Detail label="Admission date" value={selected.admissionDate} />
               <Detail label="Address" value={selected.address} />
             </div>
-            <div>
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+             <div className="rounded-xl border border-slate-100 bg-white p-3">
+               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Academic history
               </p>
               {selected.history?.map((item) => (
@@ -736,8 +736,8 @@ function StudentDirectoryContent({
                 </div>
               ))}
             </div>
-            <div className="lg:col-span-3">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+             <div className="rounded-xl border border-slate-100 bg-white p-3 lg:col-span-3">
+               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Guardians
               </p>
               {selected.guardians?.length ? (
@@ -761,11 +761,12 @@ function StudentDirectoryContent({
                 <p className="text-sm text-slate-500">No guardians linked.</p>
               )}
             </div>
-            <div className="lg:col-span-3">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Lifecycle timeline</p>
-              {selected.lifecycleEvents?.length ? <div className="space-y-2">{selected.lifecycleEvents.map((event) => <div key={event.id} className="rounded-xl border border-slate-100 p-3 text-sm"><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold capitalize text-slate-900">{event.action}</span><span className="text-xs text-slate-400">{event.effectiveDate}</span></div>{event.reason && <p className="mt-1 text-slate-600">{event.reason}</p>}{event.previousStatus !== event.newStatus && <p className="mt-1 text-xs text-slate-400">{event.previousStatus ?? "-"} → {event.newStatus ?? "-"}</p>}</div>)}</div> : <p className="text-sm text-slate-500">No lifecycle actions have been recorded.</p>}
-            </div>
-          </CardContent>
+             <div className="rounded-xl border border-slate-100 bg-white p-3 lg:col-span-3">
+               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Lifecycle timeline</p>
+               {selected.lifecycleEvents?.length ? <div className="space-y-2">{selected.lifecycleEvents.map((event) => <div key={event.id} className="rounded-xl border border-slate-100 p-3 text-sm"><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold capitalize text-slate-900">{event.action}</span><span className="text-xs text-slate-400">{event.effectiveDate}</span></div>{event.reason && <p className="mt-1 text-slate-600">{event.reason}</p>}{event.previousStatus !== event.newStatus && <p className="mt-1 text-xs text-slate-400">{event.previousStatus ?? "-"} → {event.newStatus ?? "-"}</p>}</div>)}</div> : <p className="text-sm text-slate-500">No lifecycle actions have been recorded.</p>}
+             </div>
+             </div>
+           </CardContent>
         </Card></div></div>
       )}
       <Modal open={lifecycleOpen} title="Student lifecycle action" description={selected ? `Apply a history-preserving action to ${selected.fullName}.` : undefined} onClose={() => setLifecycleOpen(false)} footer={<div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setLifecycleOpen(false)}>Cancel</Button><Button type="submit" form="student-lifecycle-form" disabled={saving}>{saving ? "Applying..." : "Apply action"}</Button></div>}>
