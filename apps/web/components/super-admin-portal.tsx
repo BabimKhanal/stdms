@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -30,6 +30,7 @@ import {
 import { EduApiClient } from "@edu/api-client";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
+import { Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TablePagination, TableRow } from "./ui/table";
 
 type PlatformUser = { name: string; email?: string | null };
 type Organisation = {
@@ -168,7 +169,7 @@ function formatStorage(bytes: number) {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-function operationStatus(value: unknown) {
+function operationStatusCode(value: unknown) {
   if (!value || typeof value !== "object" || !("status" in value))
     return undefined;
   const status = (value as { status?: unknown }).status;
@@ -227,6 +228,11 @@ export function SuperAdminPortal({
   const [featureFlags, setFeatureFlags] = useState<FeatureFlag[]>([]);
   const [featureLoading, setFeatureLoading] = useState(false);
   const [featureError, setFeatureError] = useState("");
+  const [operationSearch, setOperationSearch] = useState("");
+  const [operationAction, setOperationAction] = useState("all");
+  const [operationEntity, setOperationEntity] = useState("all");
+  const [operationStatus, setOperationStatus] = useState("all");
+  const [operationPage, setOperationPage] = useState(1);
 
   useEffect(() => {
     let active = true;
@@ -326,6 +332,12 @@ export function SuperAdminPortal({
   }, [panel, refreshKey, selectedTenant]);
 
   useEffect(() => {
+    if (panel !== "tenant-profile" || !selectedTenant) return;
+    const interval = window.setInterval(() => setRefreshKey((key) => key + 1), 15000);
+    return () => window.clearInterval(interval);
+  }, [panel, selectedTenant]);
+
+  useEffect(() => {
     if (panel !== "backups") return;
     let active = true;
     setBackupLoading(true);
@@ -370,6 +382,25 @@ export function SuperAdminPortal({
       (statusFilter === "all" || organisation.status === statusFilter)
     );
   });
+
+  const operationOptions = useMemo(() => {
+    const actions = new Set(tenantProfile?.recentActivity.map((item) => item.action) ?? []);
+    const entities = new Set(tenantProfile?.recentActivity.map((item) => item.entity) ?? []);
+    return { actions: [...actions].sort(), entities: [...entities].sort() };
+  }, [tenantProfile]);
+  const filteredOperations = (tenantProfile?.recentActivity ?? []).filter((operation) => {
+    const status = operationStatusCode(operation.newValue);
+    return (
+      `${operation.action} ${operation.entity} ${operation.userName ?? ""} ${operation.entityId ?? ""}`.toLowerCase().includes(operationSearch.toLowerCase()) &&
+      (operationAction === "all" || operation.action === operationAction) &&
+      (operationEntity === "all" || operation.entity === operationEntity) &&
+      (operationStatus === "all" || (operationStatus === "success" ? status === undefined || status < 400 : status !== undefined && status >= 400))
+    );
+  });
+  const operationPageSize = 10;
+  const operationPages = Math.max(1, Math.ceil(filteredOperations.length / operationPageSize));
+  const safeOperationPage = Math.min(operationPage, operationPages);
+  const visibleOperations = filteredOperations.slice((safeOperationPage - 1) * operationPageSize, safeOperationPage * operationPageSize);
 
   function refresh() {
     setRefreshKey((key) => key + 1);
@@ -1045,64 +1076,33 @@ export function SuperAdminPortal({
                         </div>
                       </div>
                     </section>
-                    <section>
-                      <div className="mb-3">
-                        <h3 className="text-base font-semibold">
-                          Recent operations
-                        </h3>
-                        <p className="mt-1 text-sm text-slate-500">
-                          Audited tenant writes with actor and response outcome.
-                        </p>
-                      </div>
-                      {tenantProfile.recentActivity.length ? (
-                        <div className="divide-y divide-slate-200 border-y border-slate-200">
-                          {tenantProfile.recentActivity.map((operation) => {
-                            const status = operationStatus(operation.newValue);
-                            return (
-                              <div
-                                key={operation.id}
-                                className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 py-3.5"
-                              >
-                                <div className="min-w-0 flex-1">
-                                  <p className="break-all text-sm font-medium">
-                                    {operation.action}
-                                  </p>
-                                  <p className="mt-1 text-xs text-slate-500">
-                                    {operation.userName ?? "Unknown user"} ·{" "}
-                                    {operation.entity}
-                                    {operation.entityId
-                                      ? ` · ${operation.entityId}`
-                                      : ""}
-                                  </p>
-                                </div>
-                                <div className="flex shrink-0 items-center gap-3">
-                                  {status !== undefined && (
-                                    <span
-                                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${status < 400 ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"}`}
-                                    >
-                                      {status}
-                                    </span>
-                                  )}
-                                  <time className="text-xs text-slate-500">
-                                    {new Date(
-                                      operation.createdAt,
-                                    ).toLocaleString()}
-                                  </time>
-                                </div>
-                              </div>
-                            );
-                          })}
+                    <section className="xl:col-span-2">
+                      <div className="mb-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+                        <div>
+                          <h3 className="text-base font-semibold">Operations log</h3>
+                          <p className="mt-1 text-sm text-slate-500">Live audited writes with actor, response outcome, and entity context. Refreshes every 15 seconds.</p>
                         </div>
-                      ) : (
-                        <p className="border-y border-slate-200 py-10 text-center text-sm text-slate-500">
-                          No audited write operations for this tenant yet.
-                        </p>
-                      )}
-                      <p className="mt-3 text-xs text-slate-500">
-                        This timeline tracks writes captured by the audit
-                        middleware; it does not represent read traffic or
-                        historical uptime.
-                      </p>
+                        <Button variant="outline" size="sm" onClick={refresh} disabled={profileLoading}><RefreshCw size={14} className={profileLoading ? "animate-spin" : undefined} />Refresh log</Button>
+                      </div>
+                      <Card>
+                        <CardContent className="p-0">
+                          <div className="grid gap-2 border-b border-slate-200 bg-slate-50 p-3 sm:grid-cols-2 xl:grid-cols-5">
+                            <input className={inputClass()} value={operationSearch} onChange={(event) => { setOperationSearch(event.target.value); setOperationPage(1); }} placeholder="Search operations" />
+                            <select className={inputClass()} value={operationAction} onChange={(event) => { setOperationAction(event.target.value); setOperationPage(1); }}><option value="all">All actions</option>{operationOptions.actions.map((item) => <option key={item} value={item}>{item}</option>)}</select>
+                            <select className={inputClass()} value={operationEntity} onChange={(event) => { setOperationEntity(event.target.value); setOperationPage(1); }}><option value="all">All entities</option>{operationOptions.entities.map((item) => <option key={item} value={item}>{item}</option>)}</select>
+                            <select className={inputClass()} value={operationStatus} onChange={(event) => { setOperationStatus(event.target.value); setOperationPage(1); }}><option value="all">All outcomes</option><option value="success">Success</option><option value="failure">Failure</option></select>
+                            <Button variant="ghost" onClick={() => { setOperationSearch(""); setOperationAction("all"); setOperationEntity("all"); setOperationStatus("all"); setOperationPage(1); }}>Clear filters</Button>
+                          </div>
+                          <Table stack>
+                            <TableHeader><TableRow><TableHead>Operation</TableHead><TableHead>Actor</TableHead><TableHead>Entity</TableHead><TableHead>Outcome</TableHead><TableHead>IP address</TableHead><TableHead>Time</TableHead></TableRow></TableHeader>
+                            <TableBody>
+                              {!visibleOperations.length ? <TableEmpty colSpan={6}>No operations match the current filters.</TableEmpty> : visibleOperations.map((operation) => { const status = operationStatusCode(operation.newValue); return <TableRow key={operation.id}><TableCell label="Operation" className="font-semibold text-slate-900">{operation.action}</TableCell><TableCell label="Actor">{operation.userName ?? "Unknown user"}</TableCell><TableCell label="Entity"><span>{operation.entity}</span>{operation.entityId && <span className="ml-1 text-xs text-slate-400">{operation.entityId}</span>}</TableCell><TableCell label="Outcome">{status === undefined ? <span className="text-slate-400">Recorded</span> : <span className={`rounded-full px-2 py-1 text-xs font-semibold ${status < 400 ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"}`}>{status}</span>}</TableCell><TableCell label="IP address" className="font-mono text-xs">{operation.ip ?? "—"}</TableCell><TableCell label="Time" className="whitespace-nowrap text-xs">{new Date(operation.createdAt).toLocaleString()}</TableCell></TableRow>; })}
+                            </TableBody>
+                          </Table>
+                          <TablePagination page={safeOperationPage} totalPages={operationPages} onChange={setOperationPage} summary={`${filteredOperations.length ? (safeOperationPage - 1) * operationPageSize + 1 : 0}-${Math.min(safeOperationPage * operationPageSize, filteredOperations.length)} of ${filteredOperations.length} operations`} />
+                        </CardContent>
+                      </Card>
+                      <p className="mt-3 text-xs text-slate-500">This log tracks writes captured by the audit middleware; it does not represent read traffic or historical uptime.</p>
                     </section>
                   </div>
                 </>

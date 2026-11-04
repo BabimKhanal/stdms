@@ -123,7 +123,7 @@ export async function sendMail(input: MailInput, config: MailConfig = {}): Promi
         throw new Error("SMTP authentication failed. Check the username/password; Gmail accounts must use an App Password, not the normal account password.");
       }
       if (code === "ETIMEDOUT" || code === "ESOCKET" || code === "ECONNREFUSED") {
-        throw new Error(`SMTP connection failed for ${host}:${port}. Use TLS on connect only for port 465; port 587 uses STARTTLS and must be non-secure on connect.`);
+        throw new Error(`SMTP connection failed for ${host}:${port}. For Gmail, use smtp.gmail.com on port 587 with STARTTLS, or port 465 with implicit TLS. Check the host, port, firewall, and TLS settings.`);
       }
       throw error;
     } finally {
