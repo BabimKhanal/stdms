@@ -33,6 +33,9 @@ type Homework = {
   sectionName?: string;
   subjectName?: string;
   maxMarks: number | null;
+  submissionStatus?: string | null;
+  submissionMarks?: number | null;
+  submissionFeedback?: string | null;
 };
 
 type Submission = {
@@ -276,8 +279,8 @@ function StudentAssignment({ item }: { item: Homework }) {
           </div>
         )}
 
-        {submission && (
-          <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3">
+          {submission && (
+           <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3">
             <p className="flex items-center gap-2 text-xs font-semibold text-blue-700">
               {submission.marks === null ? (
                 <CheckCircle2 size={14} />
@@ -285,7 +288,9 @@ function StudentAssignment({ item }: { item: Homework }) {
                 <Star size={14} />
               )}
               {submission.marks === null
-                ? "Submitted — waiting for grading"
+                ? submission.status === "late"
+                  ? "Submitted late — waiting for grading"
+                  : "Submitted — waiting for grading"
                 : `Graded · ${submission.marks}${item.maxMarks ? ` / ${item.maxMarks}` : ""}`}
             </p>
             {submission.feedback && (

@@ -133,11 +133,16 @@ export const homeworkSchema = z.object({
   attachmentUrls: z.array(z.string()).optional(),
   link: z.string().nullable(),
   maxMarks: z.number().nullable(),
+  archivedAt: z.string().nullable().optional(),
   className: z.string().optional(),
   sectionName: z.string().optional(),
   subjectName: z.string().optional(),
   teacherName: z.string().nullable().optional(),
   submissionCount: z.number().optional(),
+  gradedCount: z.number().optional(),
+  submissionStatus: z.enum(HOMEWORK_STATUSES).nullable().optional(),
+  submissionMarks: z.number().nullable().optional(),
+  submissionFeedback: z.string().nullable().optional(),
 });
 export type Homework = z.infer<typeof homeworkSchema>;
 

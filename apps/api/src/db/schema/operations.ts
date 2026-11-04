@@ -128,6 +128,7 @@ export const homework = pgTable(
     attachmentUrl: text("attachment_url"),
     link: text("link"),
     maxMarks: integer("max_marks"),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
     createdAt: createdAtCol(),
     updatedAt: updatedAtCol(),
   },

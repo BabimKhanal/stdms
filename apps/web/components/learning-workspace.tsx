@@ -49,6 +49,7 @@ type Homework = {
   subjectName?: string;
   maxMarks: number | null;
   submissionCount?: number;
+  gradedCount?: number;
 };
 type Option = { id: string; name: string };
 type SectionOption = Option & { classId: string };
@@ -251,6 +252,16 @@ export function LearningWorkspace({
       setSaving(false);
     }
   }
+  async function archive(item: Homework) {
+    if (!window.confirm(`Archive "${item.title}"? It will leave active assignment lists but remain available for audit.`)) return;
+    try {
+      await api.delete(`/homework/${item.id}`);
+      setHomework((current) => current.filter((row) => row.id !== item.id));
+      toast.success("Assignment archived", item.title);
+    } catch (err) {
+      toast.error("Could not archive assignment", err instanceof Error ? err.message : "Please try again");
+    }
+  }
   const filtered = useMemo(
     () =>
       homework.filter((item) => {
@@ -448,6 +459,7 @@ export function LearningWorkspace({
         canManage={canManage}
         onEdit={beginEdit}
         onReview={setReviewing}
+        onArchive={(item) => void archive(item)}
       />
     </div>
   );
@@ -637,11 +649,13 @@ function AssignmentTable({
   canManage,
   onEdit,
   onReview,
+  onArchive,
 }: {
   items: Homework[];
   canManage: boolean;
   onEdit: (item: Homework) => void;
   onReview: (item: Homework) => void;
+  onArchive: (item: Homework) => void;
 }) {
   return (
     <Card className="overflow-hidden">
@@ -654,6 +668,7 @@ function AssignmentTable({
               <TableHead>Subject</TableHead>
               <TableHead>Due</TableHead>
               <TableHead>Resources</TableHead>
+              <TableHead>Submissions</TableHead>
               <TableHead>
                 <span className="sr-only">Actions</span>
               </TableHead>
@@ -708,6 +723,11 @@ function AssignmentTable({
                       {item.link && <Link2 size={14} />}
                     </span>
                   </TableCell>
+                  <TableCell label="Submissions">
+                    <span className="text-xs text-slate-600">
+                      {item.gradedCount ?? 0} graded / {item.submissionCount ?? 0} submitted
+                    </span>
+                  </TableCell>
                   <TableCell label="Actions">
                     {canManage ? (
                       <div className="flex gap-2">
@@ -718,6 +738,13 @@ function AssignmentTable({
                         >
                           <ClipboardCheck size={14} />
                           Review
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => onArchive(item)}
+                        >
+                          Archive
                         </Button>
                         <Button
                           size="sm"

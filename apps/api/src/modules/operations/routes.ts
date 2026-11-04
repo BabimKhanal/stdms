@@ -29,7 +29,7 @@ operationRoutes.put("/leave/:id/review", requirePermission("leave.approve"), asy
 operationRoutes.get("/homework", requirePermission("homework.view"), async (c) => { const rows = await svc.listHomework(db(c), org(c), c.get("user")!.studentId, c.get("user")!); return okList(c, rows, rows.length, 1, 1000); });
 operationRoutes.post("/homework", requirePermission("homework.create"), async (c) => ok(c, await svc.createHomework(db(c), org(c), user(c), parse(homeworkInputSchema, await c.req.json()), c.get("user")!), 201));
 operationRoutes.put("/homework/:id", requirePermission("homework.edit"), async (c) => ok(c, await svc.updateHomework(db(c), org(c), c.req.param("id"), parse(homeworkUpdateSchema, await c.req.json()), c.get("user")!)));
-operationRoutes.delete("/homework/:id", requirePermission("homework.delete"), async (c) => { await svc.deleteHomework(db(c), org(c), c.req.param("id"), c.get("user")!); return ok(c, { deleted: true }); });
+  operationRoutes.delete("/homework/:id", requirePermission("homework.delete"), async (c) => { await svc.archiveHomework(db(c), org(c), c.req.param("id"), true, c.get("user")!); return ok(c, { archived: true }); });
 operationRoutes.get("/homework/:id/submissions", requirePermission("homework.view"), async (c) => okList(c, await svc.listSubmissions(db(c), org(c), c.req.param("id"), c.get("user")!), 0, 1, 1000));
 // Submission is a learner action, not staff-owned homework creation. The
 // service also verifies that the learner is enrolled in this assignment.
