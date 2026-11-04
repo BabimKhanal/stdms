@@ -6,6 +6,7 @@ import { hashPassword } from "../../lib/password";
 import { badRequest, conflict, forbidden, HttpError, notFound } from "../../lib/errors";
 import type { EmployeeInput } from "@edu/shared";
 import { hasLoginIdentifier, remainingActiveOwnerCount } from "./policy";
+import { createForUsers } from "../notifications/service";
 
 export type SaveUserInput = {
   name?: string;
@@ -19,6 +20,8 @@ export type SaveUserInput = {
 };
 
 const safe = { id: users.id, organisationId: users.organisationId, name: users.name, email: users.email, username: users.username, avatarUrl: users.avatarUrl, isPlatformAdmin: users.isPlatformAdmin, status: users.status, locale: users.locale, employeeId: users.employeeId, studentId: users.studentId, guardianId: users.guardianId, lastLoginAt: users.lastLoginAt, createdAt: users.createdAt, updatedAt: users.updatedAt };
+function escapeHtml(value: string) { return value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character] ?? character); }
+async function emailTemporaryPassword(db: DB, orgId: string, target: { id: string; name: string; email?: string | null; username?: string | null }, password: string) { if (!target.email) return; const name = escapeHtml(target.name); const email = escapeHtml(target.email); const username = escapeHtml(target.username ?? ""); const temporaryPassword = escapeHtml(password); await createForUsers(db, orgId, [target.id], { type: "account_credentials", title: "Your account credentials", body: "A temporary password was sent to your email address.", push: false, email: { subject: "Your Nucleus Education account", html: `<p>Hello ${name},</p><p>Your Nucleus Education account has been created.</p><p><strong>Username/email:</strong> ${username || email}<br /><strong>Temporary password:</strong> ${temporaryPassword}</p><p>Sign in at ${escapeHtml(process.env.WEB_ORIGIN ?? "") || "the school portal"} and change this password immediately. Do not share this password with anyone.</p>`, text: `Hello ${target.name},\n\nYour Nucleus Education account has been created.\nUsername/email: ${target.username || target.email}\nTemporary password: ${password}\n\nSign in to the school portal and change this password immediately.` } }); }
 export async function list(db: DB, orgId: string, filters: { search?: string; status?: string; employeeId?: string; roleId?: string } = {}) { const conditions = [eq(users.organisationId, orgId)]; if (filters.search?.trim()) { const search = `%${filters.search.trim()}%`; conditions.push(or(ilike(users.name, search), ilike(users.email, search), ilike(users.username, search))!); } if (filters.status && filters.status !== "all") conditions.push(eq(users.status, filters.status)); if (filters.employeeId) conditions.push(eq(users.employeeId, filters.employeeId)); const rows = await db.select(safe).from(users).where(and(...conditions)).orderBy(asc(users.name)); const assignments = await db.select({ userId: userRoles.userId, roleId: userRoles.roleId }).from(userRoles); return rows.map((row) => ({ ...row, roleIds: assignments.filter((assignment) => assignment.userId === row.id).map((assignment) => assignment.roleId) })).filter((row) => !filters.roleId || row.roleIds.includes(filters.roleId)); }
 export async function listTeacherAccounts(db: DB, orgId: string) { return db.select({ id: users.id, name: users.name, employeeId: users.employeeId, employeeName: employees.fullName }).from(users).innerJoin(employees, eq(users.employeeId, employees.id)).where(and(eq(users.organisationId, orgId), eq(employees.status, "active"))).orderBy(asc(users.name)); }
 export async function listEmployeeOptions(db: DB, orgId: string) { return db.select({ id: employees.id, employeeId: employees.employeeId, name: employees.fullName }).from(employees).where(and(eq(employees.organisationId, orgId), eq(employees.status, "active"))).orderBy(asc(employees.fullName)); }
@@ -148,14 +151,17 @@ export async function save(db: DB, orgId: string, actor: AuthUser, id: string | 
     if ((error as { code?: string }).code === "23505") throw conflict("Email, username, or employee link already exists");
     throw error;
   }
-  return get(db, orgId, savedId);
+  const saved = await get(db, orgId, savedId);
+  if (input.password && saved.id !== actor.id) await emailTemporaryPassword(db, orgId, saved, input.password);
+  return saved;
 }
 export async function resetPassword(db: DB, orgId: string, actor: AuthUser, id: string, password: string) {
   if (id === actor.id) throw badRequest("Use Change password to update your own password");
-  const [target] = await db.select({ id: users.id }).from(users).where(and(eq(users.id, id), eq(users.organisationId, orgId))).limit(1);
+  const [target] = await db.select({ id: users.id, name: users.name, email: users.email, username: users.username }).from(users).where(and(eq(users.id, id), eq(users.organisationId, orgId))).limit(1);
   if (!target) throw notFound("User not found");
   await assertOwnerSafety(db, orgId, actor, [id], "manage");
   const [row] = await db.update(users).set({ passwordHash: await hashPassword(password), mustChangePassword: true }).where(and(eq(users.id, id), eq(users.organisationId, orgId))).returning({ id: users.id });
+  await emailTemporaryPassword(db, orgId, target, password);
   return row;
 }
 export async function remove(db: DB, orgId: string, actor: AuthUser, id: string) {

@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
@@ -15,6 +15,7 @@ import {
   FileText,
   GraduationCap,
   HeartHandshake,
+  KeyRound,
   LayoutDashboard,
   LineChart,
   LogOut,
@@ -47,6 +48,8 @@ import { UserManagement } from "./user-management";
 import { ReportsWorkspace } from "./reports-workspace";
 import { CommunicationWorkspace } from "./communication-workspace";
 import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Modal } from "./ui/modal";
 import { Badge } from "./ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { formatNpr } from "../lib/utils";
@@ -161,6 +164,12 @@ export function Portal() {
   const [section, setSection] = useState("dashboard");
   const [mobileNav, setMobileNav] = useState(false);
   const [userMenu, setUserMenu] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -281,6 +290,22 @@ export function Portal() {
       localStorage.removeItem(key),
     );
     router.replace("/login");
+  }
+
+  async function changePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (newPassword.length < 8) return setPasswordError("New password must be at least 8 characters.");
+    if (newPassword !== confirmPassword) return setPasswordError("New passwords do not match.");
+    setPasswordSaving(true);
+    setPasswordError("");
+    try {
+      await new EduApiClient(undefined, () => localStorage.getItem("edu_access_token")).post("/auth/change-password", { currentPassword, newPassword });
+      await logout();
+    } catch (error) {
+      setPasswordError(error instanceof Error ? error.message : "Unable to change password");
+    } finally {
+      setPasswordSaving(false);
+    }
   }
 
   function navigate(nextSection: string) {
@@ -458,10 +483,17 @@ export function Portal() {
                             user?.orgName ??
                             "Institution account"}
                         </p>
-                        <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-blue-600">
+                      <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-blue-600">
                           {user?.roles?.join(" · ") ?? "Member"}
                         </p>
                       </div>
+                      <button
+                        onClick={() => { setPasswordOpen(true); setUserMenu(false); setPasswordError(""); }}
+                        className="mt-1 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                      >
+                        <KeyRound size={16} />
+                        Change password
+                      </button>
                       <button
                         onClick={logout}
                         className="mt-1 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-rose-600 transition hover:bg-rose-50"
@@ -653,6 +685,20 @@ export function Portal() {
           </div>
         </main>
       </div>
+      <Modal
+        open={passwordOpen}
+        title="Change password"
+        description="Update your portal password. You will be signed out after it changes."
+        onClose={() => setPasswordOpen(false)}
+        footer={<div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setPasswordOpen(false)}>Cancel</Button><Button type="submit" form="portal-password-form" disabled={passwordSaving}>{passwordSaving ? "Updating..." : "Update password"}</Button></div>}
+      >
+        <form id="portal-password-form" onSubmit={changePassword} className="space-y-4">
+          {passwordError && <Alert tone="error" title="Password update failed" onDismiss={() => setPasswordError("")}>{passwordError}</Alert>}
+          <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Current password</span><Input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required autoComplete="current-password" /></label>
+          <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">New password</span><Input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required minLength={8} autoComplete="new-password" /></label>
+          <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Confirm new password</span><Input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={8} autoComplete="new-password" /></label>
+        </form>
+      </Modal>
     </div>
   );
 }

@@ -30,6 +30,8 @@ export type NotificationInput = {
   body?: string | null;
   data?: Record<string, unknown>;
   createdBy?: string | null;
+  push?: boolean;
+  email?: { subject: string; html: string; text?: string };
 };
 
 export async function list(db: DB, orgId: string, userId: string) {
@@ -145,7 +147,7 @@ export async function createForUsers(
     )
     .returning();
 
-  if (env.PUSH_PROVIDER === "expo") {
+  if (input.push !== false && env.PUSH_PROVIDER === "expo") {
     const registeredTokens = await db
       .select({ userId: pushTokens.userId, token: pushTokens.token })
       .from(pushTokens)
@@ -255,7 +257,7 @@ export async function createForUsers(
         appUrl: env.WEB_ORIGIN,
         date,
       };
-      const content = template
+      const content = input.email ?? (template
         ? {
             subject: renderEmailSubject(template.subject, vars),
             html: renderEmailHtml(template.htmlBody, vars),
@@ -263,7 +265,7 @@ export async function createForUsers(
               ? renderEmailText(template.textBody, vars)
               : undefined,
           }
-        : { subject: input.title, html: `<p>${input.body ?? ""}</p>` };
+        : { subject: input.title, html: `<p>${input.body ?? ""}</p>` });
 
       const result = await deliverNotification(
         recipient,
