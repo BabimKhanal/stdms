@@ -49,6 +49,14 @@ export const examSubjectInputSchema = z.object({
   theoryMarks: z.number().min(0).nullable().optional(),
   practicalMarks: z.number().min(0).nullable().optional(),
   internalMarks: z.number().min(0).nullable().optional(),
+}).superRefine((value, context) => {
+  if (value.passMarks > value.fullMarks) {
+    context.addIssue({ code: "custom", path: ["passMarks"], message: "Pass marks cannot exceed full marks" });
+  }
+  const componentTotal = (value.theoryMarks ?? 0) + (value.practicalMarks ?? 0) + (value.internalMarks ?? 0);
+  if (componentTotal > value.fullMarks) {
+    context.addIssue({ code: "custom", path: ["theoryMarks"], message: "Theory, practical, and internal marks cannot exceed full marks" });
+  }
 });
 
 export const markEntrySchema = z.object({

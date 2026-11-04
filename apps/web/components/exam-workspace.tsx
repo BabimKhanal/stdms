@@ -31,6 +31,8 @@ type Subject = {
 type Result = {
   studentId: string;
   studentName: string;
+  totalObtained: number;
+  totalFull: number;
   percentage: number;
   grade: string | null;
   gpa: number | null;
@@ -584,6 +586,7 @@ export function ExamWorkspace({ canManage = true, canApprove = false }: { canMan
                     <thead className="border-b border-slate-100 text-xs text-slate-400">
                       <tr>
                         <th className="py-2">Student</th>
+                        <th className="py-2">Marks</th>
                         <th className="py-2">Percentage</th>
                         <th className="py-2">Grade</th>
                         <th className="py-2">GPA</th>
@@ -596,6 +599,7 @@ export function ExamWorkspace({ canManage = true, canApprove = false }: { canMan
                       {results.map((result) => (
                         <tr key={result.studentId}>
                           <td className="py-3">{result.studentName}</td>
+                          <td className="py-3">{result.totalObtained}/{result.totalFull}</td>
                           <td className="py-3">{result.percentage}%</td>
                           <td className="py-3">{result.grade ?? "—"}</td>
                           <td className="py-3">
