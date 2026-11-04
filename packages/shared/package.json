@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@remotemerge/nepali-date-converter": "^1.2.7",
     "zod": "^4.1.13"
   },
   "devDependencies": {

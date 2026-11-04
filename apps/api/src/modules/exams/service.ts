@@ -58,6 +58,7 @@ export async function listExams(db: DB, orgId: string, principal?: AuthUser) {
     .select({
       ...(exams as any),
       subjectCount: sql<number>`(select count(*) from exam_subjects es where es.exam_id = ${exams.id} and es.organisation_id = ${orgId})`,
+      classNames: sql<string | null>`(select string_agg(distinct c.name, ', ' order by c.name) from exam_subjects es join classes c on c.id = es.class_id where es.exam_id = ${exams.id} and es.organisation_id = ${orgId})`,
     })
     .from(exams)
     .where(and(...conditions))

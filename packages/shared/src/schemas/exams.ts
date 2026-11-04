@@ -13,6 +13,7 @@ export const examSchema = z.object({
   endDate: dateSchema.nullable(),
   status: z.enum(["draft", "ongoing", "completed", "published"]),
   subjectCount: z.number().optional(),
+  classNames: z.string().nullable().optional(),
 });
 export type Exam = z.infer<typeof examSchema>;
 

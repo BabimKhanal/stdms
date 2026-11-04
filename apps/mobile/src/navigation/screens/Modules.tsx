@@ -27,6 +27,7 @@ import { uploadToCloudinary, type CloudinaryFolder } from "../../lib/cloudinary"
 import { EduApiClient } from "@edu/api-client";
 import { mobileToken, refreshMobileSession, useAuth } from "../../auth";
 import { API_URL } from "../../config";
+import { formatAppDate, useAppLocale } from "../../lib/locale";
 
 type Item = Record<string, unknown>;
 
@@ -147,6 +148,7 @@ function ModuleList({
   emptyText?: string;
 }) {
   const { items, loading, refreshing, error, reload } = useList(path);
+  useAppLocale();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const theme = moduleTheme[title] ?? moduleTheme.Learning;
@@ -732,11 +734,7 @@ function formatDate(value: unknown) {
   const date = new Date(`${value}T00:00:00`);
   return Number.isNaN(date.getTime())
     ? value
-    : date.toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
+    : formatAppDate(value, { month: "short", day: "numeric", year: "numeric" });
 }
 
 function playableVideoUrl(url: string) {
@@ -1046,6 +1044,7 @@ function MarksheetButton({
   examId: string;
   examName: string;
 }) {
+  useAppLocale();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [choices, setChoices] = useState<MarksheetResult[] | null>(null);

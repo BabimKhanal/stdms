@@ -23,6 +23,7 @@ import {
   readPushPreference,
   type PushPreference,
 } from "../../lib/push-notifications";
+import { setAppLocale, useAppLocale } from "../../lib/locale";
 
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
 
@@ -81,6 +82,7 @@ export function Settings() {
   });
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState("");
+  const locale = useAppLocale();
 
   useEffect(() => {
     let active = true;
@@ -193,6 +195,18 @@ export function Settings() {
       {/* Header */}
       <Text style={styles.title}>Settings</Text>
       <Text style={styles.subtitle}>Your account and app information.</Text>
+
+      <Text style={styles.sectionLabel}>Language and calendar</Text>
+      <View style={styles.card}>
+        <View style={styles.detail}>
+          <View style={styles.detailIcon}><MaterialCommunityIcons name="translate" color={palette.primary} size={19} /></View>
+          <View style={styles.detailCopy}><Text style={styles.detailLabel}>Date language</Text><Text style={styles.detailValue}>{locale === "ne" ? "नेपाली calendar dates" : "English calendar dates"}</Text></View>
+        </View>
+        <View style={styles.localeActions}>
+          <Pressable onPress={() => void setAppLocale("en")} style={[styles.localeButton, locale === "en" && styles.localeButtonActive]}><Text style={[styles.localeButtonText, locale === "en" && styles.localeButtonTextActive]}>English</Text></Pressable>
+          <Pressable onPress={() => void setAppLocale("ne")} style={[styles.localeButton, locale === "ne" && styles.localeButtonActive]}><Text style={[styles.localeButtonText, locale === "ne" && styles.localeButtonTextActive]}>नेपाली</Text></Pressable>
+        </View>
+      </View>
 
       {user?.mustChangePassword ? (
         <Pressable
@@ -550,6 +564,11 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginTop: 4,
   },
+  localeActions: { borderTopColor: palette.border, borderTopWidth: 1, flexDirection: "row", gap: 10, padding: 12 },
+  localeButton: { borderColor: palette.border, borderRadius: 12, borderWidth: 1, flex: 1, paddingVertical: 10, alignItems: "center" },
+  localeButtonActive: { backgroundColor: palette.primary, borderColor: palette.primary },
+  localeButtonText: { color: palette.inkSoft, fontSize: 13, fontWeight: "700" },
+  localeButtonTextActive: { color: "#fff" },
   divider: {
     backgroundColor: palette.border,
     height: 1,

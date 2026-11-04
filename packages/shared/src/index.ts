@@ -8,3 +8,4 @@ export * from "./schemas/operations";
 export * from "./schemas/fees";
 export * from "./schemas/exams";
 export * from "./documents";
+export * from "./locale";

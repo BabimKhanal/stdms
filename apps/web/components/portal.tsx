@@ -66,6 +66,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { ForcedPasswordChange } from "./forced-password-change";
 import { SuperAdminPortal } from "./super-admin-portal";
 import { clearAccessTokenCookie } from "../lib/auth-cookie";
+import { LocaleSwitcher } from "./locale-switcher";
 
 type User = {
   name: string;
@@ -490,6 +491,12 @@ export function Portal() {
                           {user?.roles?.join(" · ") ?? "Member"}
                         </p>
                       </div>
+                      <button
+                        onClick={() => setUserMenu(false)}
+                        className="mt-1 flex w-full items-center rounded-xl px-0 text-sm text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                      >
+                        <LocaleSwitcher />
+                      </button>
                       <button
                         onClick={() => { setPasswordOpen(true); setUserMenu(false); setPasswordError(""); }}
                         className="mt-1 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"

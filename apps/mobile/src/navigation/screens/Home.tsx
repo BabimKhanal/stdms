@@ -18,6 +18,7 @@ import { mobileToken, useAuth } from "../../auth";
 import { API_URL } from "../../config";
 import { NotificationBell } from "../components/NotificationBell";
 import { ProfileAvatar } from "../../components/ProfileAvatar";
+import { formatAppDate, useAppLocale } from "../../lib/locale";
 
 /* ---------- types ---------- */
 type Notice = {
@@ -94,7 +95,7 @@ function formatDate(
   const date = new Date(value.length === 10 ? `${value}T00:00:00` : value);
   return Number.isNaN(date.getTime())
     ? value
-    : new Intl.DateTimeFormat("en", options).format(date);
+    : formatAppDate(value, options);
 }
 
 function relativeDay(value?: string | null): string {
@@ -181,6 +182,7 @@ function SkeletonCard() {
 
 /* ---------- main ---------- */
 export function Home() {
+  useAppLocale();
   const { user } = useAuth();
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();

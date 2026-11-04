@@ -20,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { useToast } from "./ui/toast";
+import { formatAppDate } from "../lib/locale";
 
 type Notice = {
   id: string;
@@ -60,12 +61,12 @@ function readPermissions(): string[] {
 
 function formatDate(value: string | null | undefined) {
   if (!value) return "No date";
-  return new Intl.DateTimeFormat("en", {
+  return formatAppDate(value, {
     weekday: "short",
     day: "numeric",
     month: "short",
     year: "numeric",
-  }).format(new Date(value.length === 10 ? `${value}T00:00:00` : value));
+  });
 }
 
 function priorityTone(priority: string) {
