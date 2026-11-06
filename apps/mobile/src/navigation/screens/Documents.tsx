@@ -16,7 +16,7 @@ const palette = {
   ink: "#1e1b4b",
   inkSoft: "#334155",
   muted: "#64748b",
-  border: "#ddd6fe",
+  border: "#e2e8f0",
 };
 
 const documents = [

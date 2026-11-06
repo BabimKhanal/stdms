@@ -27,11 +27,11 @@ const palette = {
   ink: "#1e1b4b",
   inkSoft: "#334155",
   muted: "#64748b",
-  border: "#ddd6fe",
+  border: "#e2e8f0",
 };
 
 // ── Tab options factory ──────────────────────────────────────────────────
-const TAB_BAR_HEIGHT = 68;
+const TAB_BAR_HEIGHT = 62;
 
 const tabOptions = (
   title: string,
@@ -53,35 +53,35 @@ const tabOptions = (
     <MaterialCommunityIcons
       name={focused ? iconFocused : icon}
       color={color}
-      size={focused ? size + 1 : size}
+      size={focused ? size : size - 1}
     />
   ),
   tabBarActiveTintColor: palette.primary,
-  tabBarInactiveTintColor: "#475569",
-  tabBarItemStyle: { paddingTop: 4, paddingBottom: 2 },
+  tabBarInactiveTintColor: "#94a3b8",
+  tabBarItemStyle: {
+    paddingTop: 6,
+    paddingBottom: 2,
+  },
   tabBarLabelStyle: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: "700" as const,
-    marginTop: 2,
+    marginTop: 3,
   },
   tabBarStyle: {
-    backgroundColor: "rgba(255,255,255,0.98)",
-    borderColor: "#ddd6fe",
-    borderRadius: 24,
-    borderTopWidth: 0,
-    elevation: 5,
+    backgroundColor: "#ffffff",
+    borderTopColor: palette.border,
+    borderTopWidth: 1,
+    elevation: 8,
     height: TAB_BAR_HEIGHT + bottomInset,
-    marginHorizontal: 14,
-    paddingBottom: bottomInset + 6,
-    paddingTop: 6,
-    position: "relative" as const,
-    shadowColor: palette.primary,
-    shadowOpacity: 0.08,
-    shadowRadius: 14,
-    shadowOffset: { height: 4, width: 0 },
+    paddingBottom: bottomInset + 4,
+    paddingTop: 4,
+    shadowColor: "#1e1b4b",
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    shadowOffset: { height: -2, width: 0 },
   },
   tabBarActiveBackgroundColor: "transparent",
-  tabBarIconStyle: { marginBottom: -1 },
+  tabBarIconStyle: { marginBottom: -2 },
 });
 
 const Tab = createBottomTabNavigator();

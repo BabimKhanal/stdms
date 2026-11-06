@@ -83,7 +83,12 @@ function MobileCalendarDay({ date, state, marking, onPress }: DayComponentProps)
   const isToday = state === "today";
   const dots = marking?.dots ?? [];
   const isHoliday = dots.some((dot) => dot.color === SCHOOL_EVENT_COLORS.holiday);
-  const label = `${date.dateString}${isHoliday ? ", public holiday" : dots.length ? `, ${dots.length} events` : ""}`;
+  const hasEvents = dots.length > 0;
+  // Border color: prioritize holiday, then first event color
+  const eventColor = isHoliday
+    ? SCHOOL_EVENT_COLORS.holiday
+    : dots[0]?.color ?? palette.border;
+  const label = `${date.dateString}${isHoliday ? ", public holiday" : hasEvents ? `, ${dots.length} events` : ""}`;
 
   return (
     <View style={styles.dayWrap}>
@@ -97,14 +102,16 @@ function MobileCalendarDay({ date, state, marking, onPress }: DayComponentProps)
           styles.dayCell,
           selected && styles.dayCellSelected,
           !selected && isHoliday && styles.dayCellHoliday,
-          !selected && isToday && styles.dayCellToday,
+          !selected && hasEvents && { borderColor: eventColor, borderWidth: 2 },
+          !selected && !hasEvents && isToday && styles.dayCellToday,
         ]}
       >
         <Text style={[
           styles.dayNumber,
           selected && styles.dayNumberSelected,
           !selected && isHoliday && styles.dayNumberHoliday,
-          !selected && isToday && styles.dayNumberToday,
+          !selected && !isHoliday && hasEvents && { color: eventColor, fontWeight: "700" },
+          !selected && isToday && !hasEvents && styles.dayNumberToday,
         ]}>
           {date.day}
         </Text>
@@ -334,6 +341,11 @@ export function Calendar() {
                     if (!cell) return <View key={`bs-blank-${weekIndex}-${dayIndex}`} style={styles.bsDayCell} />;
                     const items = eventsOnDay(filtered, cell.adDate);
                     const selected = cell.adDate === selectedDay;
+                    const isHoliday = items.some((e) => (e.eventType ?? "event") === "holiday");
+                    const hasEvents = items.length > 0;
+                    const eventColor = isHoliday
+                      ? SCHOOL_EVENT_COLORS.holiday
+                      : items[0] ? SCHOOL_EVENT_COLORS[items[0].eventType ?? "event"] : palette.border;
                     return (
                       <Pressable
                         key={cell.adDate}
@@ -341,9 +353,21 @@ export function Calendar() {
                         accessibilityRole="button"
                         accessibilityLabel={`${formatBsDate(cell.adDate, locale)}${items.length ? `, ${items.length} events` : ""}`}
                         accessibilityState={{ selected }}
-                        style={[styles.bsDayCell, selected && styles.bsDayCellSelected, cell.adDate === today && !selected && styles.bsDayCellToday]}
+                        style={[
+                          styles.bsDayCell,
+                          selected && styles.bsDayCellSelected,
+                          !selected && isHoliday && { backgroundColor: "#ecfdf5" },
+                          !selected && hasEvents && { borderColor: eventColor, borderWidth: 2 },
+                          cell.adDate === today && !selected && !hasEvents && styles.bsDayCellToday,
+                        ]}
                       >
-                        <Text style={[styles.bsDayNumber, selected && styles.bsDayNumberSelected, cell.adDate === today && !selected && styles.bsDayNumberToday]}>
+                        <Text style={[
+                          styles.bsDayNumber,
+                          selected && styles.bsDayNumberSelected,
+                          !selected && isHoliday && { color: SCHOOL_EVENT_COLORS.holiday },
+                          !selected && !isHoliday && hasEvents && { color: eventColor, fontWeight: "700" },
+                          cell.adDate === today && !selected && !hasEvents && styles.bsDayNumberToday,
+                        ]}>
                           {cell.bsDate.date}
                         </Text>
                         <View style={styles.bsDots}>
@@ -365,6 +389,7 @@ export function Calendar() {
                 markedDates={markedDates}
                 markingType="multi-dot"
                 enableSwipeMonths
+                dayComponent={MobileCalendarDay}
                 theme={{
                   calendarBackground: "#ffffff",
                   textSectionTitleColor: palette.muted,
@@ -517,11 +542,11 @@ const styles = StyleSheet.create({
   dayWrap: { alignItems: "center", flex: 1, paddingVertical: 2 },
   dayCell: { alignItems: "center", borderColor: "transparent", borderRadius: 20, borderWidth: 1, height: 36, justifyContent: "center", width: 36 },
   dayCellSelected: { backgroundColor: palette.primary, borderColor: palette.primary },
-  dayCellHoliday: { backgroundColor: "#fef2f2" },
+  dayCellHoliday: { backgroundColor: "#ecfdf5" },
   dayCellToday: { borderColor: palette.primary },
   dayNumber: { color: palette.inkSoft, fontSize: 13, fontWeight: "600" },
   dayNumberSelected: { color: "#ffffff", fontWeight: "800" },
-  dayNumberHoliday: { color: "#b91c1c" },
+  dayNumberHoliday: { color: "#059669" },
   dayNumberToday: { color: palette.primary, fontWeight: "800" },
   dayDots: { flexDirection: "row", gap: 2, height: 5, marginTop: 2 },
   dayDot: { borderRadius: 2, height: 4, width: 4 },

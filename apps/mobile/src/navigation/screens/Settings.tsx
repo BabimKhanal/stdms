@@ -14,9 +14,11 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EduApiClient } from "@edu/api-client";
 import { mobileToken, useAuth } from "../../auth";
 import { API_URL } from "../../config";
+import { ProfileAvatar } from "../../components/ProfileAvatar";
 import {
   disablePushNotifications,
   enablePushNotifications,
@@ -29,6 +31,7 @@ type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
 
 const palette = {
   primary: "#7c3aed",
+  primaryDeep: "#6d28d9",
   primarySoft: "#f5f3ff",
   primaryBorder: "#ddd6fe",
   bg: "#f8fafc",
@@ -40,21 +43,42 @@ const palette = {
   warnSoft: "#fffbeb",
   danger: "#e11d48",
   dangerSoft: "#fff1f2",
+  success: "#059669",
+  successSoft: "#ecfdf5",
 };
 
+/* ---------- Section wrapper ---------- */
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionLabel}>{title}</Text>
+      <View style={styles.card}>{children}</View>
+    </View>
+  );
+}
+
+/* ---------- Detail row ---------- */
 function Detail({
   icon,
   label,
   value,
+  last,
 }: {
   icon: IconName;
   label: string;
   value: string;
+  last?: boolean;
 }) {
   return (
-    <View style={styles.detail}>
+    <View style={[styles.detail, !last && styles.detailBordered]}>
       <View style={styles.detailIcon}>
-        <MaterialCommunityIcons name={icon} color={palette.primary} size={19} />
+        <MaterialCommunityIcons name={icon} color={palette.primary} size={18} />
       </View>
       <View style={styles.detailCopy}>
         <Text style={styles.detailLabel}>{label}</Text>
@@ -66,10 +90,48 @@ function Detail({
   );
 }
 
+/* ---------- Tappable detail row ---------- */
+function DetailAction({
+  icon,
+  label,
+  value,
+  onPress,
+  tint = palette.primary,
+}: {
+  icon: IconName;
+  label: string;
+  value: string;
+  onPress: () => void;
+  tint?: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.detail,
+        styles.detailBordered,
+        pressed && styles.detailPressed,
+      ]}
+    >
+      <View style={[styles.detailIcon, { backgroundColor: `${tint}14` }]}>
+        <MaterialCommunityIcons name={icon} color={tint} size={18} />
+      </View>
+      <View style={styles.detailCopy}>
+        <Text style={styles.detailLabel}>{label}</Text>
+        <Text style={styles.detailValue}>{value}</Text>
+      </View>
+      <MaterialCommunityIcons name="chevron-right" color={palette.muted} size={18} />
+    </Pressable>
+  );
+}
+
 export function Settings() {
   const { user, signOut } = useAuth();
+  const insets = useSafeAreaInsets();
   const roles = user?.roles?.length ? user.roles.join(" · ") : "Member";
   const [showPassword, setShowPassword] = useState(false);
+  const [showSignOut, setShowSignOut] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -150,8 +212,7 @@ export function Settings() {
       );
       closePassword();
       if (Platform.OS === "web") {
-        // RN Web does not implement Alert — sign out straight away.
-        void signOut();
+        setShowSignOut(true);
       } else {
         Alert.alert(
           "Password changed",
@@ -168,9 +229,9 @@ export function Settings() {
     }
   }
 
-  const confirmSignOut = () => {
+  function confirmSignOut() {
     if (Platform.OS === "web") {
-      void signOut();
+      setShowSignOut(true);
       return;
     }
     Alert.alert(
@@ -185,109 +246,84 @@ export function Settings() {
         },
       ],
     );
-  };
+  }
 
   return (
     <ScrollView
-      contentContainerStyle={styles.container}
+      contentContainerStyle={[
+        styles.container,
+        { paddingBottom: insets.bottom + 28, paddingTop: insets.top + 16 },
+      ]}
       showsVerticalScrollIndicator={false}
     >
-      {/* Header */}
-      <Text style={styles.title}>Settings</Text>
-      <Text style={styles.subtitle}>Your account and app information.</Text>
-
-      <Text style={styles.sectionLabel}>Language and calendar</Text>
-      <View style={styles.card}>
-        <View style={styles.detail}>
-          <View style={styles.detailIcon}><MaterialCommunityIcons name="translate" color={palette.primary} size={19} /></View>
-          <View style={styles.detailCopy}><Text style={styles.detailLabel}>Date language</Text><Text style={styles.detailValue}>{locale === "ne" ? "नेपाली calendar dates" : "English calendar dates"}</Text></View>
-        </View>
-        <View style={styles.localeActions}>
-          <Pressable onPress={() => void setAppLocale("en")} style={[styles.localeButton, locale === "en" && styles.localeButtonActive]}><Text style={[styles.localeButtonText, locale === "en" && styles.localeButtonTextActive]}>English</Text></Pressable>
-          <Pressable onPress={() => void setAppLocale("ne")} style={[styles.localeButton, locale === "ne" && styles.localeButtonActive]}><Text style={[styles.localeButtonText, locale === "ne" && styles.localeButtonTextActive]}>नेपाली</Text></Pressable>
+      {/* Profile header */}
+      <View style={styles.hero}>
+        <View style={styles.heroBlob} />
+        <View style={styles.heroBlobSmall} />
+        <View style={styles.heroContent}>
+          <ProfileAvatar name={user?.name} size={72} uri={user?.avatarUrl} style={styles.heroAvatar} />
+          <Text style={styles.heroName}>{user?.name ?? "User"}</Text>
+          <Text style={styles.heroOrg}>{user?.orgName ?? "Nucleus Education"}</Text>
+          <View style={styles.heroRoleRow}>
+            {user?.roles?.map((role) => (
+              <View key={role} style={styles.heroRolePill}>
+                <Text style={styles.heroRoleText}>{role}</Text>
+              </View>
+            )).slice(0, 3)}
+          </View>
         </View>
       </View>
 
+      {/* Security notice */}
       {user?.mustChangePassword ? (
         <Pressable
           onPress={() => setShowPassword(true)}
-          style={styles.noticeCard}
+          style={({ pressed }) => [
+            styles.noticeCard,
+            pressed && styles.noticePressed,
+          ]}
         >
-          <MaterialCommunityIcons
-            name="shield-alert-outline"
-            color={palette.warn}
-            size={20}
-          />
+          <View style={styles.noticeIcon}>
+            <MaterialCommunityIcons name="shield-alert-outline" color={palette.warn} size={20} />
+          </View>
           <Text style={styles.noticeText}>
             You&apos;re using a temporary password. Please change it now.
           </Text>
-          <MaterialCommunityIcons
-            name="chevron-right"
-            color={palette.warn}
-            size={18}
-          />
+          <MaterialCommunityIcons name="chevron-right" color={palette.warn} size={18} />
         </Pressable>
       ) : null}
 
-      {/* Account Section */}
-      <Text style={styles.sectionLabel}>Account</Text>
-      <View style={styles.card}>
-        <Detail
-          icon="account-outline"
-          label="Name"
-          value={user?.name ?? "Not available"}
-        />
-        <View style={styles.divider} />
-        <Detail
-          icon="email-outline"
-          label="Email"
-          value={user?.email ?? "Not available"}
-        />
-        <View style={styles.divider} />
-        <Detail icon="shield-account-outline" label="Role" value={roles} />
-        <View style={styles.divider} />
-        <Detail
-          icon="school-outline"
-          label="Institution"
-          value={user?.orgName ?? "Not available"}
-        />
-        <View style={styles.divider} />
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => setShowPassword(true)}
-          style={({ pressed }) => [
-            styles.detail,
-            pressed && styles.buttonPressed,
-          ]}
-        >
+      {/* Preferences */}
+      <Section title="Preferences">
+        <View style={styles.detail}>
           <View style={styles.detailIcon}>
-            <MaterialCommunityIcons
-              name="lock-reset"
-              color={palette.primary}
-              size={19}
-            />
+            <MaterialCommunityIcons name="translate" color={palette.primary} size={18} />
           </View>
           <View style={styles.detailCopy}>
-            <Text style={styles.detailLabel}>Password</Text>
-            <Text style={styles.detailValue}>Change password</Text>
+            <Text style={styles.detailLabel}>Date language</Text>
+            <Text style={styles.detailValue}>
+              {locale === "ne" ? "नेपाली calendar dates" : "English calendar dates"}
+            </Text>
           </View>
-          <MaterialCommunityIcons
-            name="chevron-right"
-            color="#64748b"
-            size={20}
-          />
-        </Pressable>
-      </View>
-
-      <Text style={styles.sectionLabel}>Notifications</Text>
-      <View style={styles.card}>
+        </View>
+        <View style={styles.localeActions}>
+          <Pressable
+            onPress={() => void setAppLocale("en")}
+            style={[styles.localeButton, locale === "en" && styles.localeButtonActive]}
+          >
+            <Text style={[styles.localeButtonText, locale === "en" && styles.localeButtonTextActive]}>English</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => void setAppLocale("ne")}
+            style={[styles.localeButton, locale === "ne" && styles.localeButtonActive]}
+          >
+            <Text style={[styles.localeButtonText, locale === "ne" && styles.localeButtonTextActive]}>नेपाली</Text>
+          </Pressable>
+        </View>
+        <View style={styles.detailDivider} />
         <View style={styles.notificationRow}>
           <View style={styles.detailIcon}>
-            <MaterialCommunityIcons
-              name="bell-outline"
-              color={palette.primary}
-              size={19}
-            />
+            <MaterialCommunityIcons name="bell-outline" color={palette.primary} size={18} />
           </View>
           <View style={styles.detailCopy}>
             <Text style={styles.detailLabel}>School updates</Text>
@@ -321,59 +357,100 @@ export function Settings() {
             style={styles.openSettings}
           >
             <Text style={styles.openSettingsText}>Open device settings</Text>
-            <MaterialCommunityIcons
-              name="open-in-new"
-              color={palette.primary}
-              size={15}
-            />
+            <MaterialCommunityIcons name="open-in-new" color={palette.primary} size={15} />
           </Pressable>
         ) : null}
         {pushError ? (
-          <Text accessibilityRole="alert" style={styles.pushError}>
-            {pushError}
-          </Text>
+          <Text accessibilityRole="alert" style={styles.pushError}>{pushError}</Text>
         ) : null}
-      </View>
+      </Section>
 
-      {/* App Section */}
-      <Text style={styles.sectionLabel}>App info</Text>
-      <View style={styles.card}>
-        <Detail
-          icon="cellphone"
-          label="Application"
-          value="Nucleus Education"
+      {/* Account */}
+      <Section title="Account">
+        <Detail icon="account-outline" label="Name" value={user?.name ?? "Not available"} />
+        <View style={styles.detailDivider} />
+        <Detail icon="email-outline" label="Email" value={user?.email ?? "Not available"} />
+        <View style={styles.detailDivider} />
+        <Detail icon="shield-account-outline" label="Role" value={roles} />
+        <View style={styles.detailDivider} />
+        <Detail icon="school-outline" label="Institution" value={user?.orgName ?? "Not available"} />
+        <View style={styles.detailDivider} />
+        <DetailAction
+          icon="lock-reset"
+          label="Password"
+          value="Change password"
+          onPress={() => setShowPassword(true)}
         />
-        <View style={styles.divider} />
-        <Detail icon="tag-outline" label="Version" value="1.0.0" />
-        <View style={styles.divider} />
+      </Section>
+
+      {/* About */}
+      <Section title="About">
+        <Detail icon="cellphone" label="Application" value="Nucleus Education" />
+        <View style={styles.detailDivider} />
+        <Detail icon="tag-outline" label="Version" value="1.0.0" last />
+        <View style={styles.detailDivider} />
         <Detail
           icon="server-network-outline"
           label="Server"
           value={API_URL.replace(/^https?:\/\//, "").replace(/\/api\/v1$/, "")}
+          last
         />
-      </View>
+      </Section>
 
-      {/* Danger Zone */}
+      {/* Sign out */}
       <Pressable
         accessibilityRole="button"
         onPress={confirmSignOut}
-        style={({ pressed }) => [
-          styles.button,
-          pressed && styles.buttonPressed,
-        ]}
+        style={({ pressed }) => [styles.signOutButton, pressed && styles.signOutPressed]}
       >
-        <MaterialCommunityIcons
-          name="logout"
-          color={palette.danger}
-          size={20}
-        />
-        <Text style={styles.buttonText}>Sign out</Text>
+        <MaterialCommunityIcons name="logout" color={palette.danger} size={20} />
+        <Text style={styles.signOutText}>Sign out</Text>
       </Pressable>
 
-      <Text style={styles.footer}>
-        Nucleus Education · Secure school management
-      </Text>
+      <Text style={styles.footer}>Nucleus Education · Secure school management</Text>
 
+      {/* Sign-out confirmation modal */}
+      <Modal
+        animationType="fade"
+        transparent
+        visible={showSignOut}
+        onRequestClose={() => setShowSignOut(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.signOutIconWrap}>
+              <MaterialCommunityIcons name="logout" color={palette.danger} size={28} />
+            </View>
+            <Text style={styles.signOutModalTitle}>Sign out?</Text>
+            <Text style={styles.signOutModalText}>
+              You&apos;ll need to sign in again to access your classes, assignments, and school updates.
+            </Text>
+            <View style={styles.modalActions}>
+              <Pressable
+                onPress={() => setShowSignOut(false)}
+                style={({ pressed }) => [styles.modalButton, pressed && { opacity: 0.8 }]}
+              >
+                <Text style={styles.modalButtonText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setShowSignOut(false);
+                  void signOut();
+                }}
+                style={({ pressed }) => [
+                  styles.modalButton,
+                  styles.modalButtonDanger,
+                  pressed && { opacity: 0.85 },
+                ]}
+              >
+                <Text style={styles.modalButtonDangerText}>Sign out</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Change password modal */}
       <Modal
         animationType="fade"
         transparent
@@ -386,16 +463,11 @@ export function Settings() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.modalTitle}>Change password</Text>
                 <Text style={styles.modalText}>
-                  Use at least 8 characters. You&apos;ll be signed out
-                  afterwards.
+                  Use at least 8 characters. You&apos;ll be signed out afterwards.
                 </Text>
               </View>
               <Pressable onPress={closePassword} hitSlop={10}>
-                <MaterialCommunityIcons
-                  name="close"
-                  color={palette.inkSoft}
-                  size={20}
-                />
+                <MaterialCommunityIcons name="close" color={palette.inkSoft} size={20} />
               </Pressable>
             </View>
 
@@ -436,10 +508,7 @@ export function Settings() {
             <View style={styles.modalActions}>
               <Pressable
                 onPress={closePassword}
-                style={({ pressed }) => [
-                  styles.modalButton,
-                  pressed && { opacity: 0.8 },
-                ]}
+                style={({ pressed }) => [styles.modalButton, pressed && { opacity: 0.8 }]}
               >
                 <Text style={styles.modalButtonText}>Cancel</Text>
               </Pressable>
@@ -470,29 +539,124 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: palette.bg,
     flexGrow: 1,
-    padding: 24,
-    paddingBottom: 120, // Clears the bottom tab bar safely
+    paddingHorizontal: 20,
   },
-  title: {
-    color: palette.ink,
-    fontSize: 30,
+
+  /* ---------- Profile header ---------- */
+  hero: {
+    alignItems: "center",
+    backgroundColor: "#9561e8",
+    borderRadius: 24,
+    overflow: "hidden",
+    paddingBottom: 22,
+    paddingTop: 28,
+    position: "relative",
+    shadowColor: "#9561e8",
+    shadowOpacity: 0.22,
+    shadowRadius: 16,
+    shadowOffset: { height: 8, width: 0 },
+    elevation: 6,
+  },
+  heroBlob: {
+    backgroundColor: "#8b5cf6",
+    borderRadius: 120,
+    height: 200,
+    opacity: 0.3,
+    position: "absolute",
+    right: -60,
+    top: -70,
+    width: 200,
+  },
+  heroBlobSmall: {
+    backgroundColor: "#c4b5fd",
+    borderRadius: 60,
+    height: 100,
+    opacity: 0.18,
+    position: "absolute",
+    left: -30,
+    bottom: -30,
+    width: 100,
+  },
+  heroContent: { alignItems: "center", position: "relative", zIndex: 1 },
+  heroAvatar: {
+    borderColor: "rgba(255,255,255,0.4)",
+    borderRadius: 36,
+    borderWidth: 3,
+    height: 72,
+    width: 72,
+  },
+  heroName: {
+    color: "#fff",
+    fontSize: 22,
     fontWeight: "800",
-    letterSpacing: -0.6,
+    letterSpacing: -0.4,
+    marginTop: 12,
+    textAlign: "center",
   },
-  subtitle: {
-    color: palette.inkSoft,
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 6,
-    fontWeight: "500",
+  heroOrg: {
+    color: "#ddd6fe",
+    fontSize: 13,
+    fontWeight: "600",
+    marginTop: 4,
   },
+  heroRoleRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    justifyContent: "center",
+    marginTop: 12,
+  },
+  heroRolePill: {
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  heroRoleText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+
+  /* ---------- Security notice ---------- */
+  noticeCard: {
+    alignItems: "center",
+    backgroundColor: palette.warnSoft,
+    borderColor: "#fde68a",
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 16,
+    padding: 14,
+  },
+  noticePressed: { opacity: 0.85, transform: [{ scale: 0.99 }] },
+  noticeIcon: {
+    alignItems: "center",
+    backgroundColor: "#fef3c7",
+    borderRadius: 10,
+    height: 36,
+    justifyContent: "center",
+    width: 36,
+  },
+  noticeText: {
+    color: "#92400e",
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "600",
+    lineHeight: 17,
+  },
+
+  /* ---------- Section ---------- */
+  section: { marginTop: 26 },
   sectionLabel: {
     color: palette.inkSoft,
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 0.8,
     marginBottom: 10,
-    marginTop: 28,
     textTransform: "uppercase",
   },
   card: {
@@ -507,26 +671,84 @@ const styles = StyleSheet.create({
     shadowOffset: { height: 4, width: 0 },
     elevation: 1,
   },
+
+  /* ---------- Detail rows ---------- */
   detail: {
     alignItems: "center",
     flexDirection: "row",
-    gap: 14,
-    padding: 16,
+    gap: 13,
+    padding: 15,
   },
+  detailBordered: {
+    borderBottomColor: palette.border,
+    borderBottomWidth: 1,
+  },
+  detailPressed: { backgroundColor: palette.primarySoft },
+  detailIcon: {
+    alignItems: "center",
+    backgroundColor: palette.primarySoft,
+    borderRadius: 11,
+    height: 38,
+    justifyContent: "center",
+    width: 38,
+  },
+  detailCopy: { flex: 1 },
+  detailLabel: {
+    color: palette.muted,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  detailValue: {
+    color: palette.ink,
+    fontSize: 14,
+    fontWeight: "600",
+    marginTop: 3,
+  },
+  detailDivider: {
+    backgroundColor: palette.border,
+    height: 1,
+    marginLeft: 66,
+  },
+
+  /* ---------- Locale buttons ---------- */
+  localeActions: {
+    borderTopColor: palette.border,
+    borderTopWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    padding: 12,
+  },
+  localeButton: {
+    alignItems: "center",
+    borderColor: palette.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    flex: 1,
+    paddingVertical: 10,
+  },
+  localeButtonActive: {
+    backgroundColor: palette.primary,
+    borderColor: palette.primary,
+  },
+  localeButtonText: { color: palette.inkSoft, fontSize: 13, fontWeight: "700" },
+  localeButtonTextActive: { color: "#fff" },
+
+  /* ---------- Notification row ---------- */
   notificationRow: {
     alignItems: "center",
     flexDirection: "row",
-    gap: 14,
-    minHeight: 76,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    gap: 13,
+    paddingHorizontal: 15,
+    paddingVertical: 14,
   },
   pushError: {
     color: palette.danger,
     fontSize: 12,
     lineHeight: 17,
     paddingBottom: 14,
-    paddingHorizontal: 16,
+    paddingHorizontal: 15,
   },
   openSettings: {
     alignItems: "center",
@@ -542,39 +764,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
   },
-  detailIcon: {
-    alignItems: "center",
-    backgroundColor: palette.primarySoft,
-    borderRadius: 12,
-    height: 40,
-    justifyContent: "center",
-    width: 40,
-  },
-  detailCopy: { flex: 1 },
-  detailLabel: {
-    color: palette.muted,
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 0.4,
-    textTransform: "uppercase",
-  },
-  detailValue: {
-    color: palette.ink,
-    fontSize: 14,
-    fontWeight: "600",
-    marginTop: 4,
-  },
-  localeActions: { borderTopColor: palette.border, borderTopWidth: 1, flexDirection: "row", gap: 10, padding: 12 },
-  localeButton: { borderColor: palette.border, borderRadius: 12, borderWidth: 1, flex: 1, paddingVertical: 10, alignItems: "center" },
-  localeButtonActive: { backgroundColor: palette.primary, borderColor: palette.primary },
-  localeButtonText: { color: palette.inkSoft, fontSize: 13, fontWeight: "700" },
-  localeButtonTextActive: { color: "#fff" },
-  divider: {
-    backgroundColor: palette.border,
-    height: 1,
-    marginLeft: 70, // Aligns perfectly with the text, skipping the icon
-  },
-  button: {
+
+  /* ---------- Sign out ---------- */
+  signOutButton: {
     alignItems: "center",
     backgroundColor: palette.dangerSoft,
     borderColor: "#fecdd3",
@@ -584,43 +776,26 @@ const styles = StyleSheet.create({
     gap: 8,
     justifyContent: "center",
     marginTop: 32,
-    minHeight: 56,
-    padding: 16,
+    minHeight: 54,
   },
-  buttonPressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.99 }],
-  },
-  buttonText: {
+  signOutPressed: { opacity: 0.8, transform: [{ scale: 0.99 }] },
+  signOutText: {
     color: palette.danger,
     fontSize: 15,
     fontWeight: "800",
   },
+
+  /* ---------- Footer ---------- */
   footer: {
     color: palette.muted,
     fontSize: 11,
-    marginTop: 24,
+    marginTop: 22,
+    marginBottom: 4,
     textAlign: "center",
     fontWeight: "500",
   },
-  noticeCard: {
-    alignItems: "center",
-    backgroundColor: palette.warnSoft,
-    borderColor: "#fde68a",
-    borderRadius: 14,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 18,
-    padding: 13,
-  },
-  noticeText: {
-    color: "#92400e",
-    flex: 1,
-    fontSize: 12,
-    fontWeight: "600",
-    lineHeight: 17,
-  },
+
+  /* ---------- Modal shared ---------- */
   modalBackdrop: {
     alignItems: "center",
     backgroundColor: "rgba(15, 23, 42, 0.45)",
@@ -632,9 +807,36 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 22,
     maxWidth: 460,
-    padding: 20,
+    padding: 22,
     width: "100%",
   },
+
+  /* ---------- Sign-out modal ---------- */
+  signOutIconWrap: {
+    alignItems: "center",
+    backgroundColor: palette.dangerSoft,
+    borderRadius: 18,
+    height: 56,
+    justifyContent: "center",
+    marginBottom: 16,
+    width: 56,
+  },
+  signOutModalTitle: {
+    color: palette.ink,
+    fontSize: 19,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  signOutModalText: {
+    color: palette.inkSoft,
+    fontSize: 13,
+    fontWeight: "500",
+    lineHeight: 19,
+    marginTop: 8,
+    textAlign: "center",
+  },
+
+  /* ---------- Password modal ---------- */
   modalHeading: {
     alignItems: "flex-start",
     flexDirection: "row",
@@ -692,6 +894,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   modalButtonPrimary: { backgroundColor: palette.primary },
+  modalButtonDanger: { backgroundColor: palette.danger },
   modalButtonText: { color: palette.inkSoft, fontSize: 13, fontWeight: "800" },
   modalButtonPrimaryText: { color: "#fff", fontSize: 13, fontWeight: "800" },
+  modalButtonDangerText: { color: "#fff", fontSize: 13, fontWeight: "800" },
 });

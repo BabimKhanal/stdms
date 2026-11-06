@@ -270,7 +270,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 48,
   },
-  profileInitial: { color: "#fff", fontSize: 20, fontWeight: "800" },
   profileCopy: { flex: 1, marginLeft: 12 },
   profileName: { color: "#fff", fontSize: 15, fontWeight: "800" },
   profileMeta: {

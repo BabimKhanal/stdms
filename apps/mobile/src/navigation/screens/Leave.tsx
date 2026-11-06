@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EduApiClient } from "@edu/api-client";
 import { mobileToken, useAuth } from "../../auth";
 import { API_URL } from "../../config";
@@ -84,6 +85,7 @@ const statusTone = {
 
 export function Leave() {
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<LeaveRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -175,7 +177,10 @@ export function Leave() {
 
   return (
     <ScrollView
-      contentContainerStyle={styles.container}
+      contentContainerStyle={[
+        styles.container,
+        { paddingBottom: insets.bottom + 24, paddingTop: insets.top + 12 },
+      ]}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
       refreshControl={
@@ -265,7 +270,7 @@ export function Leave() {
               onChange={(date) => {
                 setFromDate(date);
                 setFromPicker(false);
-                if (date < toDate) setToDate(date);
+                if (date > toDate) setToDate(date);
               }}
               onClose={() => setFromPicker(false)}
               label="Start date"
@@ -386,7 +391,7 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: palette.bg,
     flexGrow: 1,
-    padding: 20,
+    paddingHorizontal: 20,
     paddingBottom: 60,
   },
   hero: {
