@@ -4,6 +4,7 @@ import {
   Image,
   Linking,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -19,7 +20,6 @@ import * as DocumentPicker from "expo-document-picker";
 import { Directory, File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import * as WebBrowser from "expo-web-browser";
-import { Platform } from "react-native";
 import { WebView } from "react-native-webview";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { createMarksheetPdf, type MarksheetResult } from "../../lib/marksheet";
@@ -28,6 +28,7 @@ import { EduApiClient } from "@edu/api-client";
 import { mobileToken, refreshMobileSession, useAuth } from "../../auth";
 import { API_URL } from "../../config";
 import { formatAppDate, useAppLocale } from "../../lib/locale";
+import { ConfirmActionDialog, EmptyState } from "../../components";
 
 type Item = Record<string, unknown>;
 
@@ -232,12 +233,7 @@ function ModuleList({
                     size={18}
                   />
                 </View>
-                <View style={styles.cardTopRight}>
-                  {renderBadge?.(item)}
-                  <Text style={styles.cardIndex}>
-                    {String(index + 1).padStart(2, "0")}
-                  </Text>
-                </View>
+                <View style={styles.cardTopRight}>{renderBadge?.(item)}</View>
               </View>
               <Text style={styles.cardTitle}>{getTitle(item)}</Text>
               <Text style={styles.cardMeta}>{getMeta(item)}</Text>
@@ -246,19 +242,11 @@ function ModuleList({
           ))}
         </View>
       ) : (
-        <View style={styles.emptyCard}>
-          <View style={styles.emptyIcon}>
-            <MaterialCommunityIcons
-              name="inbox-outline"
-              color={palette.muted}
-              size={26}
-            />
-          </View>
-          <Text style={styles.emptyTitle}>{emptyTitle ?? "Nothing here yet"}</Text>
-          <Text style={styles.emptyText}>
-            {emptyText ?? "New activity will appear here when it's available. Check back soon!"}
-          </Text>
-        </View>
+        <EmptyState
+          icon="inbox-outline"
+          title={emptyTitle ?? "Nothing here yet"}
+          description={emptyText ?? "New school work and information will show up here."}
+        />
       )}
     </ScrollView>
     {renderDetail ? (
@@ -786,6 +774,7 @@ function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
     feedback: string | null;
   } | null>(null);
   const [busy, setBusy] = useState<"upload" | "submit" | null>(null);
+  const [confirmReplace, setConfirmReplace] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -875,6 +864,7 @@ function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
         { content: content.trim() || null, fileUrl: attachment?.url ?? null },
       );
       setSaved({ marks: null, feedback: null });
+      setConfirmReplace(false);
       setStatus("✓ Submission saved — nice work!");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Unable to submit");
@@ -989,7 +979,7 @@ function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
 
       <Pressable
         disabled={busy !== null}
-        onPress={() => void submit()}
+        onPress={() => saved ? setConfirmReplace(true) : void submit()}
         style={({ pressed }) => [
           submissionStyles.submitButton,
           pressed && { opacity: 0.9 },
@@ -1012,6 +1002,17 @@ function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
       {status ? (
         <Text style={submissionStyles.submissionStatus}>{status}</Text>
       ) : null}
+      <ConfirmActionDialog
+        visible={confirmReplace}
+        title={saved?.marks === null ? "Replace existing submission?" : "Replace graded submission?"}
+        message="Your current answer or attachment will be replaced by the version shown in this form."
+        consequence={saved?.marks === null ? "The previous submission will no longer be the active version." : "This work has already been graded. Replacing it may invalidate the teacher’s feedback and recorded marks."}
+        confirmLabel="Replace submission"
+        tone={saved?.marks === null ? "warning" : "danger"}
+        busy={busy === "submit"}
+        onCancel={() => setConfirmReplace(false)}
+        onConfirm={() => void submit()}
+      />
     </View>
   );
 }
@@ -1409,7 +1410,7 @@ const submissionStyles = StyleSheet.create({
   },
   feedbackLabel: {
     color: palette.inkSoft,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: "800",
     letterSpacing: 0.6,
     textTransform: "uppercase",
@@ -1582,14 +1583,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#fff",
     borderRadius: 10,
-    height: 38,
+    height: 48,
     justifyContent: "center",
-    width: 38,
+    width: 48,
   },
   errorText: {
     color: palette.danger,
     flex: 1,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "600",
     lineHeight: 18,
   },
@@ -1713,7 +1714,7 @@ const styles = StyleSheet.create({
   summaryStatValue: { fontSize: 19, fontWeight: "800" },
   summaryStatLabel: {
     color: palette.muted,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: "700",
     marginTop: 2,
     textTransform: "uppercase",

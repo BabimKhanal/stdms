@@ -165,10 +165,10 @@ export function Documents() {
                 <Text style={styles.attachedMeta}>{document.documentType}{document.fileName ? ` · ${document.fileName}` : ""}</Text>
               </View>
               <View style={styles.attachedActions}>
-                <Pressable disabled={busy !== null} onPress={() => void previewAttached(document)} accessibilityLabel={`Preview ${document.title}`}>
+                <Pressable accessibilityRole="button" disabled={busy !== null} onPress={() => void previewAttached(document)} accessibilityLabel={`Preview ${document.title}`} style={({ pressed }) => [styles.attachedAction, pressed && styles.pressed]}>
                   <MaterialCommunityIcons name={busy === `preview-${document.id}` ? "loading" : "eye-outline"} color={palette.primary} size={21} />
                 </Pressable>
-                <Pressable disabled={busy !== null} onPress={() => void downloadAttached(document)} accessibilityLabel={`Download ${document.title}`}>
+                <Pressable accessibilityRole="button" disabled={busy !== null} onPress={() => void downloadAttached(document)} accessibilityLabel={`Download ${document.title}`} style={({ pressed }) => [styles.attachedAction, pressed && styles.pressed]}>
                   <MaterialCommunityIcons name={busy === `download-${document.id}` ? "loading" : "download-outline"} color={palette.inkSoft} size={21} />
                 </Pressable>
               </View>
@@ -192,7 +192,7 @@ const styles = StyleSheet.create({
   icon: { alignItems: "center", backgroundColor: palette.primarySoft, borderRadius: 14, height: 48, justifyContent: "center", width: 48 },
   copy: { flex: 1, marginHorizontal: 13 },
   cardTitle: { color: palette.ink, fontSize: 16, fontWeight: "800" },
-  description: { color: palette.inkSoft, fontSize: 12, lineHeight: 18, marginTop: 3 },
+  description: { color: palette.inkSoft, fontSize: 14, lineHeight: 20, marginTop: 3 },
   message: { alignItems: "center", backgroundColor: palette.primarySoft, borderRadius: 14, flexDirection: "row", gap: 8, marginTop: 18, padding: 13 },
   messageText: { color: palette.inkSoft, flex: 1, fontSize: 13, lineHeight: 18 },
   attachedSection: { gap: 10, marginTop: 28 },
@@ -201,6 +201,7 @@ const styles = StyleSheet.create({
   attachedIcon: { alignItems: "center", backgroundColor: palette.primarySoft, borderRadius: 11, height: 42, justifyContent: "center", width: 42 },
   attachedCopy: { flex: 1, minWidth: 0 },
   attachedTitle: { color: palette.ink, fontSize: 14, fontWeight: "800" },
-  attachedMeta: { color: palette.inkSoft, fontSize: 11, marginTop: 3 },
-  attachedActions: { alignItems: "center", flexDirection: "row", gap: 14 },
+  attachedMeta: { color: palette.inkSoft, fontSize: 12, marginTop: 3 },
+  attachedActions: { alignItems: "center", flexDirection: "row", gap: 6 },
+  attachedAction: { alignItems: "center", backgroundColor: palette.primarySoft, borderRadius: 12, height: 44, justifyContent: "center", width: 44 },
 });

@@ -1,6 +1,7 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Text } from "@react-navigation/elements";
 import { Pressable, StyleSheet, View } from "react-native";
+import { useNavigation } from "@react-navigation/native";
 
 const palette = {
   primary: "#7c3aed",
@@ -14,6 +15,7 @@ const palette = {
 };
 
 export function NotFound() {
+  const navigation = useNavigation<any>();
   return (
     <View style={styles.container}>
       <View style={styles.iconWrap}>
@@ -24,7 +26,7 @@ export function NotFound() {
       <Text style={styles.subtitle}>
         The page you&apos;re looking for doesn&apos;t exist or may have moved.
       </Text>
-      <Pressable screen="HomeTabs" style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}>
+      <Pressable accessibilityRole="button" onPress={() => navigation.navigate("HomeTabs")} style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}>
         <MaterialCommunityIcons name="home-outline" color="#fff" size={18} />
         <Text style={styles.buttonText}>Go to Home</Text>
       </Pressable>

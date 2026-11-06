@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EduApiClient } from "@edu/api-client";
 import { mobileToken, useAuth } from "../../auth";
 import { API_URL } from "../../config";
-import { DatePicker } from "../../components";
+import { ConfirmActionDialog, DatePicker } from "../../components";
 
 const palette = {
   primary: "#7c3aed",
@@ -100,6 +100,7 @@ export function Leave() {
   const [fromPicker, setFromPicker] = useState(false);
   const [toPicker, setToPicker] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   const load = useCallback(async (mode: "initial" | "refresh" = "initial") => {
     if (mode === "refresh") setRefreshing(true);
@@ -163,6 +164,7 @@ export function Leave() {
         toDate,
       });
       setMessage("✓ Leave request sent to your class teacher.");
+      setReviewOpen(false);
       setReason("");
       setCustomType("");
       await load("refresh");
@@ -320,7 +322,13 @@ export function Leave() {
 
         <Pressable
           disabled={saving}
-          onPress={() => void submit()}
+          onPress={() => {
+            setError("");
+            if (reason.trim().length < 3) { setError("Please describe the reason in at least 3 characters."); return; }
+            if (type === "custom" && customType.trim().length < 2) { setError("Please name the leave type."); return; }
+            if (!fromDate || !toDate || fromDate > toDate) { setError("Please choose a valid start and end date."); return; }
+            setReviewOpen(true);
+          }}
           style={({ pressed }) => [
             styles.submit,
             (pressed || saving) && { opacity: 0.85 },
@@ -336,6 +344,18 @@ export function Leave() {
           </Text>
         </Pressable>
       </View>
+
+      <ConfirmActionDialog
+        visible={reviewOpen}
+        title="Send leave request?"
+        message="Review the details that will be shared with school staff."
+        consequence="After sending, this mobile screen does not currently allow you to edit or withdraw the request."
+        confirmLabel="Send leave request"
+        busy={saving}
+        onCancel={() => setReviewOpen(false)}
+        onConfirm={() => void submit()}
+        details={<View style={styles.review}><Text style={styles.reviewLabel}>Type</Text><Text style={styles.reviewValue}>{labelFor(type, type === "custom" ? customType.trim() : null)}</Text><Text style={styles.reviewLabel}>Dates</Text><Text style={styles.reviewValue}>{formatDate(fromDate)} → {formatDate(toDate)}</Text><Text style={styles.reviewLabel}>Reason</Text><Text style={styles.reviewValue}>{reason.trim()}</Text></View>}
+      />
 
       <Text style={styles.sectionLabel}>Your requests</Text>
 
@@ -508,6 +528,9 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   submitText: { color: "#fff", fontSize: 14, fontWeight: "800" },
+  review: { backgroundColor: palette.bg, borderColor: palette.border, borderRadius: 14, borderWidth: 1, padding: 12 },
+  reviewLabel: { color: palette.muted, fontSize: 10, fontWeight: "800", letterSpacing: 0.5, marginTop: 7, textTransform: "uppercase" },
+  reviewValue: { color: palette.ink, fontSize: 13, lineHeight: 19, marginTop: 2 },
   sectionLabel: {
     color: palette.inkSoft,
     fontSize: 11,

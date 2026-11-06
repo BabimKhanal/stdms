@@ -11,6 +11,7 @@ import { Badge } from "./ui/badge";
 import { Alert } from "./ui/alert";
 import { useToast } from "./ui/toast";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
+import { ConfirmationDialog } from "./ui/confirmation-dialog";
 type Exam = {
   id: string;
   name: string;
@@ -68,6 +69,7 @@ export function ExamWorkspace({ canManage = true, canApprove = false }: { canMan
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [error, setError] = useState("");
+  const [workflowAction, setWorkflowAction] = useState<"approve" | "publish" | null>(null);
   const [saving, setSaving] = useState(false);
   async function load() {
     try {
@@ -227,6 +229,7 @@ export function ExamWorkspace({ canManage = true, canApprove = false }: { canMan
       await load();
       await openExam(updated);
       toast.success("Results published", "Learners and guardians can now view this exam.");
+      setWorkflowAction(null);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Unable to publish results",
@@ -246,6 +249,7 @@ export function ExamWorkspace({ canManage = true, canApprove = false }: { canMan
       await load();
       await openExam(updated);
       toast.success("Examination approved", "Marks are locked and the results can now be published.");
+      setWorkflowAction(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to approve examination");
     } finally {
@@ -498,7 +502,7 @@ export function ExamWorkspace({ canManage = true, canApprove = false }: { canMan
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => void approveExam()}
+                    onClick={() => setWorkflowAction("approve")}
                     disabled={saving}
                   >
                     {saving ? "Approving..." : "Approve & lock"}
@@ -507,7 +511,7 @@ export function ExamWorkspace({ canManage = true, canApprove = false }: { canMan
                 {selected.status === "completed" && canApprove && (
                   <Button
                     size="sm"
-                    onClick={() => void publishExam()}
+                    onClick={() => setWorkflowAction("publish")}
                     disabled={saving}
                   >
                     {saving ? "Publishing..." : "Publish results"}
@@ -675,6 +679,7 @@ export function ExamWorkspace({ canManage = true, canApprove = false }: { canMan
         </Card>
       </div>
       <GradingScalePanel canManage={canManage} />
+      <ConfirmationDialog open={Boolean(workflowAction)} title={workflowAction === "approve" ? "Approve and lock marks?" : "Publish results now?"} description={selected?.name} consequence={workflowAction === "approve" ? "Approval locks mark editing. Verify all subject marks before continuing." : "Results become visible to learners and guardians immediately and cannot currently be unpublished."} confirmLabel={workflowAction === "approve" ? "Approve and lock" : "Publish results"} tone={workflowAction === "publish" ? "danger" : "warning"} busy={saving} onClose={() => setWorkflowAction(null)} onConfirm={() => workflowAction === "approve" ? void approveExam() : void publishExam()} />
     </div>
   );
 }

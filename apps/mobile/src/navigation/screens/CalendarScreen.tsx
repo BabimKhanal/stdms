@@ -9,7 +9,6 @@ import {
   Text,
   View,
 } from "react-native";
-import { Calendar as RNCalendar, type CalendarProps, type DateData } from "react-native-calendars";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -18,7 +17,6 @@ import {
   BS_WEEKDAYS_NE,
   SCHOOL_EVENT_COLORS,
   addBsMonths,
-  addCalendarDays,
   adToBs,
   bsMonthAdRange,
   bsMonthGrid,
@@ -32,6 +30,7 @@ import { EduApiClient } from "@edu/api-client";
 import { mobileToken, refreshMobileSession } from "../../auth";
 import { API_URL } from "../../config";
 import { formatAppDate, useAppLocale } from "../../lib/locale";
+import { loadTrisambatHolidays } from "../../lib/trisambat";
 
 const palette = {
   primary: "#7c3aed",
@@ -44,10 +43,20 @@ const palette = {
   border: "#e2e8f0",
 };
 
+const calendarColors = {
+  holiday: "#dc2626",
+  holidaySoft: "#fff1f2",
+  observance: "#ea580c",
+  observanceSoft: "#fff7ed",
+  selected: "#20833b",
+  todaySoft: "#f0fdf4",
+};
+
 type CalendarEventItem = Omit<CalendarEvent, "imageUrl" | "eventType"> & {
   imageUrl?: string | null;
   eventType?: CalendarEvent["eventType"];
   source?: "school" | "trisambat";
+  isPublicHoliday?: boolean;
 };
 
 type Filter = "all" | CalendarEvent["eventType"];
@@ -70,75 +79,94 @@ function timeRange(event: CalendarEventItem) {
   return `${event.startTime}${event.endTime ? ` - ${event.endTime}` : ""}`;
 }
 
-type DayComponentProps = {
-  date?: import("react-native-calendars").DateData;
-  state?: string;
-  marking?: { selected?: boolean; dots?: { key?: string; color: string }[]; disableTouchEvent?: boolean };
-  onPress?: (date: import("react-native-calendars").DateData) => void;
-};
+type MonthCell = { adDate: string; primaryDate: string; secondaryDate: string } | null;
 
-function MobileCalendarDay({ date, state, marking, onPress }: DayComponentProps) {
-  if (!date) return null;
-  const selected = state === "selected" || Boolean(marking?.selected);
-  const isToday = state === "today";
-  const dots = marking?.dots ?? [];
-  const isHoliday = dots.some((dot) => dot.color === SCHOOL_EVENT_COLORS.holiday);
-  const hasEvents = dots.length > 0;
-  // Border color: prioritize holiday, then first event color
-  const eventColor = isHoliday
-    ? SCHOOL_EVENT_COLORS.holiday
-    : dots[0]?.color ?? palette.border;
-  const label = `${date.dateString}${isHoliday ? ", public holiday" : hasEvents ? `, ${dots.length} events` : ""}`;
+function pad(value: number) {
+  return String(value).padStart(2, "0");
+}
 
+function adMonthGrid(year: number, month: number, locale: "en" | "ne"): MonthCell[][] {
+  const length = new Date(year, month, 0).getDate();
+  const leading = new Date(year, month - 1, 1, 12).getDay();
+  const number = new Intl.NumberFormat(locale === "ne" ? "ne-NP" : "en-US", { useGrouping: false });
+  const cells: MonthCell[] = Array.from({ length: leading }, () => null);
+  for (let date = 1; date <= length; date += 1) {
+    const adDate = `${year}-${pad(month)}-${pad(date)}`;
+    const bs = adToBs(adDate);
+    cells.push({ adDate, primaryDate: number.format(date), secondaryDate: bs ? number.format(bs.date) : "" });
+  }
+  while (cells.length % 7) cells.push(null);
+  const weeks: MonthCell[][] = [];
+  for (let index = 0; index < cells.length; index += 7) weeks.push(cells.slice(index, index + 7));
+  return weeks;
+}
+
+function addAdMonths(year: number, month: number, amount: number) {
+  const date = new Date(year, month - 1 + amount, 1, 12);
+  return { year: date.getFullYear(), month: date.getMonth() + 1 };
+}
+
+function dayTone(items: CalendarEventItem[]) {
+  const officialHoliday = items.some((event) => event.eventType === "holiday" && (event.source !== "trisambat" || event.isPublicHoliday));
+  const observance = items.some((event) => event.eventType === "holiday" && event.source === "trisambat" && !event.isPublicHoliday);
+  return { officialHoliday, observance, primaryEvent: items.find((event) => event.eventType === "holiday") ?? items[0] };
+}
+
+function CalendarMonthCell({
+  cell,
+  dayIndex,
+  items,
+  selected,
+  today,
+  onPress,
+}: {
+  cell: NonNullable<MonthCell>;
+  dayIndex: number;
+  items: CalendarEventItem[];
+  selected: boolean;
+  today: string;
+  onPress: () => void;
+}) {
+  const { officialHoliday, observance, primaryEvent } = dayTone(items);
+  const weekend = dayIndex === 0 || dayIndex === 6;
+  const red = officialHoliday || weekend;
   return (
-    <View style={styles.dayWrap}>
-      <Pressable
-        onPress={() => onPress?.(date)}
-        disabled={state === "disabled" || marking?.disableTouchEvent}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        accessibilityState={{ selected }}
-        style={[
-          styles.dayCell,
-          selected && styles.dayCellSelected,
-          !selected && isHoliday && styles.dayCellHoliday,
-          !selected && hasEvents && { borderColor: eventColor, borderWidth: 2 },
-          !selected && !hasEvents && isToday && styles.dayCellToday,
-        ]}
-      >
-        <Text style={[
-          styles.dayNumber,
-          selected && styles.dayNumberSelected,
-          !selected && isHoliday && styles.dayNumberHoliday,
-          !selected && !isHoliday && hasEvents && { color: eventColor, fontWeight: "700" },
-          !selected && isToday && !hasEvents && styles.dayNumberToday,
-        ]}>
-          {date.day}
-        </Text>
-        {dots.length ? (
-          <View style={styles.dayDots}>
-            {dots.slice(0, 3).map((dot, index) => (
-              <View
-                key={dot.key ?? index}
-                style={[styles.dayDot, { backgroundColor: selected ? "#ffffff" : dot.color }]}
-              />
-            ))}
-          </View>
-        ) : null}
-      </Pressable>
-    </View>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${cell.adDate}${primaryEvent ? `, ${primaryEvent.title}` : ""}`}
+      accessibilityState={{ selected }}
+      style={[
+        styles.monthDayCell,
+        selected && styles.monthDayCellSelected,
+        !selected && officialHoliday && styles.monthDayCellHoliday,
+        !selected && !officialHoliday && observance && styles.monthDayCellObservance,
+        cell.adDate === today && !selected && styles.monthDayCellToday,
+      ]}
+    >
+      <Text style={[styles.monthSecondaryDate, !selected && red && styles.monthHolidayText, !selected && !red && observance && styles.monthObservanceText, selected && styles.monthSelectedText]}>{cell.secondaryDate}</Text>
+      <Text style={[styles.monthPrimaryDate, !selected && red && styles.monthHolidayText, !selected && !red && observance && styles.monthObservanceText, cell.adDate === today && !selected && styles.monthTodayText, selected && styles.monthSelectedText]}>{cell.primaryDate}</Text>
+      <Text numberOfLines={2} style={[styles.monthEventLabel, !selected && officialHoliday && styles.monthHolidayText, !selected && !officialHoliday && observance && styles.monthObservanceText, selected && styles.monthSelectedText]}>
+        {primaryEvent ? `${primaryEvent.title}${items.length > 1 ? ` +${items.length - 1}` : ""}` : " "}
+      </Text>
+    </Pressable>
   );
 }
 
 export function Calendar() {
   const insets = useSafeAreaInsets();
   const locale = useAppLocale();
-  const [events, setEvents] = useState<CalendarEventItem[]>([]);
+  const [schoolEvents, setSchoolEvents] = useState<CalendarEventItem[]>([]);
+  const [holidayEvents, setHolidayEvents] = useState<CalendarEventItem[]>([]);
   const [selectedDay, setSelectedDay] = useState(localDateKey());
-  const [system, setSystem] = useState<"ad" | "bs">("ad");
+  const [system, setSystem] = useState<"ad" | "bs">("bs");
   const [visibleBs, setVisibleBs] = useState(() => {
     const bs = adToBs(localDateKey());
     return { year: bs?.year ?? 2083, month: bs?.month ?? 1 };
+  });
+  const [visibleAd, setVisibleAd] = useState(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() + 1 };
   });
   const [filter, setFilter] = useState<Filter>("all");
   const [loading, setLoading] = useState(true);
@@ -161,7 +189,7 @@ export function Calendar() {
         if (!token) throw new Error("Session expired. Please sign in again.");
         result = await fetchEvents();
       }
-      setEvents(result.data ?? []);
+      setSchoolEvents(result.data ?? []);
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load the school calendar.");
@@ -178,47 +206,48 @@ export function Calendar() {
     }, [load]),
   );
 
+  const events = useMemo(() => [...schoolEvents, ...holidayEvents], [schoolEvents, holidayEvents]);
+
   const filtered = useMemo(
     () => events.filter((event) => filter === "all" || (event.eventType ?? "event") === filter),
     [events, filter],
   );
 
-  const markedDates = useMemo(() => {
-    const marks: Record<string, { dots: { key: string; color: string }[]; selected?: boolean; selectedColor?: string }> = {};
-    for (const event of filtered) {
-      const last = event.endDate && event.endDate >= event.startDate ? event.endDate : event.startDate;
-      let day = event.startDate;
-      let guard = 0;
-      while (day <= last && guard < 400) {
-        marks[day] ??= { dots: [] };
-        const color = SCHOOL_EVENT_COLORS[event.eventType ?? "event"];
-        if (!marks[day].dots.some((dot) => dot.key === event.id)) {
-          marks[day].dots.push({ key: event.id, color });
-        }
-        day = addCalendarDays(day, 1);
-        guard += 1;
-      }
-    }
-    marks[selectedDay] = { ...(marks[selectedDay] ?? { dots: [] }), selected: true, selectedColor: palette.primary };
-    return marks;
-  }, [filtered, selectedDay]);
-
   const dayEvents = useMemo(() => eventsOnDay(filtered, selectedDay), [filtered, selectedDay]);
   const bsWeeks = useMemo(() => bsMonthGrid(visibleBs.year, visibleBs.month), [visibleBs.year, visibleBs.month]);
+  const adWeeks = useMemo(() => adMonthGrid(visibleAd.year, visibleAd.month, locale), [locale, visibleAd.month, visibleAd.year]);
   const bsRange = bsMonthAdRange(visibleBs.year, visibleBs.month);
   const today = localDateKey();
 
   useEffect(() => {
     const bs = adToBs(selectedDay);
     if (bs) setVisibleBs({ year: bs.year, month: bs.month });
+    const [year, month] = selectedDay.split("-").map(Number);
+    if (year && month) setVisibleAd({ year, month });
   }, [selectedDay]);
 
   useEffect(() => {
     if (locale === "ne") setSystem("bs");
   }, [locale]);
 
+  useEffect(() => {
+    let active = true;
+    void loadTrisambatHolidays(visibleBs.year, locale).then((items) => {
+      if (active) setHolidayEvents(items);
+    });
+    return () => {
+      active = false;
+    };
+  }, [locale, visibleBs.year]);
+
   function moveBsMonth(amount: number) {
     setVisibleBs((current) => addBsMonths(current.year, current.month, amount));
+  }
+
+  function moveAdMonth(amount: number) {
+    const next = addAdMonths(visibleAd.year, visibleAd.month, amount);
+    setVisibleAd(next);
+    setSelectedDay(`${next.year}-${pad(next.month)}-01`);
   }
 
   return (
@@ -330,85 +359,74 @@ export function Calendar() {
               </View>
 
               <View style={styles.bsWeekRow}>
-                {(locale === "ne" ? BS_WEEKDAYS_NE : BS_WEEKDAYS_EN).map((weekday) => (
-                  <Text key={weekday} style={styles.bsWeekday}>{weekday}</Text>
+                {(locale === "ne" ? BS_WEEKDAYS_NE : BS_WEEKDAYS_EN).map((weekday, index) => (
+                  <Text key={weekday} style={[styles.bsWeekday, (index === 0 || index === 6) && styles.bsWeekdayHoliday]}>{weekday}</Text>
                 ))}
               </View>
 
               {bsWeeks.map((week, weekIndex) => (
                 <View key={`bs-week-${weekIndex}`} style={styles.bsWeekRow}>
                   {week.map((cell, dayIndex) => {
-                    if (!cell) return <View key={`bs-blank-${weekIndex}-${dayIndex}`} style={styles.bsDayCell} />;
+                    if (!cell) return <View key={`bs-blank-${weekIndex}-${dayIndex}`} style={styles.monthDayCell} />;
                     const items = eventsOnDay(filtered, cell.adDate);
-                    const selected = cell.adDate === selectedDay;
-                    const isHoliday = items.some((e) => (e.eventType ?? "event") === "holiday");
-                    const hasEvents = items.length > 0;
-                    const eventColor = isHoliday
-                      ? SCHOOL_EVENT_COLORS.holiday
-                      : items[0] ? SCHOOL_EVENT_COLORS[items[0].eventType ?? "event"] : palette.border;
                     return (
-                      <Pressable
+                      <CalendarMonthCell
                         key={cell.adDate}
+                        cell={{
+                          adDate: cell.adDate,
+                          primaryDate: new Intl.NumberFormat(locale === "ne" ? "ne-NP" : "en-US", { useGrouping: false }).format(cell.bsDate.date),
+                          secondaryDate: String(Number(cell.adDate.slice(8, 10))),
+                        }}
+                        dayIndex={dayIndex}
+                        items={items}
+                        selected={cell.adDate === selectedDay}
+                        today={today}
                         onPress={() => setSelectedDay(cell.adDate)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`${formatBsDate(cell.adDate, locale)}${items.length ? `, ${items.length} events` : ""}`}
-                        accessibilityState={{ selected }}
-                        style={[
-                          styles.bsDayCell,
-                          selected && styles.bsDayCellSelected,
-                          !selected && isHoliday && { backgroundColor: "#ecfdf5" },
-                          !selected && hasEvents && { borderColor: eventColor, borderWidth: 2 },
-                          cell.adDate === today && !selected && !hasEvents && styles.bsDayCellToday,
-                        ]}
-                      >
-                        <Text style={[
-                          styles.bsDayNumber,
-                          selected && styles.bsDayNumberSelected,
-                          !selected && isHoliday && { color: SCHOOL_EVENT_COLORS.holiday },
-                          !selected && !isHoliday && hasEvents && { color: eventColor, fontWeight: "700" },
-                          cell.adDate === today && !selected && !hasEvents && styles.bsDayNumberToday,
-                        ]}>
-                          {cell.bsDate.date}
-                        </Text>
-                        <View style={styles.bsDots}>
-                          {items.slice(0, 3).map((event) => (
-                            <View key={event.id} style={[styles.bsDot, { backgroundColor: SCHOOL_EVENT_COLORS[event.eventType ?? "event"] }]} />
-                          ))}
-                        </View>
-                      </Pressable>
+                      />
                     );
                   })}
                 </View>
               ))}
+              <View style={styles.bsAttribution}>
+                <MaterialCommunityIcons name="calendar-check-outline" size={12} color={palette.muted} />
+                <Text style={styles.bsAttributionText}>Nepali festivals and holidays powered by Trisambat</Text>
+              </View>
             </View>
           ) : (
             <View style={styles.calendarCard}>
-              <RNCalendar
-                current={selectedDay}
-                onDayPress={(day: DateData) => setSelectedDay(day.dateString)}
-                markedDates={markedDates}
-                markingType="multi-dot"
-                enableSwipeMonths
-                dayComponent={MobileCalendarDay}
-                theme={{
-                  calendarBackground: "#ffffff",
-                  textSectionTitleColor: palette.muted,
-                  selectedDayBackgroundColor: palette.primary,
-                  selectedDayTextColor: "#ffffff",
-                  todayTextColor: palette.primary,
-                  dayTextColor: palette.inkSoft,
-                  textDisabledColor: "#cbd5e1",
-                  arrowColor: palette.primary,
-                  monthTextColor: palette.ink,
-                  textMonthFontWeight: "700",
-                  textDayFontSize: 13,
-                  textMonthFontSize: 16,
-                  textDayHeaderFontSize: 11,
-                  dotColor: palette.primary,
-                  selectedDotColor: "#ffffff",
-                }}
-                style={styles.calendar}
-              />
+              <View style={styles.bsHeader}>
+                <View style={styles.bsTitleBlock}>
+                  <Text style={styles.bsTitle}>{new Date(visibleAd.year, visibleAd.month - 1, 1).toLocaleDateString(locale === "ne" ? "ne-NP" : "en-US", { month: "long", year: "numeric" })}</Text>
+                  <Text style={styles.bsRange}>{formatBsDate(`${visibleAd.year}-${pad(visibleAd.month)}-01`, locale)} B.S.</Text>
+                </View>
+                <View style={styles.bsNav}>
+                  <Pressable onPress={() => moveAdMonth(-1)} style={styles.bsNavButton} accessibilityRole="button" accessibilityLabel="Previous month">
+                    <MaterialCommunityIcons name="chevron-left" size={19} color={palette.inkSoft} />
+                  </Pressable>
+                  <Pressable onPress={() => setSelectedDay(today)} style={styles.bsTodayButton} accessibilityRole="button">
+                    <Text style={styles.bsTodayText}>Today</Text>
+                  </Pressable>
+                  <Pressable onPress={() => moveAdMonth(1)} style={styles.bsNavButton} accessibilityRole="button" accessibilityLabel="Next month">
+                    <MaterialCommunityIcons name="chevron-right" size={19} color={palette.inkSoft} />
+                  </Pressable>
+                </View>
+              </View>
+              <View style={styles.bsWeekRow}>
+                {(locale === "ne" ? BS_WEEKDAYS_NE : BS_WEEKDAYS_EN).map((weekday, index) => (
+                  <Text key={weekday} style={[styles.bsWeekday, (index === 0 || index === 6) && styles.bsWeekdayHoliday]}>{weekday}</Text>
+                ))}
+              </View>
+              {adWeeks.map((week, weekIndex) => (
+                <View key={`ad-week-${weekIndex}`} style={styles.bsWeekRow}>
+                  {week.map((cell, dayIndex) => cell ? (
+                    <CalendarMonthCell key={cell.adDate} cell={cell} dayIndex={dayIndex} items={eventsOnDay(filtered, cell.adDate)} selected={cell.adDate === selectedDay} today={today} onPress={() => setSelectedDay(cell.adDate)} />
+                  ) : <View key={`ad-blank-${weekIndex}-${dayIndex}`} style={styles.monthDayCell} />)}
+                </View>
+              ))}
+              <View style={styles.bsAttribution}>
+                <MaterialCommunityIcons name="palette-outline" size={12} color={calendarColors.observance} />
+                <Text style={styles.bsAttributionText}>Red: holidays and weekends · Orange: festivals</Text>
+              </View>
             </View>
           )}
 
@@ -435,7 +453,7 @@ export function Calendar() {
                     <View style={styles.eventCopy}>
                       <View style={styles.eventMetaRow}>
                         <Text style={[styles.eventType, { color }]}>{capitalize(event.eventType ?? "event")}</Text>
-                        {event.source === "trisambat" ? <Text style={styles.publicHoliday}>Public holiday</Text> : null}
+                        {event.source === "trisambat" ? <Text style={styles.publicHoliday}>{event.isPublicHoliday ? "Public holiday" : "Festival / observance"}</Text> : null}
                       </View>
                       <Text style={styles.eventTitle}>{event.title}</Text>
                     </View>
@@ -475,7 +493,7 @@ export function Calendar() {
 }
 
 const styles = StyleSheet.create({
-  container: { paddingHorizontal: 20 },
+  container: { paddingHorizontal: 14 },
   eyebrow: { color: palette.primary, fontSize: 12, fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase" },
   title: { color: palette.ink, fontSize: 28, fontWeight: "800", letterSpacing: -0.5, marginTop: 6 },
   subtitle: { color: palette.muted, fontSize: 14, lineHeight: 21, marginTop: 6, marginBottom: 16 },
@@ -500,26 +518,32 @@ const styles = StyleSheet.create({
   todayText: { color: palette.primary, fontSize: 11, fontWeight: "700" },
   loadingBox: { alignItems: "center", backgroundColor: "#ffffff", borderColor: palette.border, borderRadius: 22, borderWidth: 1, gap: 8, paddingVertical: 48 },
   loadingText: { color: palette.muted, fontSize: 12 },
-  calendarCard: { backgroundColor: "#ffffff", borderColor: palette.border, borderRadius: 22, borderWidth: 1, overflow: "hidden", paddingBottom: 6 },
+  calendarCard: { backgroundColor: "#ffffff", borderColor: "#d9dee7", borderRadius: 16, borderWidth: 1, overflow: "hidden", paddingBottom: 0 },
   calendar: { paddingHorizontal: 4 },
-  bsHeader: { alignItems: "center", borderBottomColor: "#f1f5f9", borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 10 },
+  bsHeader: { alignItems: "center", backgroundColor: "#fffdf9", borderBottomColor: "#d9dee7", borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 12 },
   bsTitleBlock: { flex: 1 },
-  bsTitle: { color: palette.ink, fontSize: 15, fontWeight: "800" },
+  bsTitle: { color: "#c62828", fontSize: 18, fontWeight: "900" },
   bsRange: { color: palette.muted, fontSize: 10, marginTop: 2 },
   bsNav: { alignItems: "center", flexDirection: "row", gap: 4 },
   bsNavButton: { alignItems: "center", borderColor: palette.border, borderRadius: 9, borderWidth: 1, height: 30, justifyContent: "center", width: 30 },
   bsTodayButton: { backgroundColor: palette.primarySoft, borderRadius: 9, paddingHorizontal: 9, paddingVertical: 6 },
   bsTodayText: { color: palette.primary, fontSize: 10, fontWeight: "800" },
-  bsWeekRow: { flexDirection: "row", paddingHorizontal: 6 },
-  bsWeekday: { color: "#94a3b8", flex: 1, fontSize: 9, fontWeight: "800", paddingVertical: 7, textAlign: "center", textTransform: "uppercase" },
-  bsDayCell: { alignItems: "center", borderColor: "transparent", borderRadius: 10, borderWidth: 1, flex: 1, height: 42, justifyContent: "center", margin: 1 },
-  bsDayCellSelected: { backgroundColor: palette.primary, borderColor: palette.primary },
-  bsDayCellToday: { borderColor: palette.primary },
-  bsDayNumber: { color: palette.inkSoft, fontSize: 12, fontWeight: "600" },
+  bsWeekRow: { flexDirection: "row" },
+  bsWeekday: { backgroundColor: "#fff", borderBottomColor: "#d9dee7", borderBottomWidth: 1, color: "#475569", flex: 1, fontSize: 10, fontWeight: "900", paddingVertical: 9, textAlign: "center" },
+  bsWeekdayHoliday: { color: "#dc2626" },
+  bsDayCell: { alignItems: "center", borderBottomColor: "#d9dee7", borderBottomWidth: StyleSheet.hairlineWidth, borderRightColor: "#d9dee7", borderRightWidth: StyleSheet.hairlineWidth, flex: 1, height: 76, justifyContent: "flex-start", paddingHorizontal: 2, paddingTop: 4, position: "relative" },
+  bsDayCellSelected: { backgroundColor: "#20833b", borderColor: "#20833b" },
+  bsDayCellHoliday: { backgroundColor: "#fffafa" },
+  bsDayCellToday: { backgroundColor: "#f0fdf4", borderColor: "#20833b", borderWidth: 1.5 },
+  bsAdNumber: { alignSelf: "flex-end", color: "#64748b", fontSize: 8, fontWeight: "700", lineHeight: 10, marginRight: 2 },
+  bsDayNumber: { color: "#1f2937", fontSize: 19, fontWeight: "700", lineHeight: 24 },
   bsDayNumberSelected: { color: "#ffffff", fontWeight: "800" },
-  bsDayNumberToday: { color: palette.primary, fontWeight: "800" },
-  bsDots: { flexDirection: "row", gap: 2, height: 5, marginTop: 2 },
-  bsDot: { borderRadius: 2, height: 4, width: 4 },
+  bsDayNumberToday: { color: "#20833b", fontWeight: "900" },
+  bsHolidayText: { color: "#dc2626" },
+  bsEventLabel: { color: "#64748b", fontSize: 7.5, fontWeight: "700", lineHeight: 9, marginTop: 1, minHeight: 18, paddingHorizontal: 1, textAlign: "center", width: "100%" },
+  bsEventLabelSelected: { color: "#ffffff" },
+  bsAttribution: { alignItems: "center", backgroundColor: "#f8fafc", flexDirection: "row", gap: 5, justifyContent: "center", paddingVertical: 7 },
+  bsAttributionText: { color: palette.muted, fontSize: 9, fontWeight: "600" },
   dayHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginBottom: 10, marginTop: 18 },
   dayTitle: { color: palette.ink, flex: 1, fontSize: 16, fontWeight: "800" },
   dayCount: { color: palette.muted, fontSize: 11, fontWeight: "600" },
@@ -539,12 +563,12 @@ const styles = StyleSheet.create({
   emptyTitle: { color: palette.inkSoft, fontSize: 14, fontWeight: "700", marginTop: 4 },
   emptyText: { color: palette.muted, fontSize: 12, paddingHorizontal: 24, textAlign: "center" },
   // AD calendar custom day component styles
-  dayWrap: { alignItems: "center", flex: 1, paddingVertical: 2 },
-  dayCell: { alignItems: "center", borderColor: "transparent", borderRadius: 20, borderWidth: 1, height: 36, justifyContent: "center", width: 36 },
+  dayWrap: { alignItems: "center", flex: 1, paddingVertical: 1 },
+  dayCell: { alignItems: "center", borderColor: "transparent", borderRadius: 22, borderWidth: 1, height: 44, justifyContent: "center", width: 44 },
   dayCellSelected: { backgroundColor: palette.primary, borderColor: palette.primary },
   dayCellHoliday: { backgroundColor: "#ecfdf5" },
   dayCellToday: { borderColor: palette.primary },
-  dayNumber: { color: palette.inkSoft, fontSize: 13, fontWeight: "600" },
+  dayNumber: { color: palette.inkSoft, fontSize: 15, fontWeight: "700" },
   dayNumberSelected: { color: "#ffffff", fontWeight: "800" },
   dayNumberHoliday: { color: "#059669" },
   dayNumberToday: { color: palette.primary, fontWeight: "800" },

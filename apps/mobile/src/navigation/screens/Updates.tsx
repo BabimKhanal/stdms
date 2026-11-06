@@ -13,6 +13,7 @@ import {
 import { useFocusEffect } from "@react-navigation/native";
 import { API_URL } from "../../config";
 import { mobileToken } from "../../auth";
+import { EmptyState } from "../../components";
 
 type Notification = {
   id: string;
@@ -339,25 +340,13 @@ export function Updates() {
                 </Pressable>
               ))
             ) : (
-              <View style={styles.empty}>
-                <View style={styles.emptyIcon}>
-                  <MaterialCommunityIcons
-                    name="bell-sleep-outline"
-                    color={palette.primary}
-                    size={28}
-                  />
-                </View>
-                <Text style={styles.emptyTitle}>
-                  {filter === "unread"
-                    ? "All caught up"
-                    : "Nothing new right now"}
-                </Text>
-                <Text style={styles.emptyText}>
-                  {filter === "unread"
-                    ? "You have read every update. Switch to All to see your full inbox."
-                    : "We&apos;ll let you know when there are new notices, grades, or school announcements."}
-                </Text>
-              </View>
+              <EmptyState
+                icon="bell-sleep-outline"
+                title={filter === "unread" ? "You’re all caught up!" : "No new updates"}
+                description={filter === "unread" ? "You read everything. Tap “All” to look at older updates." : "New notices, results, and school messages will show up here."}
+                actionLabel={filter === "unread" ? "Show all updates" : undefined}
+                onAction={filter === "unread" ? () => setFilter("all") : undefined}
+              />
             )}
           </>
         )}
@@ -495,8 +484,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 6,
     marginTop: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    minHeight: 48,
+    paddingHorizontal: 14,
   },
   pressedMarkAll: { opacity: 0.7, transform: [{ scale: 0.97 }] },
   markAllText: {
@@ -517,7 +506,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: 11,
     justifyContent: "center",
-    minHeight: 40,
+    minHeight: 48,
     paddingHorizontal: 14,
   },
   filterSelected: {
@@ -528,7 +517,7 @@ const styles = StyleSheet.create({
     shadowOffset: { height: 1, width: 0 },
     elevation: 1,
   },
-  filterText: { color: palette.inkSoft, fontSize: 12, fontWeight: "700" },
+  filterText: { color: palette.inkSoft, fontSize: 14, fontWeight: "700" },
   filterTextSelected: { color: palette.primary },
   errorBox: {
     alignItems: "center",
@@ -544,7 +533,7 @@ const styles = StyleSheet.create({
   errorText: {
     color: palette.danger,
     flex: 1,
-    fontSize: 12,
+    fontSize: 14,
     lineHeight: 18,
     fontWeight: "600",
   },
@@ -603,7 +592,7 @@ const styles = StyleSheet.create({
   },
   date: {
     color: palette.muted,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "600",
     marginTop: 3,
   },
@@ -624,7 +613,7 @@ const styles = StyleSheet.create({
   },
   tapHint: {
     color: palette.primary,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "700",
   },
 

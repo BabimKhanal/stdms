@@ -1,5 +1,5 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { Text } from "@react-navigation/elements";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -11,7 +11,6 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EduApiClient } from "@edu/api-client";
 import { mobileToken, useAuth } from "../../auth";
@@ -19,6 +18,7 @@ import { API_URL } from "../../config";
 import { NotificationBell } from "../components/NotificationBell";
 import { ProfileAvatar } from "../../components/ProfileAvatar";
 import { formatAppDate, useAppLocale } from "../../lib/locale";
+import { ActionRow } from "../../components";
 
 /* ---------- types ---------- */
 type Notice = {
@@ -664,17 +664,17 @@ export function Home() {
         {canViewDashboard && workflowActions.length ? (
           <>
             <SectionHeading
-              title="Today's workflow"
-              action="Open tools"
+              title="Things to do"
+              action="See more"
               onPress={() =>
                 navigation.navigate("HomeTabs", { screen: "More" })
               }
             />
             <View style={styles.quickGrid}>
               {workflowActions.map((action) => (
-                <QuickAction
+                <ActionRow
                   key={action.label}
-                  label={action.label}
+                  title={action.label}
                   description={action.description}
                   icon={action.icon}
                   onPress={action.onPress}
@@ -958,38 +958,6 @@ function Metric({
   );
 }
 
-function QuickAction({
-  label,
-  description,
-  icon,
-  onPress,
-}: {
-  label: string;
-  description?: string;
-  icon: IconName;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={description ? `${label}, ${description}` : label}
-      style={({ pressed }) => [styles.quick, pressed && styles.pressedSoft]}
-    >
-      <View style={styles.quickIcon}>
-        <MaterialCommunityIcons name={icon} color={palette.primary} size={22} />
-      </View>
-      <View style={styles.quickCopy}>
-        <Text style={styles.quickLabel}>{label}</Text>
-        {description ? (
-          <Text style={styles.quickDescription}>{description}</Text>
-        ) : null}
-      </View>
-       <MaterialCommunityIcons name="chevron-right" color="#64748b" size={18} />
-    </Pressable>
-  );
-}
-
 /* ---------- styles ---------- */
 const styles = StyleSheet.create({
   container: { backgroundColor: palette.bg, padding: 18, paddingBottom: 48 },
@@ -1024,11 +992,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#ede9fe",
     borderColor: palette.primaryBorder,
-    borderRadius: 20,
+    borderRadius: 24,
     borderWidth: 1.5,
-    height: 40,
+    height: 48,
     justifyContent: "center",
-    width: 40,
+    width: 48,
   },
   refreshPill: {
     alignItems: "center",
@@ -1086,7 +1054,7 @@ const styles = StyleSheet.create({
   },
   heroBadgeText: {
     color: "#fff",
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: "800",
     letterSpacing: 1,
   },
@@ -1105,8 +1073,8 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     color: "#ddd6fe",
-    fontSize: 13,
-    lineHeight: 20,
+    fontSize: 15,
+    lineHeight: 22,
     marginTop: 10,
     maxWidth: 280,
   },
@@ -1145,7 +1113,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: -0.3,
   },
-  sectionAction: { color: palette.primary, fontSize: 12, fontWeight: "800" },
+  sectionAction: { color: palette.primary, fontSize: 14, fontWeight: "800", paddingVertical: 10 },
 
   // Metric grid
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 11, marginTop: 12 },
@@ -1178,7 +1146,7 @@ const styles = StyleSheet.create({
   },
   cardLabel: {
     color: palette.muted,
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "700",
     marginTop: 14,
   },
@@ -1271,36 +1239,6 @@ const styles = StyleSheet.create({
 
   // Quick rows
   quickGrid: { gap: 10, marginTop: 12 },
-  quick: {
-    alignItems: "center",
-    backgroundColor: "#fff",
-    borderColor: palette.border,
-    borderRadius: 18,
-    borderWidth: 1,
-    flexDirection: "row",
-    padding: 13,
-    shadowColor: palette.primary,
-    shadowOffset: { height: 3, width: 0 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
-  },
-  quickIcon: {
-    alignItems: "center",
-    backgroundColor: palette.primarySoft,
-    borderRadius: 12,
-    height: 42,
-    justifyContent: "center",
-    width: 42,
-  },
-  quickCopy: { flex: 1, marginLeft: 12 },
-  quickLabel: { color: palette.ink, fontSize: 14, fontWeight: "800" },
-  quickDescription: {
-    color: palette.muted,
-    fontSize: 11,
-    lineHeight: 16,
-    marginTop: 3,
-  },
 
   // Notices
   noticeCard: {
@@ -1351,8 +1289,8 @@ const styles = StyleSheet.create({
   },
   noticeBody: {
     color: palette.muted,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 14,
+    lineHeight: 21,
     marginTop: 5,
   },
   noticeAuthorRow: {
@@ -1409,7 +1347,7 @@ const styles = StyleSheet.create({
     gap: 4,
     marginTop: 5,
   },
-  eventMeta: { color: palette.muted, fontSize: 11, fontWeight: "600" },
+  eventMeta: { color: palette.muted, fontSize: 13, fontWeight: "600" },
 
   // Empty
   emptyCard: {
@@ -1431,10 +1369,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 40,
   },
-  emptyTitle: { color: palette.ink, fontSize: 13, fontWeight: "800" },
+  emptyTitle: { color: palette.ink, fontSize: 15, fontWeight: "800" },
   emptyText: {
     color: palette.muted,
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "600",
     lineHeight: 17,
     marginTop: 2,

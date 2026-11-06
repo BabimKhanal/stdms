@@ -14,6 +14,8 @@ import { downloadCsv } from "../lib/csv";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
+import { Alert } from "./ui/alert";
+import { ConfirmationDialog } from "./ui/confirmation-dialog";
 type Student = {
   id: string;
   fullName?: string;
@@ -69,6 +71,7 @@ export function GuardianWorkspace() {
   const [message, setMessage] = useState("");
   const [search, setSearch] = useState("");
   const [accountResult, setAccountResult] = useState<{ username?: string; email?: string | null; temporaryPassword?: string } | null>(null);
+  const [confirmLink, setConfirmLink] = useState(false);
   async function loadLists() {
     const [studentResult, guardianResult] = await Promise.all([
       api.get<{ data: Student[] }>("/students?page=1&pageSize=200"),
@@ -113,6 +116,7 @@ export function GuardianWorkspace() {
       await selectStudent(studentId);
       await loadLists();
       setGuardianId("");
+      setConfirmLink(false);
       setMessage("Parent linked to student.");
     } catch (error) {
       setMessage(
@@ -347,7 +351,7 @@ export function GuardianWorkspace() {
                 </select>
                 <Button
                   variant="outline"
-                  onClick={() => void link()}
+                  onClick={() => setConfirmLink(true)}
                   disabled={!guardianId || saving}
                 >
                   <Link2 size={15} />
@@ -418,6 +422,17 @@ export function GuardianWorkspace() {
           </CardContent>
         </Card>
       )}
+      <ConfirmationDialog
+        open={confirmLink}
+        title="Link parent to student?"
+        description="Review this relationship before granting family access."
+        consequence="A linked parent or guardian may receive access to this student’s protected school information according to their account permissions."
+        details={<div className="space-y-3"><p className="text-sm text-slate-700"><strong>Student:</strong> {selectedStudent?.fullName ?? selectedStudent?.studentId}</p><p className="text-sm text-slate-700"><strong>Parent / guardian:</strong> {guardians.find((guardian) => guardian.id === guardianId)?.fullName}</p>{!selectedStudent?.guardians?.length && <Alert tone="warning" title="Primary guardian">This will become the student’s primary guardian because no guardian is currently linked.</Alert>}</div>}
+        confirmLabel="Link guardian"
+        busy={saving}
+        onClose={() => setConfirmLink(false)}
+        onConfirm={() => void link()}
+      />
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>

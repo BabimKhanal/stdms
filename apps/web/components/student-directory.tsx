@@ -24,6 +24,7 @@ import {
 import { downloadCsv } from "../lib/csv";
 import { translate } from "../lib/locale";
 import { Modal } from "./ui/modal";
+import { ConfirmationDialog } from "./ui/confirmation-dialog";
 
 type Option = {
   id: string;
@@ -75,6 +76,7 @@ type StudentDetail = StudentRow & {
   documents?: Array<{ id: string; documentType: string; title: string; fileUrl: string; fileName: string | null; mimeType: string | null; createdAt: string }>;
 };
 type DocumentTemplateOption = { id: string; name: string; documentType: string; isDefault: number };
+type StudentDocument = NonNullable<StudentDetail["documents"]>[number];
 
 const emptyForm = {
   studentId: "",
@@ -127,6 +129,7 @@ function StudentDirectoryContent({
   const [documentTitle, setDocumentTitle] = useState("");
   const [documentUrl, setDocumentUrl] = useState("");
   const [documentSaving, setDocumentSaving] = useState(false);
+  const [documentRemoveTarget, setDocumentRemoveTarget] = useState<StudentDocument | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [classFilter, setClassFilter] = useState("");
@@ -232,11 +235,12 @@ function StudentDirectoryContent({
       setDocumentSaving(false);
     }
   }
-  async function removeStudentDocument(id: string) {
-    if (!selected) return;
+  async function removeStudentDocument() {
+    if (!selected || !documentRemoveTarget) return;
     try {
-      await api.delete(`/students/${selected.id}/documents/${id}`);
-      setSelected((current) => current ? { ...current, documents: current.documents?.filter((document) => document.id !== id) } : current);
+      await api.delete(`/students/${selected.id}/documents/${documentRemoveTarget.id}`);
+      setSelected((current) => current ? { ...current, documents: current.documents?.filter((document) => document.id !== documentRemoveTarget.id) } : current);
+      setDocumentRemoveTarget(null);
     } catch (err) { setError(err instanceof Error ? err.message : "Unable to remove student document"); }
   }
   async function downloadTranscript() {
@@ -699,7 +703,7 @@ function StudentDirectoryContent({
                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1"><p className="text-xs font-semibold uppercase tracking-wider text-blue-700">Student documents</p><p className="text-xs text-slate-500">Generate or attach files</p></div>
                <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] lg:grid-cols-[minmax(170px,1fr)_auto_auto_minmax(150px,1fr)_auto]"><select value={identityTemplateId} onChange={(event) => setIdentityTemplateId(event.target.value)} className="h-9 min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-xs"><option value="">Default identity card template</option>{templates.filter((template) => template.documentType === "identity_card").map((template) => <option key={template.id} value={template.id}>{template.name}{template.isDefault ? " (default)" : ""}</option>)}</select><Button size="sm" onClick={() => void downloadIdentityCard()}>Download ID card</Button><Button size="sm" variant="outline" onClick={() => void downloadTranscript()}>Transcript</Button><select value={examId} onChange={(event) => setExamId(event.target.value)} className="h-9 min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-xs"><option value="">Select marksheet</option>{exams.filter((exam) => exam.status === "published").map((exam) => <option key={exam.id} value={exam.id}>{exam.name}</option>)}</select><Button size="sm" variant="ghost" disabled={!examId} onClick={() => void openMarksheet()}>Print marksheet</Button></div>
                {canEdit && <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3"><p className="text-sm font-semibold text-slate-800">Attach a document</p><div className="mt-2 grid gap-2 sm:grid-cols-[130px_minmax(0,1fr)_auto] sm:items-end"><label className="text-xs font-medium text-slate-600">Type<select value={documentType} onChange={(event) => setDocumentType(event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs"><option value="certificate">Certificate</option><option value="transcript">Transcript</option><option value="marksheet">Marksheet</option><option value="admission">Admission document</option><option value="other">Other</option></select></label><label className="text-xs font-medium text-slate-600">Title<Input value={documentTitle} onChange={(event) => setDocumentTitle(event.target.value)} placeholder="e.g. Previous school certificate" className="mt-1 h-9" /></label><Button type="button" size="sm" disabled={documentSaving || !documentTitle.trim() || !documentUrl} onClick={() => void saveStudentDocument()}>{documentSaving ? "Saving..." : "Save"}</Button></div><div className="mt-2"><CloudinaryUpload value={documentUrl} onChange={setDocumentUrl} folder="documents" accept="application/pdf,image/*" label="Upload file" /></div></div>}
-               {selected.documents?.length ? <div className="mt-3 space-y-2"><p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Attached documents</p>{selected.documents.map((document) => <div key={document.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-2.5"><div className="min-w-0 flex-1"><a href={document.fileUrl} target="_blank" rel="noreferrer" className="block truncate text-sm font-medium text-blue-700 hover:underline">{document.title}</a><p className="text-xs text-slate-500">{document.documentType} · {document.fileName ?? "Uploaded file"}</p></div>{canEdit && <button type="button" className="text-xs font-semibold text-rose-600" onClick={() => void removeStudentDocument(document.id)}>Remove</button>}</div>)}</div> : null}
+               {selected.documents?.length ? <div className="mt-3 space-y-2"><p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Attached documents</p>{selected.documents.map((document) => <div key={document.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-2.5"><div className="min-w-0 flex-1"><a href={document.fileUrl} target="_blank" rel="noreferrer" className="block truncate text-sm font-medium text-blue-700 hover:underline">{document.title}</a><p className="text-xs text-slate-500">{document.documentType} · {document.fileName ?? "Uploaded file"}</p></div>{canEdit && <button type="button" className="text-xs font-semibold text-rose-600" onClick={() => setDocumentRemoveTarget(document)}>Remove</button>}</div>)}</div> : null}
              </div>
              <div className="rounded-xl border border-slate-100 bg-white p-3 lg:col-span-1">
                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -770,6 +774,7 @@ function StudentDirectoryContent({
            </CardContent>
         </Card></div></div>
       )}
+      <ConfirmationDialog open={Boolean(documentRemoveTarget)} title="Remove student document?" description={documentRemoveTarget?.title} consequence="This removes the document from the student profile. Staff and the student will no longer be able to access it here." details={documentRemoveTarget ? <p className="text-sm text-slate-700"><strong>File:</strong> {documentRemoveTarget.fileName ?? documentRemoveTarget.documentType}</p> : undefined} confirmLabel="Remove document" tone="danger" onClose={() => setDocumentRemoveTarget(null)} onConfirm={() => void removeStudentDocument()} />
       <Modal open={lifecycleOpen} title="Student lifecycle action" description={selected ? `Apply a history-preserving action to ${selected.fullName}.` : undefined} onClose={() => setLifecycleOpen(false)} footer={<div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setLifecycleOpen(false)}>Cancel</Button><Button type="submit" form="student-lifecycle-form" disabled={saving}>{saving ? "Applying..." : "Apply action"}</Button></div>}>
         <form id="student-lifecycle-form" onSubmit={applyLifecycle} className="space-y-4">
           <Alert tone="warning" title="This updates the permanent academic history">Use profile editing for spelling and contact corrections. Use this action only for a real placement or status change.</Alert>

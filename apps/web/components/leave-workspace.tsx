@@ -8,6 +8,7 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
+import { ConfirmationDialog } from "./ui/confirmation-dialog";
 
 type LeaveRequest = {
   id: string;
@@ -42,6 +43,7 @@ export function LeaveWorkspace({ canApprove }: { canApprove: boolean }) {
   const [filter, setFilter] = useState<LeaveRequest["status"] | "all">("all");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [reviewTarget, setReviewTarget] = useState<{ row: LeaveRequest; status: "approved" | "rejected" } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -67,6 +69,7 @@ export function LeaveWorkspace({ canApprove }: { canApprove: boolean }) {
     try {
       await api.put(`/leave/${id}/review`, { status });
       setMessage(`Leave request ${status}.`);
+      setReviewTarget(null);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to review leave request");
@@ -116,7 +119,7 @@ export function LeaveWorkspace({ canApprove }: { canApprove: boolean }) {
             {pending.length === 0 ? (
               <p className="text-sm text-slate-500">No pending requests for your assigned learners.</p>
             ) : (
-              <LeaveTable rows={pending} reviewing={reviewing} onReview={review} />
+              <LeaveTable rows={pending} reviewing={reviewing} onReview={(row, status) => setReviewTarget({ row, status })} />
             )}
           </CardContent>
         </Card>
@@ -147,6 +150,7 @@ export function LeaveWorkspace({ canApprove }: { canApprove: boolean }) {
           )}
         </CardContent>
       </Card>
+      <ConfirmationDialog open={Boolean(reviewTarget)} title={`${reviewTarget?.status === "approved" ? "Approve" : "Reject"} leave request?`} description={reviewTarget?.row.applicantName ?? "Leave applicant"} consequence={reviewTarget?.status === "approved" ? "This records the leave as approved and communicates the decision to the applicant." : "This records the leave as rejected. Verify the dates and reason before finalizing the decision."} details={reviewTarget ? <div className="text-sm text-slate-700"><p><strong>Dates:</strong> {reviewTarget.row.fromDate} to {reviewTarget.row.toDate}</p><p className="mt-1"><strong>Reason:</strong> {reviewTarget.row.reason}</p></div> : undefined} confirmLabel={reviewTarget?.status === "approved" ? "Approve request" : "Reject request"} tone={reviewTarget?.status === "rejected" ? "danger" : "warning"} busy={Boolean(reviewing)} onClose={() => setReviewTarget(null)} onConfirm={() => reviewTarget && void review(reviewTarget.row.id, reviewTarget.status)} />
     </div>
   );
 }
@@ -158,7 +162,7 @@ function LeaveTable({
 }: {
   rows: LeaveRequest[];
   reviewing?: string | null;
-  onReview?: (id: string, status: "approved" | "rejected") => void;
+  onReview?: (row: LeaveRequest, status: "approved" | "rejected") => void;
 }) {
   return (
     <Table stack>
@@ -185,10 +189,10 @@ function LeaveTable({
             <TableCell label="Actions" className="text-right">
               {row.status === "pending" && onReview ? (
                 <span className="inline-flex gap-2">
-                  <Button size="sm" disabled={reviewing === row.id} onClick={() => void onReview(row.id, "approved")}>
+                  <Button size="sm" disabled={reviewing === row.id} onClick={() => onReview(row, "approved")}>
                     <Check size={15} /> Approve
                   </Button>
-                  <Button size="sm" variant="outline" disabled={reviewing === row.id} onClick={() => void onReview(row.id, "rejected")}>
+                  <Button size="sm" variant="outline" disabled={reviewing === row.id} onClick={() => onReview(row, "rejected")}>
                     <X size={15} /> Reject
                   </Button>
                 </span>

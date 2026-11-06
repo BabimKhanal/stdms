@@ -17,6 +17,7 @@ import { BulkBar, downloadSelectedCsv } from "./table-tools";
 import { RoleManagement } from "./role-management";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { translate } from "../lib/locale";
+import { ConfirmationDialog } from "./ui/confirmation-dialog";
 
 type User = { id: string; name: string; email?: string | null; username?: string | null; avatarUrl?: string | null; status: string; employeeId?: string | null; roleIds?: string[]; mustChangePassword?: boolean };
 type Role = { id: string; name: string; key: string; permissionKeys?: string[] };
@@ -50,6 +51,7 @@ export function UserManagement({ permissions, roles: actorRoles }: { permissions
   const [showForm, setShowForm] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [resetTarget, setResetTarget] = useState<ResetTarget | null>(null);
+  const [bulkStatusTarget, setBulkStatusTarget] = useState<"active" | "inactive" | null>(null);
   const [resetPassword, setResetPassword] = useState("");
   const [resetReason, setResetReason] = useState("");
   const [form, setForm] = useState<Form>(emptyForm);
@@ -184,6 +186,7 @@ export function UserManagement({ permissions, roles: actorRoles }: { permissions
       await api.post("/users/bulk/status", { ids: selectedIds, status: nextStatus });
       toast.success(`Users ${nextStatus === "active" ? "activated" : "deactivated"}`, `${selectedIds.length} account${selectedIds.length === 1 ? "" : "s"} updated.`);
       await load();
+      setBulkStatusTarget(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to update users";
       setError(message);
@@ -270,8 +273,8 @@ export function UserManagement({ permissions, roles: actorRoles }: { permissions
             {selectedIds.length > 0 && (
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium text-slate-600">{selectedIds.length} selected</span>
-                {canEdit && <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => void bulkStatus("active")}><Check size={14} />Activate</Button>}
-                {canEdit && <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => void bulkStatus("inactive")}>Deactivate</Button>}
+                {canEdit && <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => setBulkStatusTarget("active")}><Check size={14} />Activate</Button>}
+                {canEdit && <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => setBulkStatusTarget("inactive")}>Deactivate</Button>}
                 {canDelete && <Button size="sm" variant="danger" disabled={bulkBusy} onClick={() => requestDelete(selectedIds, users.filter((user) => selectedIds.includes(user.id)).map((user) => user.name))}><Trash2 size={14} />Delete</Button>}
               </div>
             )}
@@ -378,6 +381,19 @@ export function UserManagement({ permissions, roles: actorRoles }: { permissions
           </div>
         </form>
       </Modal>
+
+      <ConfirmationDialog
+        open={Boolean(bulkStatusTarget)}
+        title={`${bulkStatusTarget === "active" ? "Activate" : "Deactivate"} ${selectedIds.length} account${selectedIds.length === 1 ? "" : "s"}?`}
+        description="This changes access for every selected user."
+        consequence={bulkStatusTarget === "active" ? "These users will regain access according to their assigned roles and permissions." : "These users will lose access and will not be able to sign in until an administrator reactivates them."}
+        details={<p className="text-sm text-slate-700"><strong>Selected:</strong> {users.filter((user) => selectedIds.includes(user.id)).map((user) => user.name).join(", ")}</p>}
+        confirmLabel={bulkStatusTarget === "active" ? "Activate accounts" : "Deactivate accounts"}
+        tone={bulkStatusTarget === "inactive" ? "danger" : "warning"}
+        busy={bulkBusy}
+        onClose={() => setBulkStatusTarget(null)}
+        onConfirm={() => bulkStatusTarget && void bulkStatus(bulkStatusTarget)}
+      />
 
       <Modal
         open={Boolean(resetTarget)}

@@ -9,6 +9,7 @@ import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 import { translate } from "../lib/locale";
+import { ConfirmationDialog } from "./ui/confirmation-dialog";
 
 type Employee = {
   id: string;
@@ -55,6 +56,8 @@ export function EmployeeDirectory() {
   const [editing, setEditing] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState("");
+  const [removeTarget, setRemoveTarget] = useState<Employee | null>(null);
+  const [removing, setRemoving] = useState(false);
 
   async function load() {
     try {
@@ -93,9 +96,12 @@ export function EmployeeDirectory() {
     }
   }
 
-  async function remove(id: string) {
-    try { await api.delete(`/users/employees/${id}`); toast.success("Staff profile deactivated"); await load(); }
+  async function remove() {
+    if (!removeTarget) return;
+    setRemoving(true);
+    try { await api.delete(`/users/employees/${removeTarget.id}`); toast.success("Staff profile deactivated"); setRemoveTarget(null); await load(); }
     catch (err) { const message = err instanceof Error ? err.message : "Unable to deactivate staff profile"; setError(message); toast.error("Could not deactivate staff", message); }
+    finally { setRemoving(false); }
   }
 
   return (
@@ -106,7 +112,8 @@ export function EmployeeDirectory() {
       </div>
       {error && <Alert tone="error" title="Staff profiles" onDismiss={() => setError("")}>{error}</Alert>}
       {showForm && <Card><CardHeader><CardTitle>{editing ? "Edit staff profile" : "New staff profile"}</CardTitle></CardHeader><CardContent><form onSubmit={save} className="grid gap-3 sm:grid-cols-2"><Input placeholder="Employee ID" value={form.employeeId} onChange={(event) => update("employeeId", event.target.value)} required /><Input placeholder="Full name" value={form.fullName} onChange={(event) => update("fullName", event.target.value)} required /><Input placeholder="Department" value={form.department} onChange={(event) => update("department", event.target.value)} /><Input placeholder="Designation" value={form.designation} onChange={(event) => update("designation", event.target.value)} /><Input placeholder="Phone" value={form.phone} onChange={(event) => update("phone", event.target.value)} /><Input type="email" placeholder="Email" value={form.email} onChange={(event) => update("email", event.target.value)} /><select value={form.staffType} onChange={(event) => update("staffType", event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="teaching">Teaching</option><option value="non_teaching">Non-teaching</option><option value="support">Support</option><option value="administrative">Administrative</option></select><select value={form.employmentType} onChange={(event) => update("employmentType", event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="full_time">Full time</option><option value="part_time">Part time</option><option value="contract">Contract</option><option value="probation">Probation</option></select>{editing && <select value={form.status} onChange={(event) => update("status", event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="active">Active</option><option value="on_leave">On leave</option><option value="resigned">Resigned</option><option value="terminated">Terminated</option></select>}<div className="flex gap-2"><Button type="submit">Save profile</Button><Button type="button" variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button></div></form></CardContent></Card>}
-      <Card><CardHeader><CardTitle>{rows.length} staff profile{rows.length === 1 ? "" : "s"}</CardTitle></CardHeader><CardContent>{rows.length === 0 ? <p className="text-sm text-slate-500">No staff profiles yet.</p> : <div className="divide-y divide-slate-100">{rows.map((row) => <div key={row.id} className="flex flex-col justify-between gap-3 py-4 sm:flex-row sm:items-center"><div><p className="font-semibold">{row.fullName} <span className="text-xs font-normal text-slate-400">{row.employeeId}</span></p><p className="text-sm text-slate-500">{row.designation ?? row.staffType} · {row.department ?? "No department"} · {row.status}</p></div><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => start(row)}>Edit</Button><Button size="sm" variant="danger" onClick={() => void remove(row.id)}><Trash2 size={14} />Deactivate</Button></div></div>)}</div>}</CardContent></Card>
+      <Card><CardHeader><CardTitle>{rows.length} staff profile{rows.length === 1 ? "" : "s"}</CardTitle></CardHeader><CardContent>{rows.length === 0 ? <p className="text-sm text-slate-500">No staff profiles yet.</p> : <div className="divide-y divide-slate-100">{rows.map((row) => <div key={row.id} className="flex flex-col justify-between gap-3 py-4 sm:flex-row sm:items-center"><div><p className="font-semibold">{row.fullName} <span className="text-xs font-normal text-slate-400">{row.employeeId}</span></p><p className="text-sm text-slate-500">{row.designation ?? row.staffType} · {row.department ?? "No department"} · {row.status}</p></div><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => start(row)}>Edit</Button><Button size="sm" variant="danger" onClick={() => setRemoveTarget(row)}><Trash2 size={14} />Deactivate</Button></div></div>)}</div>}</CardContent></Card>
+      <ConfirmationDialog open={Boolean(removeTarget)} title="Deactivate staff profile?" description={removeTarget ? `${removeTarget.fullName} · ${removeTarget.employeeId}` : undefined} consequence="This removes the staff member from active staff workflows. Review any linked teaching assignments and login account separately." confirmLabel="Deactivate staff" tone="danger" busy={removing} onClose={() => setRemoveTarget(null)} onConfirm={() => void remove()} />
     </div>
   );
 }

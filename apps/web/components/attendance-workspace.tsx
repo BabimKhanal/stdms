@@ -10,6 +10,7 @@ import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 import { translate } from "../lib/locale";
+import { ConfirmationDialog } from "./ui/confirmation-dialog";
 import {
   Table,
   TableBody,
@@ -91,6 +92,7 @@ export function AttendanceWorkspace({ canMark = true }: { canMark?: boolean } = 
   const [attendanceSetting, setAttendanceSetting] = useState<AttendanceSetting>({ minimumPercentage: 75, countLateAsPresent: 1, excludeLeave: 1, excludeExcused: 1, excludeSick: 1 });
   const [lowAttendance, setLowAttendance] = useState<LowAttendance[]>([]);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [confirmAttendance, setConfirmAttendance] = useState(false);
   useEffect(() => {
     Promise.all([
       api.get<{ data: Attendance[] }>("/attendance"),
@@ -214,6 +216,7 @@ export function AttendanceWorkspace({ canMark = true }: { canMark?: boolean } = 
         })),
       });
       setMessage("Attendance saved successfully.");
+      setConfirmAttendance(false);
       const refreshed = await api.get<{ data: Attendance[] }>("/attendance");
       setRecords(refreshed.data);
     } catch (err) {
@@ -454,7 +457,7 @@ export function AttendanceWorkspace({ canMark = true }: { canMark?: boolean } = 
                   </Button>
                   <Button
                     disabled={saving}
-                    onClick={() => void saveAttendance()}
+                    onClick={() => setConfirmAttendance(true)}
                   >
                     {saving ? "Saving..." : "Save attendance"}
                   </Button>
@@ -595,6 +598,17 @@ export function AttendanceWorkspace({ canMark = true }: { canMark?: boolean } = 
           </div>
         </CardContent>
       </Card>
+      <ConfirmationDialog
+        open={confirmAttendance}
+        title="Save this attendance register?"
+        description={`${sections.find((item) => item.id === markSectionId)?.name ?? "Selected section"} · ${markDate}`}
+        consequence="This writes the complete register and may replace existing attendance for the same date, subject, and period. Verify every student status before continuing."
+        details={<p className="text-sm text-slate-700"><strong>{students.length} students:</strong> {statuses.map((item) => `${students.filter((student) => (marks[student.id] ?? "present") === item).length} ${item}`).join(", ")}</p>}
+        confirmLabel="Save attendance"
+        busy={saving}
+        onClose={() => setConfirmAttendance(false)}
+        onConfirm={() => void saveAttendance()}
+      />
     </div>
   );
 }

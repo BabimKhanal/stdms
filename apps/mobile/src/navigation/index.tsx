@@ -7,6 +7,7 @@ import {
 } from "@react-navigation/native-stack";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { View } from "react-native";
 import { Home } from "./screens/Home";
 import { NotFound } from "./screens/NotFound";
 import { Profile } from "./screens/Profile";
@@ -31,7 +32,7 @@ const palette = {
 };
 
 // ── Tab options factory ──────────────────────────────────────────────────
-const TAB_BAR_HEIGHT = 62;
+const TAB_BAR_HEIGHT = 70;
 
 const tabOptions = (
   title: string,
@@ -50,22 +51,22 @@ const tabOptions = (
     focused: boolean;
     size: number;
   }) => (
-    <MaterialCommunityIcons
-      name={focused ? iconFocused : icon}
-      color={color}
-      size={focused ? size : size - 1}
-    />
+    <View style={{ alignItems: "center", backgroundColor: focused ? palette.primarySoft : "transparent", borderRadius: 14, height: 34, justifyContent: "center", width: 48 }}>
+      <MaterialCommunityIcons name={focused ? iconFocused : icon} color={color} size={focused ? size + 1 : size} />
+    </View>
   ),
   tabBarActiveTintColor: palette.primary,
   tabBarInactiveTintColor: "#94a3b8",
   tabBarItemStyle: {
-    paddingTop: 6,
-    paddingBottom: 2,
+    borderRadius: 16,
+    marginHorizontal: 2,
+    paddingTop: 5,
+    paddingBottom: 3,
   },
   tabBarLabelStyle: {
-    fontSize: 10.5,
-    fontWeight: "700" as const,
-    marginTop: 3,
+    fontSize: 12,
+    fontWeight: "800" as const,
+    marginTop: 2,
   },
   tabBarStyle: {
     backgroundColor: "#ffffff",
@@ -73,7 +74,7 @@ const tabOptions = (
     borderTopWidth: 1,
     elevation: 8,
     height: TAB_BAR_HEIGHT + bottomInset,
-    paddingBottom: bottomInset + 4,
+    paddingBottom: bottomInset + 3,
     paddingTop: 4,
     shadowColor: "#1e1b4b",
     shadowOpacity: 0.06,
@@ -112,7 +113,7 @@ function HomeTabs() {
           options={tabOptions("Learning", "book-open-outline", "book-open-page-variant", insets.bottom)}
         />
       ) : null}
-      {can("attendance.view") ? (
+      {!user?.studentId && can("attendance.view") ? (
         <Tab.Screen
           name="Attendance"
           component={Attendance}

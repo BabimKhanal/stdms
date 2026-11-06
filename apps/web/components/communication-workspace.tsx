@@ -24,6 +24,7 @@ import { useToast } from "./ui/toast";
 import { formatAppDate, translate } from "../lib/locale";
 import { loadTrisambatHolidays } from "../lib/trisambat";
 import { SchoolCalendar } from "./school-calendar";
+import { ConfirmationDialog } from "./ui/confirmation-dialog";
 
 type Notice = {
   id: string;
@@ -98,6 +99,7 @@ export function CommunicationWorkspace() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [bulkDraft, setBulkDraft] = useState<{ subject: string; body: string; audience: string; form: HTMLFormElement } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -180,21 +182,21 @@ export function CommunicationWorkspace() {
     }
   }
 
-  async function sendBulkMessage(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
+  async function sendBulkMessage() {
+    if (!bulkDraft) return;
+    const { form: formElement, subject, body, audience } = bulkDraft;
     setSaving(true);
     setError("");
     setMessage("");
     try {
       const result = await api.post<{ recipients: number }>("/messages/bulk", {
-        subject: form.get("subject"),
-        body: form.get("body"),
-        audiences: [form.get("audience")],
+        subject,
+        body,
+        audiences: [audience],
       });
       formElement.reset();
       setShowForm(false);
+      setBulkDraft(null);
       setMessage(`Message sent to ${result.recipients} recipient${result.recipients === 1 ? "" : "s"}.`);
       toast.success("Bulk message sent", `${result.recipients} recipient${result.recipients === 1 ? "" : "s"} received the broadcast.`);
     } catch (err) {
@@ -297,7 +299,7 @@ export function CommunicationWorkspace() {
              <CardTitle>{translate("Send a targeted broadcast")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={sendBulkMessage} className="grid gap-4 sm:grid-cols-2">
+            <form onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); setBulkDraft({ subject: String(form.get("subject") ?? ""), body: String(form.get("body") ?? ""), audience: String(form.get("audience") ?? "everyone"), form: event.currentTarget }); }} className="grid gap-4 sm:grid-cols-2">
                <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">{translate("Email subject")}</span><Input name="subject" placeholder={translate("Email subject")} required minLength={3} maxLength={200} /></label>
               <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Message</span><textarea
                 name="body"
@@ -320,6 +322,7 @@ export function CommunicationWorkspace() {
           </CardContent>
         </Card>
       )}
+      <ConfirmationDialog open={Boolean(bulkDraft)} title="Send this broadcast?" description={bulkDraft ? `Audience: ${bulkDraft.audience}` : undefined} consequence="This creates notifications for the selected audience and may send email. A sent broadcast cannot be recalled." details={bulkDraft ? <div className="text-sm text-slate-700"><p><strong>Subject:</strong> {bulkDraft.subject}</p><p className="mt-2 line-clamp-4 whitespace-pre-wrap"><strong>Message:</strong> {bulkDraft.body}</p></div> : undefined} confirmLabel="Send broadcast" tone="danger" busy={saving} onClose={() => setBulkDraft(null)} onConfirm={() => void sendBulkMessage()} />
 
       {showForm && tab === "notices" && canCreateNotice && (
         <Card className="border-blue-200">
