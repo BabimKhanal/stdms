@@ -31,6 +31,8 @@ import { formatAppDate, useAppLocale } from "../../lib/locale";
 import { ConfirmActionDialog, EmptyState } from "../../components";
 
 type Item = Record<string, unknown>;
+type LearnerSetup = { classId?: string | null; className?: string | null; sectionId?: string | null; sectionName?: string | null };
+type FeeAccessSettings = { studentVisible: number | boolean; guardianVisible: number | boolean };
 
 // ── Friendlier palette ────────────────────────────────────────────────────
 const palette = {
@@ -123,6 +125,47 @@ function useList(path: string) {
   };
 }
 
+function useLearnerSetup(enabled: boolean) {
+  const [setup, setSetup] = useState<LearnerSetup | null>(null);
+  const [checked, setChecked] = useState(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!enabled) {
+        setChecked(true);
+        return undefined;
+      }
+      let active = true;
+      void mobileToken()
+        .then((token) => token ? new EduApiClient(API_URL, () => token).get<LearnerSetup | null>("/auth/profile") : null)
+        .then((profile) => { if (active) setSetup(profile); })
+        .catch(() => undefined)
+        .finally(() => { if (active) setChecked(true); });
+      return () => { active = false; };
+    }, [enabled]),
+  );
+  return { setup, checked };
+}
+
+function useFeeVisibility() {
+  const { user } = useAuth();
+  const [settings, setSettings] = useState<FeeAccessSettings | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      void mobileToken()
+        .then((token) => token ? new EduApiClient(API_URL, () => token).get<FeeAccessSettings>("/fees/access-settings") : null)
+        .then((value) => { if (active) setSettings(value); })
+        .catch(() => undefined);
+      return () => { active = false; };
+    }, []),
+  );
+  const guardian = Boolean(user?.roles?.some((role) => role === "parent" || role === "guardian"));
+  const hidden = settings
+    ? guardian ? !Boolean(settings.guardianVisible) : Boolean(user?.studentId) && !Boolean(settings.studentVisible)
+    : false;
+  return hidden;
+}
+
 function ModuleList({
   title,
   subtitle,
@@ -135,6 +178,7 @@ function ModuleList({
   renderBadge,
   emptyTitle,
   emptyText,
+  explainLearnerSetup = false,
 }: {
   title: string;
   subtitle: string;
@@ -147,6 +191,7 @@ function ModuleList({
   renderBadge?: (item: Item) => ReactNode;
   emptyTitle?: string;
   emptyText?: string;
+  explainLearnerSetup?: boolean;
 }) {
   const { items, loading, refreshing, error, reload } = useList(path);
   useAppLocale();
@@ -154,6 +199,14 @@ function ModuleList({
   const insets = useSafeAreaInsets();
   const theme = moduleTheme[title] ?? moduleTheme.Learning;
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+  const { setup, checked: setupChecked } = useLearnerSetup(Boolean(user?.studentId) && explainLearnerSetup);
+  const setupMessage = setupChecked && user?.studentId && explainLearnerSetup
+    ? !setup?.classId
+      ? "Your school has not added you to a class yet. Ask your class teacher or school office for help."
+      : !setup.sectionId
+        ? `You are in ${setup.className ?? "a class"}, but no section is assigned. Ask the school to add your section.`
+        : null
+    : null;
 
   useEffect(() => {
     if (!selectedItem || Platform.OS !== "web") return;
@@ -244,8 +297,8 @@ function ModuleList({
       ) : (
         <EmptyState
           icon="inbox-outline"
-          title={emptyTitle ?? "Nothing here yet"}
-          description={emptyText ?? "New school work and information will show up here."}
+          title={setupMessage ? "School setup needed" : emptyTitle ?? "Nothing here yet"}
+          description={setupMessage ?? emptyText ?? "New school work and information will show up here."}
         />
       )}
     </ScrollView>
@@ -319,6 +372,7 @@ export function Attendance() {
       renderSummary={isLearner ? () => <AttendanceOverview /> : undefined}
       emptyTitle="No attendance yet"
       emptyText="Attendance appears here once your teacher marks the register."
+      explainLearnerSetup
     />
   );
 }
@@ -336,11 +390,13 @@ export function Learning() {
       renderDetail={(item) => <AssignmentDetails item={item} />}
       emptyTitle="You're all caught up"
       emptyText="New homework will appear here as soon as your teacher posts it."
+      explainLearnerSetup
     />
   );
 }
 
 export function Fees() {
+  const hidden = useFeeVisibility();
   return (
     <ModuleList
       title="Fees"
@@ -355,8 +411,8 @@ export function Fees() {
       renderBadge={invoiceBadge}
       renderSummary={(items) => <FeesSummary items={items} />}
       renderExtra={(item) => <PayNowButton invoiceId={String(item.id ?? "")} balance={Number(item.balance ?? 0)} />}
-      emptyTitle="No invoices yet"
-      emptyText="Invoices will appear here once the school issues them."
+      emptyTitle={hidden ? "Fee access is turned off" : "No invoices yet"}
+      emptyText={hidden ? "Your school has chosen not to show family fee information in the app. Contact the accounts office if you need a statement." : "Invoices will appear here once the school issues them."}
     />
   );
 }
@@ -371,6 +427,7 @@ export function Timetable() {
       getMeta={(item) => `${String(item.periodName ?? "Period")} · ${String(item.startTime ?? "")} - ${String(item.endTime ?? "")} · ${String(item.room ?? "Room not set")}`}
       emptyTitle="No timetable published"
       emptyText="Your weekly classes will appear here once the school publishes the timetable."
+      explainLearnerSetup
     />
   );
 }
@@ -478,11 +535,13 @@ function ManualPaymentButton({ invoiceId, balance, method }: { invoiceId: string
   return <View>{method.qrImageUrl ? <Image source={{ uri: method.qrImageUrl }} style={styles.paymentQr} resizeMode="contain" /> : null}<Text style={styles.payNowInfo}>{method.label}: {[method.bankName, method.accountName, method.accountNumber, method.instructions].filter(Boolean).join(" · ") || "Follow the school payment instructions."}</Text><Pressable onPress={() => setOpen(true)} style={styles.manualPayButton}><MaterialCommunityIcons name="bank-transfer" color={palette.primary} size={16} /><Text style={styles.manualPayText}>I transferred via {method.label}</Text></Pressable>{message ? <Text style={styles.payNowMessage}>{message}</Text> : null}<Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}><View style={styles.modalBackdrop}><View style={styles.paymentModal}><Text style={styles.modalTitle}>{method.label} payment</Text><Text style={styles.payNowInfo}>Transfer to: {[method.bankName, method.accountName, method.accountNumber].filter(Boolean).join(" · ") || "See school instructions"}</Text><TextInput value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="Amount" style={styles.paymentInput} /><TextInput value={reference} onChangeText={setReference} placeholder="Bank reference / voucher number" style={styles.paymentInput} /><Pressable disabled={busy} onPress={() => void chooseProof()} style={styles.manualPayButton}><MaterialCommunityIcons name="paperclip" color={palette.primary} size={16} /><Text style={styles.manualPayText}>{proof ? `Replace proof: ${proof.name}` : "Attach transfer proof (optional)"}</Text></Pressable><View style={styles.modalActions}><Pressable onPress={() => setOpen(false)} style={styles.modalCancel}><Text>Cancel</Text></Pressable><Pressable disabled={busy} onPress={() => void submit()} style={styles.modalSubmit}><Text style={styles.modalSubmitText}>{busy ? "Submitting..." : "Submit payment"}</Text></Pressable></View></View></View></Modal></View>;
 }
 export function Results() {
+  const { user } = useAuth();
+  const learner = Boolean(user?.studentId || user?.roles?.some((role) => role === "parent" || role === "guardian"));
   return (
     <ModuleList
       title="Results"
       subtitle="Your exams and published assessment records."
-      path="/exams"
+      path={learner ? "/exams/available-results" : "/exams"}
       getTitle={(item) => String(item.name ?? "Examination")}
       getMeta={(item) =>
         `${String(item.type ?? "")} · ${String(item.status ?? "draft")}`
@@ -494,8 +553,9 @@ export function Results() {
           examName={String(item.name ?? "Examination")}
         />
       )}
-      emptyTitle="No exams yet"
-      emptyText="Published exams and marksheets will show up here."
+      emptyTitle="No published results yet"
+      emptyText="Results will appear after your school publishes marks for you."
+      explainLearnerSetup
     />
   );
 }

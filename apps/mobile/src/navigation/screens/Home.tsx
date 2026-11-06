@@ -261,6 +261,14 @@ export function Home() {
       ),
     [user?.isPlatformAdmin, permissions],
   );
+  const canAll = useCallback(
+    (...required: string[]) =>
+      Boolean(
+        user?.isPlatformAdmin ||
+        required.every((permission) => permissions.includes(permission)),
+      ),
+    [user?.isPlatformAdmin, permissions],
+  );
 
   const studentQuickActions = useMemo(() => {
     type QuickTile = {
@@ -285,7 +293,7 @@ export function Home() {
         bg: palette.successSoft,
         onPress: () => navigation.navigate("Attendance"),
       },
-      can("result.view", "exam.view") && {
+      canAll("result.view", "exam.view") && {
         label: "Results",
         icon: "chart-line" as IconName,
         color: palette.info,
@@ -308,7 +316,7 @@ export function Home() {
           onPress: () => navigation.navigate("Leave"),
         },
     ].filter((a): a is QuickTile => Boolean(a));
-  }, [can, navigation, user?.studentId]);
+  }, [can, canAll, navigation, user?.studentId]);
 
   const workflowActions = useMemo(() => {
     type W = {

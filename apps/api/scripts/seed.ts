@@ -263,7 +263,10 @@ async function main() {
   console.log("→ students, guardians, enrolments...");
   type SeedStudent = { code: string; first: string; last: string; gender: "male" | "female"; cls: string; roll: number };
   const seedStudents: SeedStudent[] = [
-    { code: "ST-1001", first: "Aarav", last: "Sharma", gender: "male", cls: grade6.id, roll: 1 },
+    // The documented student demo account should exercise every core mobile
+    // module, so keep it in the Grade 7 A dataset used below for homework,
+    // invoices, timetable slots and published examination marks.
+    { code: "ST-1001", first: "Aarav", last: "Sharma", gender: "male", cls: grade7.id, roll: 1 },
     { code: "ST-1002", first: "Anisha", last: "Sharma", gender: "female", cls: grade7.id, roll: 2 },
     { code: "ST-1003", first: "Riya", last: "Thapa", gender: "female", cls: grade7.id, roll: 1 },
     { code: "ST-1004", first: "Bikash", last: "Rai", gender: "male", cls: grade7.id, roll: 3 },
@@ -654,7 +657,7 @@ async function main() {
     .values({
       organisationId: org.id, name: "Mid-Term Examination 2026",
       type: "mid_term", termId: term1.id, academicYearId: year.id,
-      startDate: dates[5], endDate: dates[2], status: "completed",
+      startDate: dates[5], endDate: dates[2], status: "published",
     })
     .returning();
 

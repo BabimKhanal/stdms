@@ -98,6 +98,11 @@ function HomeTabs() {
           user?.permissions?.includes(permission),
         ),
     );
+  const canAll = (...required: string[]) =>
+    Boolean(
+      user?.isPlatformAdmin ||
+        required.every((permission) => user?.permissions?.includes(permission)),
+    );
 
   return (
     <Tab.Navigator screenOptions={{ headerShown: false }}>
@@ -127,7 +132,7 @@ function HomeTabs() {
           options={tabOptions("Timetable", "calendar-clock-outline", "calendar-clock", insets.bottom)}
         />
       ) : null}
-      {can("result.view", "exam.view") ? (
+      {canAll("result.view", "exam.view") ? (
         <Tab.Screen
           name="Results"
           component={Results}
@@ -198,6 +203,10 @@ const RootStack = createNativeStackNavigator({
     Timetable: createNativeStackScreen({
       screen: Timetable,
       options: { title: "Timetable", headerBackTitle: "Back" },
+    }),
+    Attendance: createNativeStackScreen({
+      screen: Attendance,
+      options: { title: "Attendance", headerBackTitle: "Back" },
     }),
     Leave: createNativeStackScreen({
       screen: Leave,
