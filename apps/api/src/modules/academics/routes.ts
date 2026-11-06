@@ -68,7 +68,7 @@ academicRoutes.delete("/terms/:id", requirePermission("academic.delete"), async 
 
 /* Classes */
 academicRoutes.get("/classes", requirePermission("academic.view"), async (c) => {
-  const yearId = (await svc.getCurrentYearId(c.get("db"), c.get("orgId")!)) ?? "";
+  const yearId = await svc.getCurrentYearId(c.get("db"), c.get("orgId")!);
   return okList(c, await svc.listClasses(c.get("db"), c.get("orgId")!, yearId, c.get("user")!), 0, 1, 1000);
 });
 

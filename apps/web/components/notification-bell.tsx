@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bell, Check, CheckCheck, X } from "lucide-react";
 import { EduApiClient } from "@edu/api-client";
 
@@ -29,6 +29,16 @@ export function NotificationBell() {
   const [loaded, setLoaded] = useState(false);
   const [marking, setMarking] = useState(false);
   const [error, setError] = useState("");
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { setOpen(false); triggerRef.current?.focus(); }
+    };
+    document.addEventListener("keydown", dismiss);
+    return () => document.removeEventListener("keydown", dismiss);
+  }, [open]);
 
   useEffect(() => {
     let active = true;
@@ -84,6 +94,7 @@ export function NotificationBell() {
   return (
     <div className="relative">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-label={`Notifications${unread ? `, ${unread} unread` : ""}`}
@@ -96,7 +107,7 @@ export function NotificationBell() {
       {open && (
         <>
           <button type="button" aria-label="Close notifications" onClick={() => setOpen(false)} className="fixed inset-0 z-40 cursor-default" />
-          <div className="absolute right-0 top-12 z-50 w-[min(380px,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white shadow-xl">
+          <div className="fixed left-4 right-4 top-20 z-50 rounded-2xl border border-slate-200 bg-white shadow-xl sm:absolute sm:left-auto sm:right-0 sm:top-12 sm:w-[380px]">
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
               <div>
                 <p className="text-sm font-semibold text-slate-900">Notifications</p>

@@ -9,3 +9,6 @@ export * from "./schemas/fees";
 export * from "./schemas/exams";
 export * from "./documents";
 export * from "./locale";
+export * from "./bikram-sambat";
+export * from "./school-setup";
+export * from "./school-calendar";

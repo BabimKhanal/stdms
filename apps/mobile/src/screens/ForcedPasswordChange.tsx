@@ -551,7 +551,7 @@ export function ForcedPasswordChange() {
               }
             />
             {confirmPassword.length > 0 && !matches && (
-              <Text style={styles.inlineError}>Passwords don't match yet.</Text>
+              <Text style={styles.inlineError}>{"Passwords don't match yet."}</Text>
             )}
 
             {error ? (
@@ -573,7 +573,7 @@ export function ForcedPasswordChange() {
                   size={18}
                 />
                 <Text style={styles.successText}>
-                  Password updated. You'll be signed in with your new password.
+                  {"Password updated. You'll be signed in with your new password."}
                 </Text>
               </View>
             ) : null}

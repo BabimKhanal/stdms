@@ -1,5 +1,5 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentRef, type Ref } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -13,7 +13,6 @@ import {
   Text,
   TextInput,
   View,
-  useColorScheme,
 } from "react-native";
 import { useAuth } from "../auth";
 
@@ -49,6 +48,7 @@ function FloatingField({
   rightAccessory,
   onFocus,
   onBlur,
+  inputRef,
 }: {
   icon: string;
   label: string;
@@ -64,6 +64,7 @@ function FloatingField({
   rightAccessory?: React.ReactNode;
   onFocus?: () => void;
   onBlur?: () => void;
+  inputRef?: Ref<ComponentRef<typeof TextInput>>;
 }) {
   const [focused, setFocused] = useState(false);
   const active = focused || value.length > 0;
@@ -142,6 +143,8 @@ function FloatingField({
           </Animated.Text>
 
           <TextInput
+            ref={inputRef}
+            accessibilityLabel={label}
             autoCapitalize={autoCapitalize}
             autoComplete={autoComplete}
             autoCorrect={false}
@@ -159,6 +162,7 @@ function FloatingField({
             placeholder={focused ? placeholder : ""}
             placeholderTextColor={palette.muted}
             returnKeyType={returnKeyType}
+            submitBehavior={returnKeyType === "next" ? "submit" : "blurAndSubmit"}
             secureTextEntry={secureTextEntry}
             style={fieldStyles.input}
             value={value}
@@ -220,6 +224,7 @@ export function Login() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const passwordRef = useRef<ComponentRef<typeof TextInput>>(null);
 
   const canSubmit =
     Boolean(identifier.trim()) && Boolean(password) && !submitting;
@@ -286,7 +291,7 @@ export function Login() {
     setSubmitting(true);
     setError("");
     try {
-      await signIn(identifier, password);
+      await signIn(identifier.trim(), password);
       setSuccess(true);
     } catch (err) {
       setError(
@@ -388,14 +393,15 @@ export function Login() {
                 setIdentifier(v);
                 if (error) setError("");
               }}
-              onSubmitEditing={() => {}}
+              onSubmitEditing={() => passwordRef.current?.focus()}
               placeholder="Email, username or ID"
               returnKeyType="next"
               value={identifier}
             />
 
             <FloatingField
-              autoComplete="password"
+              inputRef={passwordRef}
+              autoComplete="current-password"
               editable={!submitting}
               icon="lock-outline"
               label="Password"
@@ -431,7 +437,7 @@ export function Login() {
             />
 
             {error ? (
-              <Animated.View style={[styles.errorBox, errorStyle]}>
+              <Animated.View accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.errorBox, errorStyle]}>
                 <MaterialCommunityIcons
                   name="alert-circle"
                   color={palette.danger}

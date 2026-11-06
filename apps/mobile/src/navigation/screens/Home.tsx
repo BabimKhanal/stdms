@@ -3,7 +3,6 @@ import { useNavigation } from "@react-navigation/native";
 import { Text } from "@react-navigation/elements";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Animated,
   Easing,
   Pressable,
@@ -789,7 +788,7 @@ export function Home() {
         <SectionHeading
           title="Coming up"
           action="Calendar"
-          onPress={() => navigation.navigate("Updates")}
+          onPress={() => navigation.navigate("Calendar")}
         />
         {loading ? (
           <Skeleton
@@ -802,7 +801,7 @@ export function Home() {
           events.map((event) => (
             <Pressable
               key={event.id}
-              onPress={() => navigation.navigate("Updates")}
+              onPress={() => navigation.navigate("Calendar")}
               style={({ pressed }) => [
                 styles.eventRow,
                 pressed && styles.pressedSoft,

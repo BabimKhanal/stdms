@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { ArrowRightLeft, Download, KeyRound, Search, UserPlus, Users, X } from "lucide-react";
-import { EduApiClient } from "@edu/api-client";
+import { EduApiClient, getApiBaseUrl } from "@edu/api-client";
 import { Badge } from "./ui/badge";
 import { Alert } from "./ui/alert";
 import { Button } from "./ui/button";
@@ -204,7 +204,7 @@ function StudentDirectoryContent({
     if (!selected) return;
     try {
       const token = localStorage.getItem("edu_access_token");
-      const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
+      const base = getApiBaseUrl();
        const query = new URLSearchParams({ type: "identity_card" });
        if (identityTemplateId) query.set("templateId", identityTemplateId);
        const response = await fetch(`${base}/students/${selected.id}/document?${query}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
@@ -243,7 +243,7 @@ function StudentDirectoryContent({
     if (!selected) return;
     try {
       const token = localStorage.getItem("edu_access_token");
-      const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
+      const base = getApiBaseUrl();
       const response = await fetch(`${base}/exams/transcript/${selected.id}/export`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (!response.ok) throw new Error("Unable to export transcript");
       const url = URL.createObjectURL(await response.blob());
@@ -254,7 +254,7 @@ function StudentDirectoryContent({
     if (!selected || !examId) return;
     try {
       const token = localStorage.getItem("edu_access_token");
-      const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
+      const base = getApiBaseUrl();
       const response = await fetch(`${base}/exams/${examId}/report-card/${selected.id}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (!response.ok) throw new Error("Unable to generate marksheet");
       const windowRef = window.open("", "_blank");

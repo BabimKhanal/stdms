@@ -16,7 +16,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { EduApiClient } from "@edu/api-client";
+import { EduApiClient, getApiBaseUrl } from "@edu/api-client";
 import {
   DOCUMENT_TYPES,
   DOCUMENT_TYPE_LABELS,
@@ -214,7 +214,7 @@ export function DocumentTemplateWorkspace() {
   async function printTemplate(template: Template) {
     try {
       const token = localStorage.getItem("edu_access_token");
-      const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
+      const base = getApiBaseUrl();
       const response = await fetch(`${base}/organisation/document-templates/${template.id}/preview`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });

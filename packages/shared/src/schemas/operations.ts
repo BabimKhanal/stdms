@@ -245,12 +245,15 @@ export const eventInputSchema = z.object({
   description: z.string().trim().max(2000).nullable().optional(),
   startDate: dateSchema,
   endDate: dateSchema.nullable().optional(),
-  startTime: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
-  endTime: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
+  startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use a valid time in HH:MM format").nullable().optional(),
+  endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use a valid time in HH:MM format").nullable().optional(),
   venue: z.string().trim().max(150).nullable().optional(),
   imageUrl: z.string().max(500).nullable().optional(),
-  audiences: z.array(z.string()).min(1).default(["everyone"]),
+  audiences: z.array(z.enum(["everyone", "students", "parents", "guardians", "teachers", "staff"])).min(1).default(["everyone"]),
 }).superRefine((value, context) => {
+  if (value.endTime && !value.startTime) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["startTime"], message: "Choose a start time when providing an end time" });
+  }
   if (value.endDate && value.endDate < value.startDate) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["endDate"], message: "End date cannot be before the start date" });
   }

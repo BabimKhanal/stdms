@@ -127,7 +127,6 @@ app.route("/api/v1/enrolments", enrolmentRoutes);
 // Register platform routes before the broad operations router. The operations
 // router has an institution-context guard; platform admins intentionally do not.
 app.route("/api/v1/super", superAdminRoutes);
-app.route("/api/v1", operationRoutes);
 app.route("/api/v1/fees", feeRoutes);
 app.route("/api/v1/payments", paymentCallbackRoutes);
 app.route("/api/v1/exams", examRoutes);
@@ -137,6 +136,9 @@ app.route("/api/v1/organisation", organisationRoutes);
 app.route("/api/v1/users", userRoutes);
 app.route("/api/v1/roles", roleRoutes);
 app.route("/api/v1/notifications", notificationRoutes);
+// The operations router has a broad authentication guard. Register it last so
+// it cannot intercept public payment callbacks or other module routes.
+app.route("/api/v1", operationRoutes);
 
 app.notFound((c) => c.json({ ok: false, error: `Not found: ${c.req.path}` }, 404));
 

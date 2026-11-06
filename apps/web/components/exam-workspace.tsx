@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { Download, Plus, Search } from "lucide-react";
-import { EduApiClient } from "@edu/api-client";
+import { EduApiClient, getApiBaseUrl } from "@edu/api-client";
 import { downloadCsv } from "../lib/csv";
 import { translate } from "../lib/locale";
 import { Button } from "./ui/button";
@@ -262,8 +262,7 @@ export function ExamWorkspace({ canManage = true, canApprove = false }: { canMan
     }
     try {
       const token = localStorage.getItem("edu_access_token");
-      const base =
-        process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
+      const base = getApiBaseUrl();
       const response = await fetch(
         `${base}/exams/${selected.id}/report-card/${studentId}`,
         { headers: token ? { Authorization: `Bearer ${token}` } : {} },
@@ -282,7 +281,7 @@ export function ExamWorkspace({ canManage = true, canApprove = false }: { canMan
   async function downloadTranscript(studentId: string) {
     try {
       const token = localStorage.getItem("edu_access_token");
-      const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
+      const base = getApiBaseUrl();
       const response = await fetch(`${base}/exams/transcript/${studentId}/export`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (!response.ok) throw new Error("Unable to export transcript");
       const blob = await response.blob();

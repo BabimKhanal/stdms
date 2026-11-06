@@ -23,6 +23,7 @@ import { getCurrentYearId } from "../academics/service";
 import { documentTemplates, organisations } from "../../db/schema";
 import { badRequest, forbidden, notFound } from "../../lib/errors";
 import { buildDocumentData } from "../../lib/document-data";
+import { assertStudentAssigned, isUnrestrictedAdmin, learnerStudentIds } from "../../lib/teacher-scope";
 import { renderTemplatePdf } from "../../lib/document-pdf";
 
 const studentProfileUpdateSchema = studentInputSchema.omit({ academicYearId: true, classId: true, sectionId: true, rollNumber: true, status: true }).partial();
@@ -34,7 +35,22 @@ studentRoutes.use("*", requireAuth, requireOrg);
 
 const canViewOwnDocument: MiddlewareHandler<AppEnv> = async (c, next) => {
   const user = c.get("user")!;
-  if (user.isPlatformAdmin || user.permissions.includes("student.view") || user.studentId === c.req.param("id")) {
+  const studentId = c.req.param("id");
+  if (!studentId) throw badRequest("Student ID is required", "validation");
+  if (user.isPlatformAdmin || isUnrestrictedAdmin(user)) {
+    await next();
+    return;
+  }
+  const learnerIds = await learnerStudentIds(c.get("db"), c.get("orgId")!, user);
+  if (learnerIds !== null) {
+    if (learnerIds.includes(studentId)) {
+      await next();
+      return;
+    }
+    throw forbidden("You can only view your own student documents");
+  }
+  if (user.permissions.includes("student.view")) {
+    await assertStudentAssigned(c.get("db"), user, c.get("orgId")!, studentId);
     await next();
     return;
   }

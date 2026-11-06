@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import {
   CalendarDays,
+  LayoutList,
   Mail,
   Megaphone,
   MapPin,
@@ -22,6 +23,7 @@ import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { useToast } from "./ui/toast";
 import { formatAppDate, translate } from "../lib/locale";
 import { loadTrisambatHolidays } from "../lib/trisambat";
+import { SchoolCalendar } from "./school-calendar";
 
 type Notice = {
   id: string;
@@ -88,6 +90,7 @@ export function CommunicationWorkspace() {
   const canDeleteEvent = permissions.includes("event.delete");
 
   const [tab, setTab] = useState<"notices" | "events" | "bulk">("notices");
+  const [eventView, setEventView] = useState<"list" | "calendar">("calendar");
   const [notices, setNotices] = useState<Notice[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -264,6 +267,30 @@ export function CommunicationWorkspace() {
         </TabsList>
       </Tabs>
 
+      {tab === "events" && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-slate-500">{translate("Switch between a month view and a compact list.")}</p>
+          <div className="inline-flex w-fit rounded-xl border border-slate-200 bg-white p-1" role="group" aria-label="Event view">
+            <button
+              type="button"
+              aria-pressed={eventView === "calendar"}
+              onClick={() => setEventView("calendar")}
+              className={`inline-flex min-h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition ${eventView === "calendar" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-900"}`}
+            >
+              <CalendarDays size={14} /> Calendar
+            </button>
+            <button
+              type="button"
+              aria-pressed={eventView === "list"}
+              onClick={() => setEventView("list")}
+              className={`inline-flex min-h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition ${eventView === "list" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-900"}`}
+            >
+              <LayoutList size={14} /> List
+            </button>
+          </div>
+        </div>
+      )}
+
       {showForm && tab === "bulk" && canCreateNotice && (
         <Card className="border-blue-200">
           <CardHeader>
@@ -364,6 +391,12 @@ export function CommunicationWorkspace() {
         <Card>
           <CardContent className="py-12 text-center text-sm text-slate-500">Loading updates…</CardContent>
         </Card>
+      ) : tab === "events" && eventView === "calendar" ? (
+        <SchoolCalendar
+          events={events}
+          canDelete={canDeleteEvent}
+          onDelete={(id) => void removeEvent(id)}
+        />
       ) : tab === "notices" ? (
         notices.length ? (
           <div className="grid gap-4 lg:grid-cols-2">
@@ -407,7 +440,7 @@ export function CommunicationWorkspace() {
             </CardContent>
           </Card>
         )
-      ) : tab === "events" && events.length ? (
+      ) : tab === "events" && eventView === "list" && events.length ? (
         <div className="space-y-3">
           {events.some((event) => event.source === "trisambat") && (
             <p className="text-xs text-slate-500">{translate("Public holidays powered by Trisambat")}</p>
@@ -458,7 +491,7 @@ export function CommunicationWorkspace() {
             ))}
           </div>
         </div>
-      ) : tab === "events" ? (
+      ) : tab === "events" && eventView === "list" ? (
         <Card>
           <CardContent className="py-12 text-center">
             <CalendarDays className="mx-auto text-slate-300" size={28} />

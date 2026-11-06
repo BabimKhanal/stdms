@@ -81,7 +81,7 @@ function dueClass(tone: string) {
   return "bg-slate-100 text-slate-600";
 }
 
-export function StudentLearning() {
+export function StudentLearning({ isParent = false }: { isParent?: boolean } = {}) {
   const api = new EduApiClient(undefined, () =>
     localStorage.getItem("edu_access_token"),
   );
@@ -95,7 +95,7 @@ export function StudentLearning() {
       .then((result) => setItems(result.data))
       .catch((err: unknown) =>
         setError(
-          err instanceof Error ? err.message : "Unable to load your homework",
+          err instanceof Error ? err.message : "Unable to load homework",
         ),
       )
       .finally(() => setLoading(false));
@@ -110,20 +110,21 @@ export function StudentLearning() {
             <span className="grid h-8 w-8 place-items-center rounded-xl bg-blue-500/20">
               <BookOpen size={16} />
             </span>
-            My learning
+            {isParent ? "Family learning" : "My learning"}
           </div>
           <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            Homework, resources and feedback.
+            {isParent ? "Children's homework & tasks" : "Homework, resources and feedback."}
           </h2>
           <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">
-            Read the instructions, attach your work and keep an eye on the due
-            date. Everything your teacher posts lands here.
+            {isParent
+              ? "Track assigned coursework, deadlines, and teacher feedback for your children."
+              : "Read the instructions, attach your work and keep an eye on the due date. Everything your teacher posts lands here."}
           </p>
         </div>
       </section>
 
       {error && (
-        <Alert tone="error" title="My learning" onDismiss={() => setError("")}>
+        <Alert tone="error" title="Assignments" onDismiss={() => setError("")}>
           {error}
         </Alert>
       )}
@@ -135,7 +136,7 @@ export function StudentLearning() {
       ) : items.length ? (
         <div className="space-y-4">
           {items.map((item) => (
-            <StudentAssignment key={item.id} item={item} />
+            <StudentAssignment key={item.id} item={item} isParent={isParent} />
           ))}
         </div>
       ) : (
@@ -155,7 +156,7 @@ export function StudentLearning() {
   );
 }
 
-function StudentAssignment({ item }: { item: Homework }) {
+function StudentAssignment({ item, isParent = false }: { item: Homework; isParent?: boolean }) {
   const api = new EduApiClient(undefined, () =>
     localStorage.getItem("edu_access_token"),
   );
@@ -279,8 +280,8 @@ function StudentAssignment({ item }: { item: Homework }) {
           </div>
         )}
 
-          {submission && (
-           <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3">
+        {submission && (
+          <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3">
             <p className="flex items-center gap-2 text-xs font-semibold text-blue-700">
               {submission.marks === null ? (
                 <CheckCircle2 size={14} />
@@ -304,38 +305,44 @@ function StudentAssignment({ item }: { item: Homework }) {
           </div>
         )}
 
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => setOpen((value) => !value)}
-        >
-          {open ? "Hide my answer" : submission ? "Update my answer" : "Submit my work"}
-        </Button>
-
-        {open && (
-          <div className="space-y-3 rounded-xl border border-slate-200 p-4">
-            <textarea
-              value={content}
-              onChange={(event) => setContent(event.target.value)}
-              placeholder="Type your answer here..."
-              maxLength={3000}
-              className="min-h-28 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm leading-6"
-            />
-            <CloudinaryUpload
-              folder="assignments"
-              accept="image/*,.pdf"
-              value={fileUrl}
-              onChange={setFileUrl}
-              label={fileUrl ? "Replace attachment" : "Attach image or PDF"}
-            />
-            {fileUrl && <FilePreview url={fileUrl} label="Your attachment" />}
-            {error && <p className="text-xs text-rose-700">{error}</p>}
-            {message && <p className="text-xs font-semibold text-emerald-700">{message}</p>}
-            <Button disabled={saving} onClick={() => void submit()}>
-              {saving ? "Saving..." : submission ? "Update submission" : "Submit assignment"}
+        {!isParent ? (
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setOpen((value) => !value)}
+            >
+              {open ? "Hide my answer" : submission ? "Update my answer" : "Submit my work"}
             </Button>
-          </div>
-        )}
+
+            {open && (
+              <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+                <textarea
+                  value={content}
+                  onChange={(event) => setContent(event.target.value)}
+                  placeholder="Type your answer here..."
+                  maxLength={3000}
+                  className="min-h-28 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm leading-6"
+                />
+                <CloudinaryUpload
+                  folder="assignments"
+                  accept="image/*,.pdf"
+                  value={fileUrl}
+                  onChange={setFileUrl}
+                  label={fileUrl ? "Replace attachment" : "Attach image or PDF"}
+                />
+                {fileUrl && <FilePreview url={fileUrl} label="Your attachment" />}
+                {error && <p className="text-xs text-rose-700">{error}</p>}
+                {message && <p className="text-xs font-semibold text-emerald-700">{message}</p>}
+                <Button disabled={saving} onClick={() => void submit()}>
+                  {saving ? "Saving..." : submission ? "Update submission" : "Submit assignment"}
+                </Button>
+              </div>
+            )}
+          </>
+        ) : !submission ? (
+          <p className="text-xs text-slate-500 italic">No submission from student yet.</p>
+        ) : null}
       </CardContent>
     </Card>
   );

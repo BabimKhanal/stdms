@@ -39,16 +39,19 @@ const tenant = (table: { organisationId: any }, orgId: string) =>
   eq(table.organisationId, orgId);
 
 export async function listExams(db: DB, orgId: string, principal?: AuthUser) {
+  // Drizzle removes Column qualification inside single-table SELECT fields.
+  // Explicit identifiers keep correlated subqueries bound to the outer exam.
+  const outerExamId = sql`${sql.identifier("exams")}.${sql.identifier("id")}`;
   const learnerIds = principal
     ? await learnerStudentIds(db, orgId, principal)
     : null;
   const scope =
     principal && isScopedTeacher(principal)
-      ? sql`exists (select 1 from exam_subjects scoped_es join class_subjects scoped_cs on scoped_cs.class_id = scoped_es.class_id and scoped_cs.subject_id = scoped_es.subject_id where scoped_es.exam_id = ${exams.id} and scoped_es.organisation_id = ${orgId} and scoped_cs.teacher_id = ${principal.employeeId})`
+      ? sql`exists (select 1 from exam_subjects scoped_es join class_subjects scoped_cs on scoped_cs.class_id = scoped_es.class_id and scoped_cs.subject_id = scoped_es.subject_id and scoped_cs.organisation_id = ${orgId} where scoped_es.exam_id = ${outerExamId} and scoped_es.organisation_id = ${orgId} and scoped_cs.teacher_id = ${principal.employeeId})`
       : undefined;
   const learnerScope = learnerIds
     ? learnerIds.length
-      ? sql`${exams.status} = 'published' and exists (select 1 from exam_subjects es join enrolments e on e.class_id = es.class_id and e.organisation_id = es.organisation_id where es.exam_id = ${exams.id} and es.organisation_id = ${orgId} and e.student_id in (${idList(learnerIds)}))`
+      ? sql`${exams.status} = 'published' and exists (select 1 from exam_subjects es join enrolments e on e.class_id = es.class_id and e.organisation_id = es.organisation_id where es.exam_id = ${outerExamId} and es.organisation_id = ${orgId} and e.student_id in (${idList(learnerIds)}))`
       : sql`false`
     : undefined;
   const conditions = learnerIds
@@ -57,8 +60,8 @@ export async function listExams(db: DB, orgId: string, principal?: AuthUser) {
   return db
     .select({
       ...(exams as any),
-      subjectCount: sql<number>`(select count(*) from exam_subjects es where es.exam_id = ${exams.id} and es.organisation_id = ${orgId})`,
-      classNames: sql<string | null>`(select string_agg(distinct c.name, ', ' order by c.name) from exam_subjects es join classes c on c.id = es.class_id where es.exam_id = ${exams.id} and es.organisation_id = ${orgId})`,
+      subjectCount: sql<number>`(select count(*) from exam_subjects es where es.exam_id = ${outerExamId} and es.organisation_id = ${orgId})`,
+      classNames: sql<string | null>`(select string_agg(distinct c.name, ', ' order by c.name) from exam_subjects es join classes c on c.id = es.class_id and c.organisation_id = ${orgId} where es.exam_id = ${outerExamId} and es.organisation_id = ${orgId})`,
     })
     .from(exams)
     .where(and(...conditions))

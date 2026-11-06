@@ -352,27 +352,6 @@ export function Learning() {
   );
 }
 
-export function Calendar() {
-  return (
-    <ModuleList
-      title="Calendar"
-      subtitle="Events, holidays, exams, and important school dates."
-      path="/events"
-      getTitle={(item) => String(item.title ?? "Calendar item")}
-      getMeta={(item) => `${capitalize(String(item.eventType ?? "event"))} · ${formatDate(item.startDate)}${item.venue ? ` · ${String(item.venue)}` : ""}`}
-      renderBadge={(item) => <StatusBadge label={capitalize(String(item.eventType ?? "event"))} tone={item.eventType === "holiday" ? "ok" : item.eventType === "deadline" ? "danger" : "info"} />}
-      renderDetail={(item) => (
-        <View style={styles.descriptionBox}>
-          <Text style={styles.descriptionLabel}>{capitalize(String(item.eventType ?? "event"))}</Text>
-          <Text style={styles.descriptionText}>{String(item.description ?? "No additional details.")}</Text>
-          <Text style={[styles.fileHint, { marginTop: 10 }]}>{formatDate(item.startDate)}{item.endDate && item.endDate !== item.startDate ? ` to ${formatDate(item.endDate)}` : ""}</Text>
-        </View>
-      )}
-      emptyTitle="No calendar items"
-      emptyText="School events and holidays will appear here when published."
-    />
-  );
-}
 export function Fees() {
   return (
     <ModuleList

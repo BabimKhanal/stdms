@@ -63,7 +63,7 @@ const statuses: Status[] = [
 ];
 const today = new Date().toISOString().slice(0, 10);
 
-export function AttendanceWorkspace() {
+export function AttendanceWorkspace({ canMark = true }: { canMark?: boolean } = {}) {
   const api = new EduApiClient(undefined, () =>
     localStorage.getItem("edu_access_token"),
   );
@@ -301,7 +301,9 @@ export function AttendanceWorkspace() {
           </Card>
         ))}
       </div>
-      <Card className="border-blue-200 shadow-sm">
+      {canMark && (
+        <>
+          <Card className="border-blue-200 shadow-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Check size={18} className="text-blue-600" />
@@ -479,6 +481,8 @@ export function AttendanceWorkspace() {
           <CardContent>{lowAttendance.length ? <div className="divide-y divide-slate-100">{lowAttendance.map((row) => <div key={row.studentId} className="flex items-center justify-between gap-3 py-3"><div><p className="font-medium">{row.studentName ?? "Student"}</p><p className="text-xs text-slate-500">{row.total} attendance records</p></div><Badge tone="rose">{row.percentage}%</Badge></div>)}</div> : <p className="text-sm text-slate-500">No students are currently below the threshold.</p>}</CardContent>
         </Card>
       </div>
+    </>
+  )}
       <Card>
         <CardHeader>
           <CardTitle>Attendance history</CardTitle>

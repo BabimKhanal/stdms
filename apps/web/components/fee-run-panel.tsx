@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { FileText, Receipt } from "lucide-react";
-import { EduApiClient } from "@edu/api-client";
+import { EduApiClient, getApiBaseUrl } from "@edu/api-client";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
@@ -51,7 +51,7 @@ export function FeeRunPanel({ onComplete }: { onComplete: () => Promise<void> })
 
   async function openReceipt(invoiceId: string) {
     const token = localStorage.getItem("edu_access_token");
-    const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
+    const base = getApiBaseUrl();
     const response = await fetch(`${base}/fees/invoices/${invoiceId}/receipt`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
     if (!response.ok) throw new Error("Unable to open receipt");
     const windowRef = window.open("", "_blank");

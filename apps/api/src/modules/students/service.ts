@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import type { DB } from "../../lib/types";
 import {
   academicYears,
@@ -21,7 +21,7 @@ import { badRequest, conflict, notFound } from "../../lib/errors";
 import { hashPassword } from "../../lib/password";
 import { randomBytes } from "node:crypto";
 import type { AuthUser } from "../../lib/context";
-import { assertStudentAssigned, teacherScope } from "../../lib/teacher-scope";
+import { assertStudentAssigned, learnerStudentIds, teacherScope } from "../../lib/teacher-scope";
 import { buildDocumentData } from "../../lib/document-data";
 import { renderTemplateHtml } from "../../lib/document-template-renderer";
 import { canTransitionStudent, lifecycleStatusForPromotion, requiresDestination, type LifecycleStatus } from "./lifecycle-policy";
@@ -85,12 +85,21 @@ export async function listStudents(
   if (f.sectionId) conds.push(eq(enrolments.sectionId, f.sectionId));
 
   if (f.principal) {
-    const scope = teacherScope(
-      f.principal,
-      sql`${enrolments.classId}`,
-      sql`${enrolments.sectionId}`,
-    );
-    if (scope) conds.push(scope as never);
+    const learnerIds = await learnerStudentIds(db, orgId, f.principal);
+    if (learnerIds !== null) {
+      if (learnerIds.length === 0) {
+        conds.push(sql`false`);
+      } else {
+        conds.push(inArray(students.id, learnerIds));
+      }
+    } else {
+      const scope = teacherScope(
+        f.principal,
+        sql`${enrolments.classId}`,
+        sql`${enrolments.sectionId}`,
+      );
+      if (scope) conds.push(scope as never);
+    }
   }
   const where = and(...conds);
   const sortCol = (SORTABLE[f.sort ?? "createdAt"] ??

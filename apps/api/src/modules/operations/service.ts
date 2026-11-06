@@ -1,11 +1,13 @@
 import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import type { DB } from "../../lib/types";
-import { attendanceRecords, attendanceSettings, events, homework, homeworkSubmissions, leaveRequests, noticeAudiences, notices, studentGuardians, students, sections, classes, subjects, timetablePeriods, employees, enrolments, users } from "../../db/schema";
+import { attendanceRecords, attendanceSettings, events, homework, homeworkSubmissions, leaveRequests, noticeAudiences, notices, studentGuardians, students, sections, classes, subjects, timetablePeriods, employees, enrolments, users, userRoles, roles } from "../../db/schema";
 import { createForUsers, organisationUserIds } from "../notifications/service";
 import { publishNotification } from "../notifications/socket";
 import type { HomeworkInput, LeaveInput, MarkAttendanceInput, NoticeInput } from "@edu/shared";
 import { z } from "zod";
-import { eventInputSchema } from "@edu/shared";
+import { calendarAudienceGroups, eventInputSchema } from "@edu/shared";
+import { calendarEventScope } from "../../lib/calendar-visibility";
+import { parse } from "../../lib/http";
 type EventInput = z.infer<typeof eventInputSchema>;
 import { badRequest, conflict, forbidden, notFound } from "../../lib/errors";
 import type { AuthUser } from "../../lib/context";
@@ -200,7 +202,26 @@ export async function updateNotice(db: DB, orgId: string, id: string, input: Par
   });
 }
 export async function deleteNotice(db: DB, orgId: string, id: string) { const rows = await db.delete(notices).where(and(eq(notices.id, id), tenant(notices, orgId))).returning(); if (!rows.length) throw notFound("Notice not found"); }
-export async function listEvents(db: DB, orgId: string) { return db.select().from(events).where(tenant(events, orgId)).orderBy(asc(events.startDate)); }
-export async function createEvent(db: DB, orgId: string, userId: string, input: EventInput) { const [row] = await db.insert(events).values({ ...input, organisationId: orgId, createdBy: userId }).returning(); const recipients = await organisationUserIds(db, orgId); const created = await createForUsers(db, orgId, recipients, { type: "event", title: row.title, body: row.description ?? null, data: { eventId: row.id } }); created.forEach(publishNotification); return row; }
-export async function updateEvent(db: DB, orgId: string, id: string, input: Partial<EventInput>) { const [row] = await db.update(events).set(input).where(and(eq(events.id, id), tenant(events, orgId))).returning(); if (!row) throw notFound("Event not found"); return row; }
+export async function listEvents(db: DB, orgId: string, principal: AuthUser) { return db.select().from(events).where(and(tenant(events, orgId), calendarEventScope(principal))).orderBy(asc(events.startDate), asc(events.startTime)); }
+export async function createEvent(db: DB, orgId: string, userId: string, input: EventInput) {
+  const [row] = await db.insert(events).values({ ...input, organisationId: orgId, createdBy: userId }).returning();
+  const recipients = await db.select({
+    id: users.id,
+    studentId: users.studentId,
+    employeeId: users.employeeId,
+    roles: sql<string[]>`coalesce((select array_agg(r.key::text) from user_roles ur join roles r on r.id = ur.role_id where ur.user_id = users.id and r.organisation_id = ${orgId}), '{}'::text[])`,
+  }).from(users).where(and(tenant(users, orgId), eq(users.status, "active")));
+  const targetIds = recipients.filter((recipient) => calendarAudienceGroups(recipient).some((group) => input.audiences.includes(group as EventInput["audiences"][number]))).map((recipient) => recipient.id);
+  const created = await createForUsers(db, orgId, targetIds, { type: "event", title: row.title, body: row.description ?? null, data: { eventId: row.id } });
+  created.forEach(publishNotification); return row;
+}
+export async function updateEvent(db: DB, orgId: string, id: string, input: Partial<EventInput>) {
+  return db.transaction(async (tx) => {
+    const [existing] = await tx.select().from(events).where(and(eq(events.id, id), tenant(events, orgId))).for("update");
+    if (!existing) throw notFound("Event not found");
+    const validated = parse(eventInputSchema, { ...existing, ...input, audiences: input.audiences ?? (existing.audiences.length ? existing.audiences : ["everyone"]) });
+    const [row] = await tx.update(events).set({ ...validated, updatedAt: new Date() }).where(and(eq(events.id, id), tenant(events, orgId))).returning();
+    return row;
+  });
+}
 export async function deleteEvent(db: DB, orgId: string, id: string) { const rows = await db.delete(events).where(and(eq(events.id, id), tenant(events, orgId))).returning(); if (!rows.length) throw notFound("Event not found"); }

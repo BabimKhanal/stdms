@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
@@ -31,6 +31,8 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { ApiError, EduApiClient } from "@edu/api-client";
+import { academicWorkspaceTarget, canViewSchoolSetup, type AcademicWorkspaceTarget } from "@edu/shared";
+import { SchoolSetupChecklist, SchoolSetupPrerequisiteNotice } from "./school-setup-checklist";
 import {
   BrandingSettings,
   type OrganisationBranding,
@@ -165,6 +167,7 @@ export function Portal() {
   const [dashboardVersion, setDashboardVersion] = useState(0);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [section, setSection] = useState("dashboard");
+  const [academicTarget, setAcademicTarget] = useState<AcademicWorkspaceTarget>("years");
   const [mobileNav, setMobileNav] = useState(false);
   const [userMenu, setUserMenu] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
@@ -173,6 +176,11 @@ export function Portal() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [passwordSaving, setPasswordSaving] = useState(false);
+  const [paymentNotice, setPaymentNotice] = useState<{ tone: "success" | "warning"; message: string } | null>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const accountButtonRef = useRef<HTMLButtonElement>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -199,6 +207,74 @@ export function Portal() {
       }
     });
   }, []);
+
+  useEffect(() => {
+    if (!user || user.isPlatformAdmin || user.mustChangePassword) return;
+    const syncSection = () => {
+      const [key, target] = window.location.hash.slice(1).split("/");
+      setAcademicTarget(academicWorkspaceTarget(target));
+      setSection(nav.some((item) => item[2] === key) && canViewNav(key, user) ? key : "dashboard");
+      setMobileNav(false);
+      setUserMenu(false);
+    };
+    const url = new URL(window.location.href);
+    const payment = url.searchParams.get("payment");
+    if (payment && canViewNav("fees", user)) {
+      const notices: Record<string, { tone: "success" | "warning"; message: string }> = {
+        success: { tone: "success", message: "Payment verified. Your updated invoice balance is shown below." },
+        "already-completed": { tone: "success", message: "This payment was already recorded. You have not been charged again by this callback." },
+        failed: { tone: "warning", message: "We couldn't confirm the payment. Check your invoice and payment provider before trying again, or contact the finance office." },
+        cancelled: { tone: "warning", message: "Checkout was cancelled. If money was deducted, contact the finance office before paying again." },
+      };
+      setPaymentNotice(notices[payment] ?? null);
+      url.searchParams.delete("payment");
+      url.searchParams.delete("invoice");
+      url.hash = "fees";
+      window.history.replaceState(null, "", url);
+    }
+    syncSection();
+    window.addEventListener("hashchange", syncSection);
+    window.addEventListener("popstate", syncSection);
+    return () => { window.removeEventListener("hashchange", syncSection); window.removeEventListener("popstate", syncSection); };
+  }, [user]);
+
+  useLayoutEffect(() => {
+    if (!mobileNav) return;
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    if (desktop.matches) { setMobileNav(false); return; }
+    const previous = document.body.style.overflow;
+    const trigger = menuButtonRef.current;
+    document.body.style.overflow = "hidden";
+    sidebarRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); setMobileNav(false); }
+      if (event.key !== "Tab") return;
+      const controls = Array.from(sidebarRef.current?.querySelectorAll<HTMLElement>("button:not([disabled]), a[href], select") ?? []);
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      const outside = !sidebarRef.current?.contains(document.activeElement);
+      if (event.shiftKey && (document.activeElement === first || outside)) { event.preventDefault(); last?.focus(); }
+      if (!event.shiftKey && (document.activeElement === last || outside)) { event.preventDefault(); first?.focus(); }
+    };
+    const handleResize = () => { if (desktop.matches) setMobileNav(false); };
+    document.addEventListener("keydown", handleKey);
+    desktop.addEventListener("change", handleResize);
+    return () => {
+      document.removeEventListener("keydown", handleKey);
+      desktop.removeEventListener("change", handleResize);
+      document.body.style.overflow = previous;
+      trigger?.focus({ preventScroll: true });
+    };
+  }, [mobileNav]);
+
+  useEffect(() => {
+    if (!userMenu) return;
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { setUserMenu(false); accountButtonRef.current?.focus(); }
+    };
+    document.addEventListener("keydown", dismiss);
+    return () => document.removeEventListener("keydown", dismiss);
+  }, [userMenu]);
 
   useEffect(() => {
     if (!authReady) return;
@@ -314,15 +390,25 @@ export function Portal() {
   }
 
   function navigate(nextSection: string) {
-    setSection(nextSection);
+    const [key, target] = nextSection.split("/");
+    if (!nav.some((item) => item[2] === key) || !canViewNav(key, user)) return;
+    setSection(key);
+    setAcademicTarget(academicWorkspaceTarget(target));
+    if (window.location.hash !== `#${nextSection}`) window.history.pushState(null, "", `#${nextSection}`);
     setMobileNav(false);
     setUserMenu(false);
+    window.requestAnimationFrame(() => {
+      mainRef.current?.focus({ preventScroll: true });
+      window.scrollTo({ top: 0, behavior: "instant" });
+    });
   }
 
   const visibleNav = nav.filter((item) => canViewNav(item[2], user));
   const current = visibleNav.find((item) => item[2] === section);
   const Icon = current?.[1] ?? LayoutDashboard;
   const primaryColor = branding?.primaryColor ?? "#2563eb";
+
+  if (!authReady || !user) return <main className="grid min-h-dvh place-items-center bg-[#f6f8fc] px-6"><div role="status" className="text-center"><RefreshCw aria-hidden="true" className="mx-auto mb-3 animate-spin text-blue-600" size={24} /><p className="text-sm text-slate-600">Opening your workspace…</p></div></main>;
 
   if (authReady && user?.mustChangePassword)
     return <ForcedPasswordChange name={user.name} />;
@@ -335,6 +421,7 @@ export function Portal() {
       style={{ "--tenant-primary": primaryColor } as CSSProperties}
       className="min-h-screen bg-[#f6f8fc] text-slate-950"
     >
+      <a href="#main-content" onClick={(event) => { event.preventDefault(); mainRef.current?.focus(); }} className="sr-only fixed left-4 top-4 z-50 rounded-xl bg-slate-950 px-4 py-3 text-white focus:not-sr-only">Skip to main content</a>
       {mobileNav && (
         <button
           aria-label="Close navigation"
@@ -343,7 +430,12 @@ export function Portal() {
         />
       )}
       <aside
-        className={`${mobileNav ? "translate-x-0" : "-translate-x-full lg:translate-x-0"} fixed inset-y-0 left-0 z-30 flex w-[272px] flex-col border-r border-slate-200/80 bg-white/95 backdrop-blur transition-transform duration-300 ease-out`}
+        id="workspace-navigation"
+        ref={sidebarRef}
+        aria-label="Workspace navigation"
+        role={mobileNav ? "dialog" : undefined}
+        aria-modal={mobileNav ? true : undefined}
+        className={`${mobileNav ? "" : "max-lg:hidden"} fixed inset-y-0 left-0 z-30 flex w-[min(272px,calc(100vw-2rem))] flex-col border-r border-slate-200/80 bg-white/95 backdrop-blur lg:w-[272px]`}
       >
         <div className="flex h-16 items-center justify-between border-b border-slate-100 px-5 sm:h-20">
           <div className="flex min-w-0 items-center gap-3">
@@ -381,7 +473,7 @@ export function Portal() {
             <p className="mt-1.5 truncate text-sm font-semibold">
               {branding?.name ?? user?.orgName ?? "Institution"}
             </p>
-            <p className="mt-1 text-xs text-slate-400">2026 / 27 · Term 1</p>
+            <p className="mt-1 text-xs text-slate-400">Your school workspace</p>
           </div>
         </div>
         <nav className="flex-1 overflow-y-auto px-3 pb-4">
@@ -433,12 +525,15 @@ export function Portal() {
         </div>
       </aside>
 
-      <div className="lg:pl-[272px]">
+      <div className="min-w-0 lg:pl-[272px]">
         <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-[#f6f8fc]/85 backdrop-blur-xl">
           <div className="flex h-16 items-center justify-between gap-3 px-4 sm:h-20 sm:px-8">
             <div className="flex min-w-0 items-center gap-3">
               <button
+                ref={menuButtonRef}
                 aria-label="Open navigation"
+                aria-expanded={mobileNav}
+                aria-controls="workspace-navigation"
                 className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 shadow-sm transition hover:text-blue-600 lg:hidden"
                 onClick={() => setMobileNav(true)}
               >
@@ -458,6 +553,7 @@ export function Portal() {
               <NotificationBell />
               <div className="relative">
                 <button
+                  ref={accountButtonRef}
                   aria-label="Account menu"
                   aria-expanded={userMenu}
                   onClick={() => setUserMenu((value) => !value)}
@@ -492,12 +588,11 @@ export function Portal() {
                           {user?.roles?.join(" · ") ?? "Member"}
                         </p>
                       </div>
-                      <button
-                        onClick={() => setUserMenu(false)}
+                      <div
                         className="mt-1 flex w-full items-center rounded-xl px-0 text-sm text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
                       >
                         <LocaleSwitcher />
-                      </button>
+                      </div>
                       <button
                         onClick={() => { setPasswordOpen(true); setUserMenu(false); setPasswordError(""); }}
                         className="mt-1 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
@@ -519,7 +614,8 @@ export function Portal() {
             </div>
           </div>
         </header>
-        <main className="mx-auto max-w-[1500px] px-4 py-5 sm:px-8 sm:py-8">
+        <main id="main-content" ref={mainRef} tabIndex={-1} className="mx-auto min-w-0 max-w-[1500px] px-4 py-5 outline-none sm:px-8 sm:py-8">
+          {paymentNotice && <div className="mb-5"><Alert tone={paymentNotice.tone} title="Payment update" onDismiss={() => setPaymentNotice(null)}>{paymentNotice.message}</Alert></div>}
           {(brandingError || (dashboardError && section === "dashboard")) && (
             <div className="mb-5 space-y-3">
               {brandingError && (
@@ -560,8 +656,11 @@ export function Portal() {
                 loading={dashboardLoading}
                 onRefresh={() => setDashboardVersion((value) => value + 1)}
                 user={user}
+                setupRefreshVersion={dashboardVersion}
               />
             ) : section === "students" ? (
+              <div className="space-y-5">
+              {canViewSchoolSetup({ ...user, permissions: user.permissions ?? [] }) && <SchoolSetupPrerequisiteNotice onNavigate={navigate} permissions={user.permissions ?? []} />}
               <StudentDirectory
                 initialStudents={students}
                 canCreate={Boolean(
@@ -577,12 +676,26 @@ export function Portal() {
                   user?.permissions?.includes("enrolment.approve"),
                 )}
               />
+              </div>
             ) : section === "guardians" ? (
               <GuardianWorkspace />
             ) : section === "academics" ? (
-              <AcademicWorkspace />
+              <AcademicWorkspace
+                key={academicTarget}
+                target={academicTarget}
+                permissions={user?.permissions ?? []}
+                showSetupGuide={canViewSchoolSetup({ roles: user?.roles ?? [], permissions: user?.permissions ?? [], isPlatformAdmin: user?.isPlatformAdmin })}
+                onNavigate={navigate}
+              />
             ) : section === "attendance" ? (
-              <AttendanceWorkspace />
+              <div className="space-y-5">
+              {canViewSchoolSetup({ ...user, permissions: user.permissions ?? [] }) && <SchoolSetupPrerequisiteNotice onNavigate={navigate} permissions={user.permissions ?? []} />}
+              <AttendanceWorkspace
+                canMark={Boolean(
+                  user?.isPlatformAdmin || user?.permissions?.includes("attendance.create"),
+                )}
+              />
+              </div>
             ) : section === "leave" ? (
               <LeaveWorkspace
                 canApprove={Boolean(
@@ -595,6 +708,7 @@ export function Portal() {
                   user?.permissions?.includes("invoice.create"),
                 )}
                 role={user?.roles?.[0]}
+                permissions={user?.permissions ?? []}
               />
             ) : section === "exams" ? (
               <ExamsSection
@@ -609,8 +723,10 @@ export function Portal() {
                 )}
               />
             ) : section === "learning" ? (
-              user?.studentId ? (
-                <StudentLearning />
+              user?.studentId || user?.roles?.some((r) => r === "parent" || r === "guardian") ? (
+                <StudentLearning
+                  isParent={Boolean(!user?.studentId && user?.roles?.some((r) => r === "parent" || r === "guardian"))}
+                />
               ) : (
                 <LearningWorkspace
                   canManage={Boolean(
@@ -749,6 +865,7 @@ function DashboardView({
   loading,
   onRefresh,
   user,
+  setupRefreshVersion,
 }: {
   dashboard: Dashboard;
   students: Student[];
@@ -756,6 +873,7 @@ function DashboardView({
   loading: boolean;
   onRefresh: () => void;
   user: User | null;
+  setupRefreshVersion: number;
 }) {
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
@@ -788,67 +906,216 @@ function DashboardView({
       user?.isPlatformAdmin ||
       user?.permissions?.some((permission) => permissions.includes(permission)),
     );
-  const quickActions = [
-    {
-      label: "Add student",
-      description: "Create a learner profile",
-      section: "students",
-      icon: Users,
-      allowed: canAction("student.create"),
-    },
-    {
-      label: "Mark attendance",
-      description: "Today's class register",
-      section: "attendance",
-      icon: CalendarCheck,
-      allowed: canAction("attendance.create", "attendance.edit"),
-    },
-    {
-      label: "Create invoice",
-      description: "Issue a fee invoice",
-      section: "fees",
-      icon: CreditCard,
-      allowed: canAction("invoice.create"),
-    },
-    {
-      label: "Publish notice",
-      description: "Share an announcement",
-      section: "communication",
-      icon: Megaphone,
-      allowed: canAction("notice.create"),
-    },
-  ].filter((action) => action.allowed);
+  const isLearner = Boolean(user?.studentId);
+  const isParent = !isLearner && Boolean(user?.roles?.some((r) => r === "parent" || r === "guardian"));
+  const canViewFinance = Boolean(user?.isPlatformAdmin || user?.permissions?.includes("invoice.view"));
 
-  const stats = [
-    {
-      label: "Students",
-      value: studentsCount,
-      hint: "Active learner records",
-      tone: "bg-blue-50 text-blue-700",
-      icon: Users,
-    },
-    {
-      label: "Staff members",
-      value: dashboard.employees ?? 0,
-      hint: "People on your team",
-      tone: "bg-violet-50 text-violet-700",
-      icon: GraduationCap,
-    },
-    {
-      label: "Attendance today",
-      value: `${attendance}%`,
-      hint: "Present or late",
-      tone: "bg-emerald-50 text-emerald-700",
-      icon: CalendarCheck,
-    },
-    {
-      label: "Outstanding fees",
-      value: formatNpr(fees.outstanding ?? 0),
-      hint: `${collectionRate}% collected`,
-      tone: "bg-amber-50 text-amber-700",
-      icon: CreditCard,
-    },
-  ];
+  const quickActions = (
+    isLearner
+      ? [
+          {
+            label: "My learning",
+            description: "Homework & submissions",
+            section: "learning",
+            icon: BookOpen,
+            allowed: true,
+          },
+          {
+            label: "My attendance",
+            description: "View session register",
+            section: "attendance",
+            icon: CalendarCheck,
+            allowed: true,
+          },
+          {
+            label: "My results",
+            description: "Exams & marksheets",
+            section: "exams",
+            icon: BarChart3,
+            allowed: true,
+          },
+          {
+            label: "Fee invoices",
+            description: "View dues & receipts",
+            section: "fees",
+            icon: CreditCard,
+            allowed: true,
+          },
+        ]
+      : isParent
+        ? [
+            {
+              label: "Children's homework",
+              description: "Assignments & deadlines",
+              section: "learning",
+              icon: BookOpen,
+              allowed: true,
+            },
+            {
+              label: "Attendance record",
+              description: "Absences & percentages",
+              section: "attendance",
+              icon: CalendarCheck,
+              allowed: true,
+            },
+            {
+              label: "Exam results",
+              description: "Report cards & marks",
+              section: "exams",
+              icon: BarChart3,
+              allowed: true,
+            },
+            {
+              label: "Pay school fees",
+              description: "Online payment & dues",
+              section: "fees",
+              icon: CreditCard,
+              allowed: true,
+            },
+          ]
+        : [
+            {
+              label: "Add student",
+              description: "Create a learner profile",
+              section: "students",
+              icon: Users,
+              allowed: canAction("student.create"),
+            },
+            {
+              label: "Mark attendance",
+              description: "Today's class register",
+              section: "attendance",
+              icon: CalendarCheck,
+              allowed: canAction("attendance.create", "attendance.edit"),
+            },
+            {
+              label: "Create homework",
+              description: "Post class assignment",
+              section: "learning",
+              icon: BookOpen,
+              allowed: canAction("homework.create"),
+            },
+            {
+              label: "Create invoice",
+              description: "Issue a fee invoice",
+              section: "fees",
+              icon: CreditCard,
+              allowed: canAction("invoice.create"),
+            },
+            {
+              label: "Publish notice",
+              description: "Share an announcement",
+              section: "communication",
+              icon: Megaphone,
+              allowed: canAction("notice.create"),
+            },
+          ]
+  ).filter((action) => action.allowed);
+
+  const stats = isLearner
+    ? [
+        {
+          label: "My attendance",
+          value: `${attendance}%`,
+          hint: "This academic session",
+          tone: "bg-emerald-50 text-emerald-700",
+          icon: CalendarCheck,
+        },
+        {
+          label: "Fee balance",
+          value: formatNpr(fees.outstanding ?? 0),
+          hint: (fees.outstanding ?? 0) === 0 ? "All dues cleared" : "Pending balance",
+          tone: (fees.outstanding ?? 0) === 0 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700",
+          icon: CreditCard,
+        },
+        {
+          label: "Upcoming events",
+          value: dashboard.upcomingEvents?.length ?? 0,
+          hint: "On calendar",
+          tone: "bg-violet-50 text-violet-700",
+          icon: GraduationCap,
+        },
+        {
+          label: "Announcements",
+          value: dashboard.recentNotices?.length ?? 0,
+          hint: "Recent notices",
+          tone: "bg-blue-50 text-blue-700",
+          icon: Megaphone,
+        },
+      ]
+    : isParent
+      ? [
+          {
+            label: "Child attendance",
+            value: `${attendance}%`,
+            hint: "Present rate",
+            tone: "bg-emerald-50 text-emerald-700",
+            icon: CalendarCheck,
+          },
+          {
+            label: "Outstanding dues",
+            value: formatNpr(fees.outstanding ?? 0),
+            hint: (fees.outstanding ?? 0) === 0 ? "All fees cleared" : "Action required",
+            tone: (fees.outstanding ?? 0) === 0 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700",
+            icon: CreditCard,
+          },
+          {
+            label: "School events",
+            value: dashboard.upcomingEvents?.length ?? 0,
+            hint: "Upcoming calendar",
+            tone: "bg-violet-50 text-violet-700",
+            icon: GraduationCap,
+          },
+          {
+            label: "Notices",
+            value: dashboard.recentNotices?.length ?? 0,
+            hint: "School circulars",
+            tone: "bg-blue-50 text-blue-700",
+            icon: Megaphone,
+          },
+        ]
+      : [
+          {
+            label: "Students",
+            value: studentsCount,
+            hint: "Active learner records",
+            tone: "bg-blue-50 text-blue-700",
+            icon: Users,
+          },
+          {
+            label: "Staff members",
+            value: dashboard.employees ?? 0,
+            hint: "People on your team",
+            tone: "bg-violet-50 text-violet-700",
+            icon: GraduationCap,
+          },
+          {
+            label: "Attendance today",
+            value: `${attendance}%`,
+            hint: "Present or late",
+            tone: "bg-emerald-50 text-emerald-700",
+            icon: CalendarCheck,
+          },
+          ...(canViewFinance
+            ? [
+                {
+                  label: "Outstanding fees",
+                  value: formatNpr(fees.outstanding ?? 0),
+                  hint: `${collectionRate}% collected`,
+                  tone: "bg-amber-50 text-amber-700",
+                  icon: CreditCard,
+                },
+              ]
+            : [
+                {
+                  label: "Active notices",
+                  value: dashboard.recentNotices?.length ?? 0,
+                  hint: "Published circulars",
+                  tone: "bg-amber-50 text-amber-700",
+                  icon: Megaphone,
+                },
+              ]),
+        ];
 
   return (
     <div className="space-y-6">
@@ -875,6 +1142,8 @@ function DashboardView({
           )}
         </div>
       </div>
+
+      {user && canViewSchoolSetup({ ...user, permissions: user.permissions ?? [] }) && <SchoolSetupChecklist onNavigate={setSection} permissions={user.permissions ?? []} refreshVersion={setupRefreshVersion} />}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map(({ label, value, hint, tone, icon: StatIcon }) => (
@@ -1215,8 +1484,20 @@ const roleNav: Record<string, string[]> = {
     "exam_officer",
   ],
   communication: ["*"],
+  employees: ["owner", "principal", "administrator", "accountant"],
+  leave: [
+    "owner",
+    "principal",
+    "administrator",
+    "teacher",
+    "class_teacher",
+    "student",
+    "parent",
+    "guardian",
+  ],
   users: ["owner", "principal", "administrator"],
   branding: ["owner", "principal", "administrator"],
+  "email-settings": ["owner", "principal", "administrator"],
   "payment-settings": ["owner", "principal", "administrator", "accountant"],
   "document-templates": ["owner", "principal", "administrator"],
 };
@@ -1242,11 +1523,13 @@ const permissionNav: Record<string, string> = {
 
 function canViewNav(section: string, user: User | null) {
   if (!user) return false;
+  if (user.isPlatformAdmin) return true;
+  const allowedRoles = roleNav[section];
+  if (allowedRoles && !allowedRoles.includes("*")) {
+    const hasRole = user.roles.some((role) => allowedRoles.includes(role));
+    if (!hasRole) return false;
+  }
   const required = permissionNav[section];
   if (required) return user.permissions?.includes(required) ?? false;
-  const allowedRoles = roleNav[section] ?? [];
-  return (
-    allowedRoles.includes("*") ||
-    user.roles.some((role) => allowedRoles.includes(role))
-  );
+  return true;
 }

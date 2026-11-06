@@ -1,36 +1,68 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Nucleus web workspace
 
-## Getting Started
+Run from the repository root:
 
-First, run the development server:
-
-```bash
+```powershell
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+This starts both the web app (`http://localhost:3000`) and API
+(`http://localhost:4000`). PostgreSQL and Redis must also be running; follow the
+root README for database setup. To start only the API:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```powershell
+npm run dev -w @edu/api
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## API connection
 
-## Learn More
+By default the browser calls `/api/v1` on the same origin as the web app. Next.js
+forwards those requests to `http://127.0.0.1:4000/api/v1`. The API still validates
+authentication and permissions; the web page-login redirect excludes API paths
+so unauthenticated login requests can reach the backend.
 
-To learn more about Next.js, take a look at the following resources:
+For another upstream, set this in `apps/web/.env.local` or the web deployment's
+environment and restart/rebuild the web app:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```dotenv
+API_URL=https://your-api.example.edu/api/v1
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+`API_URL` is server-only. This avoids browser CORS and mixed-content failures for
+normal web API requests. For deployments, use a URL reachable from the web server,
+not the browser user's machine.
 
-## Deploy on Vercel
+`NEXT_PUBLIC_API_URL` is an optional direct-browser override, baked into the
+JavaScript at build time. Use it only when the API is publicly reachable and its
+`WEB_ORIGIN` permits the exact web origin. Do not point a deployed browser at
+`localhost`. If previously configured and switching to the same-origin proxy,
+remove the override and restart/rebuild the web app.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Troubleshooting sign-in
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **School service unavailable:** check the API is running and `API_URL` is correct.
+  Connection failures do not indicate an incorrect password.
+- **Invalid credentials:** the API was reached and rejected the supplied login.
+- **Unexpected response:** inspect the upstream URL and gateway availability;
+  the client expects the API's JSON response, not an HTML login page.
+
+From the web origin, `GET /api/v1/auth/me` without credentials should return a JSON
+401 response, not redirect to `/login`. This verifies proxy routing without
+attempting a login or changing any password.
+
+The notification WebSocket currently connects directly to the configured public
+API (or port 4000 locally); hosting it behind the web origin requires separate
+WebSocket proxy support.
+
+## Build while development is running
+
+Use a separate output directory so a verification build does not overwrite the
+files used by the live development server:
+
+```powershell
+$env:NEXT_DIST_DIR = ".next-check"
+npm run build -w @edu/web
+Remove-Item Env:NEXT_DIST_DIR
+```
+
+Normal builds and deployments continue to use `.next` when this variable is unset.
