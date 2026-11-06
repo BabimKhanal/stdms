@@ -127,7 +127,7 @@ function AuthenticatedApp() {
         }}
       >
         <StatusBar barStyle="dark-content" />
-        <ActivityIndicator color="#2563eb" size="large" />
+        <ActivityIndicator color="#7c3aed" size="large" />
       </View>
     );
   if (!user) return <Login />;

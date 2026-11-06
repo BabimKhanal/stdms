@@ -1,10 +1,12 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { EduApiClient } from "@edu/api-client";
 import { useEffect, useRef, useState, type ComponentRef, type Ref } from "react";
 import {
   ActivityIndicator,
   Animated,
   Easing,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   SafeAreaView,
@@ -15,6 +17,7 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../auth";
+import { API_URL } from "../config";
 
 const palette = {
   primary: "#7c3aed",
@@ -224,6 +227,11 @@ export function Login() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetIdentifier, setResetIdentifier] = useState("");
+  const [resetError, setResetError] = useState("");
+  const [resetMessage, setResetMessage] = useState("");
+  const [resetSubmitting, setResetSubmitting] = useState(false);
   const passwordRef = useRef<ComponentRef<typeof TextInput>>(null);
 
   const canSubmit =
@@ -301,6 +309,42 @@ export function Login() {
       );
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  function openPasswordReset() {
+    setResetIdentifier(identifier.trim());
+    setResetError("");
+    setResetMessage("");
+    setResetOpen(true);
+  }
+
+  function closePasswordReset() {
+    if (resetSubmitting) return;
+    setResetOpen(false);
+    setResetError("");
+    setResetMessage("");
+  }
+
+  async function requestPasswordReset() {
+    const trimmedIdentifier = resetIdentifier.trim();
+    if (trimmedIdentifier.length < 3 || resetSubmitting) return;
+    setResetSubmitting(true);
+    setResetError("");
+    setResetMessage("");
+    try {
+      await new EduApiClient(API_URL).post("/auth/password-reset/request", {
+        identifier: trimmedIdentifier,
+      });
+      setResetMessage("If an active account matches, a reset link has been sent.");
+    } catch (err) {
+      setResetError(
+        err instanceof Error
+          ? err.message
+          : "Unable to request a reset link. Please try again.",
+      );
+    } finally {
+      setResetSubmitting(false);
     }
   }
 
@@ -436,6 +480,16 @@ export function Login() {
               }
             />
 
+            <Pressable
+              accessibilityRole="button"
+              disabled={submitting}
+              hitSlop={8}
+              onPress={openPasswordReset}
+              style={({ pressed }) => [styles.forgotButton, pressed && styles.forgotPressed]}
+            >
+              <Text style={styles.forgotText}>Forgot password?</Text>
+            </Pressable>
+
             {error ? (
               <Animated.View accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.errorBox, errorStyle]}>
                 <MaterialCommunityIcons
@@ -514,6 +568,101 @@ export function Login() {
           ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={closePasswordReset}
+        transparent
+        visible={resetOpen}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.modalBackdrop}
+        >
+          <Pressable
+            accessibilityLabel="Close password reset"
+            disabled={resetSubmitting}
+            onPress={closePasswordReset}
+            style={StyleSheet.absoluteFill}
+          />
+          <View accessibilityViewIsModal style={styles.modalCard}>
+            <View style={styles.modalHeading}>
+              <View style={styles.modalIcon}>
+                <MaterialCommunityIcons name="lock-reset" color={palette.primary} size={24} />
+              </View>
+              <Pressable
+                accessibilityLabel="Close"
+                accessibilityRole="button"
+                disabled={resetSubmitting}
+                hitSlop={10}
+                onPress={closePasswordReset}
+                style={({ pressed }) => [styles.modalClose, pressed && styles.forgotPressed]}
+              >
+                <MaterialCommunityIcons name="close" color={palette.inkSoft} size={21} />
+              </Pressable>
+            </View>
+
+            <Text style={styles.modalTitle}>Reset your password</Text>
+            <Text style={styles.modalText}>
+              Enter your email or username and we&apos;ll send recovery instructions to the email on your account.
+            </Text>
+
+            <FloatingField
+              autoComplete="username"
+              editable={!resetSubmitting}
+              icon="account-outline"
+              label="School account"
+              onChangeText={(value) => {
+                setResetIdentifier(value);
+                if (resetError) setResetError("");
+                if (resetMessage) setResetMessage("");
+              }}
+              onSubmitEditing={() => void requestPasswordReset()}
+              placeholder="Email or username"
+              returnKeyType="done"
+              value={resetIdentifier}
+            />
+
+            {resetError ? (
+              <View accessibilityLiveRegion="polite" accessibilityRole="alert" style={styles.errorBox}>
+                <MaterialCommunityIcons name="alert-circle" color={palette.danger} size={18} />
+                <Text style={styles.error}>{resetError}</Text>
+              </View>
+            ) : null}
+
+            {resetMessage ? (
+              <View accessibilityLiveRegion="polite" style={styles.successBox}>
+                <MaterialCommunityIcons name="check-circle" color={palette.success} size={18} />
+                <Text style={styles.successText}>{resetMessage}</Text>
+              </View>
+            ) : null}
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{
+                busy: resetSubmitting,
+                disabled: resetIdentifier.trim().length < 3 || resetSubmitting,
+              }}
+              disabled={resetIdentifier.trim().length < 3 || resetSubmitting}
+              onPress={() => void requestPasswordReset()}
+              style={({ pressed }) => [
+                styles.button,
+                pressed && styles.pressed,
+                (resetIdentifier.trim().length < 3 || resetSubmitting) && styles.disabled,
+              ]}
+            >
+              {resetSubmitting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Text style={styles.buttonText}>Send reset link</Text>
+                  <MaterialCommunityIcons name="email-outline" color="#fff" size={18} />
+                </>
+              )}
+            </Pressable>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -636,6 +785,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 40,
   },
+  forgotButton: { alignSelf: "flex-end", paddingVertical: 2 },
+  forgotPressed: { opacity: 0.6 },
+  forgotText: { color: palette.primary, fontSize: 13, fontWeight: "700" },
 
   // Error
   errorBox: {
@@ -710,6 +862,40 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
   },
+
+  // Password reset modal
+  modalBackdrop: {
+    alignItems: "center",
+    backgroundColor: "rgba(30, 27, 75, 0.45)",
+    flex: 1,
+    justifyContent: "center",
+    padding: 22,
+  },
+  modalCard: {
+    backgroundColor: "#fff",
+    borderRadius: 24,
+    elevation: 8,
+    gap: 14,
+    maxWidth: 440,
+    padding: 22,
+    shadowColor: "#000",
+    shadowOffset: { height: 8, width: 0 },
+    shadowOpacity: 0.2,
+    shadowRadius: 24,
+    width: "100%",
+  },
+  modalHeading: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+  modalIcon: {
+    alignItems: "center",
+    backgroundColor: palette.primarySoft,
+    borderRadius: 14,
+    height: 46,
+    justifyContent: "center",
+    width: 46,
+  },
+  modalClose: { alignItems: "center", height: 40, justifyContent: "center", width: 40 },
+  modalTitle: { color: palette.ink, fontSize: 23, fontWeight: "800", letterSpacing: -0.3 },
+  modalText: { color: palette.muted, fontSize: 13, lineHeight: 20, marginBottom: 2 },
 
   // Demo hint
   demoCard: {

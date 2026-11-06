@@ -1,5 +1,5 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -10,6 +10,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { API_URL } from "../../config";
 import { mobileToken } from "../../auth";
 
@@ -87,13 +88,22 @@ export function Updates() {
     }
   }, []);
 
+  const hasLoaded = useRef(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (hasLoaded.current) return;
+      hasLoaded.current = true;
+      void load();
+    }, [load]),
+  );
+
   useEffect(() => {
     let socket: WebSocket | undefined;
     let active = true;
     void (async () => {
       const token = await mobileToken();
       if (!active) return;
-      await load();
       if (!token || !active) return;
       socket = new WebSocket(
         `${API_URL.replace(/^http/, "ws").replace(/\/api\/v1$/, "")}/ws/notifications?token=${encodeURIComponent(token)}`,

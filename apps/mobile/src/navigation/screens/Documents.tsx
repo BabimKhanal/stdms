@@ -2,8 +2,9 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { File, Paths, Directory } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import * as WebBrowser from "expo-web-browser";
-import { useEffect, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { API_URL } from "../../config";
 import { mobileToken, useAuth } from "../../auth";
@@ -40,17 +41,22 @@ export function Documents() {
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [attachedDocuments, setAttachedDocuments] = useState<AttachedDocument[]>([]);
+  const hasLoaded = useRef(false);
 
-  useEffect(() => {
-    if (!user?.studentId) return;
-    void mobileToken()
-      .then((token) => {
-        if (!token) throw new Error("Session expired. Please sign in again.");
-        return new EduApiClient(API_URL, () => token).get<{ documents?: AttachedDocument[] }>("/auth/profile");
-      })
-      .then((profile) => setAttachedDocuments(profile?.documents ?? []))
-      .catch((error: unknown) => setMessage(error instanceof Error ? error.message : "Unable to load school documents"));
-  }, [user?.studentId]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!user?.studentId) return;
+      if (hasLoaded.current) return;
+      hasLoaded.current = true;
+      void mobileToken()
+        .then((token) => {
+          if (!token) throw new Error("Session expired. Please sign in again.");
+          return new EduApiClient(API_URL, () => token).get<{ documents?: AttachedDocument[] }>("/auth/profile");
+        })
+        .then((profile) => setAttachedDocuments(profile?.documents ?? []))
+        .catch((error: unknown) => setMessage(error instanceof Error ? error.message : "Unable to load school documents"));
+    }, [user?.studentId]),
+  );
 
   async function openDocument(type: string, title: string) {
     if (!user?.studentId) {

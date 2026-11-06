@@ -11,6 +11,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EduApiClient } from "@edu/api-client";
 import { mobileToken, useAuth } from "../../auth";
@@ -240,16 +241,11 @@ export function Home() {
     setRefreshing(false);
   }, [canViewDashboard]);
 
-  useEffect(() => {
-    let active = true;
-    void (async () => {
-      await mobileToken();
-      if (active) await load();
-    })();
-    return () => {
-      active = false;
-    };
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   const firstName = user?.name?.split(" ")[0] ?? "there";
   const now = new Date();
