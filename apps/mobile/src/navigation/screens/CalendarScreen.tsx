@@ -112,6 +112,13 @@ function dayTone(items: CalendarEventItem[]) {
   return { officialHoliday, observance, primaryEvent: items.find((event) => event.eventType === "holiday") ?? items[0] };
 }
 
+function eventDisplayColor(event: CalendarEventItem) {
+  if (event.eventType !== "holiday") return SCHOOL_EVENT_COLORS[event.eventType ?? "event"];
+  return event.source === "trisambat" && !event.isPublicHoliday
+    ? calendarColors.observance
+    : calendarColors.holiday;
+}
+
 function CalendarMonthCell({
   cell,
   dayIndex,
@@ -306,7 +313,7 @@ export function Calendar() {
                 style={[styles.filterChip, active && styles.filterChipActive]}
               >
                 {option.value !== "all" ? (
-                  <View style={[styles.filterDot, { backgroundColor: SCHOOL_EVENT_COLORS[option.value as CalendarEvent["eventType"]] }]} />
+                  <View style={[styles.filterDot, { backgroundColor: option.value === "holiday" ? calendarColors.holiday : SCHOOL_EVENT_COLORS[option.value as CalendarEvent["eventType"]] }]} />
                 ) : null}
                 <Text style={[styles.filterText, active && styles.filterTextActive]}>{option.label}</Text>
               </Pressable>
@@ -439,7 +446,7 @@ export function Calendar() {
 
           {dayEvents.length ? (
             dayEvents.map((event) => {
-              const color = SCHOOL_EVENT_COLORS[event.eventType ?? "event"];
+              const color = eventDisplayColor(event);
               return (
                 <View key={event.id} style={[styles.eventCard, { borderLeftColor: color }]}>
                   <View style={styles.eventTop}>
@@ -519,7 +526,6 @@ const styles = StyleSheet.create({
   loadingBox: { alignItems: "center", backgroundColor: "#ffffff", borderColor: palette.border, borderRadius: 22, borderWidth: 1, gap: 8, paddingVertical: 48 },
   loadingText: { color: palette.muted, fontSize: 12 },
   calendarCard: { backgroundColor: "#ffffff", borderColor: "#d9dee7", borderRadius: 16, borderWidth: 1, overflow: "hidden", paddingBottom: 0 },
-  calendar: { paddingHorizontal: 4 },
   bsHeader: { alignItems: "center", backgroundColor: "#fffdf9", borderBottomColor: "#d9dee7", borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 12 },
   bsTitleBlock: { flex: 1 },
   bsTitle: { color: "#c62828", fontSize: 18, fontWeight: "900" },
@@ -531,17 +537,18 @@ const styles = StyleSheet.create({
   bsWeekRow: { flexDirection: "row" },
   bsWeekday: { backgroundColor: "#fff", borderBottomColor: "#d9dee7", borderBottomWidth: 1, color: "#475569", flex: 1, fontSize: 10, fontWeight: "900", paddingVertical: 9, textAlign: "center" },
   bsWeekdayHoliday: { color: "#dc2626" },
-  bsDayCell: { alignItems: "center", borderBottomColor: "#d9dee7", borderBottomWidth: StyleSheet.hairlineWidth, borderRightColor: "#d9dee7", borderRightWidth: StyleSheet.hairlineWidth, flex: 1, height: 76, justifyContent: "flex-start", paddingHorizontal: 2, paddingTop: 4, position: "relative" },
-  bsDayCellSelected: { backgroundColor: "#20833b", borderColor: "#20833b" },
-  bsDayCellHoliday: { backgroundColor: "#fffafa" },
-  bsDayCellToday: { backgroundColor: "#f0fdf4", borderColor: "#20833b", borderWidth: 1.5 },
-  bsAdNumber: { alignSelf: "flex-end", color: "#64748b", fontSize: 8, fontWeight: "700", lineHeight: 10, marginRight: 2 },
-  bsDayNumber: { color: "#1f2937", fontSize: 19, fontWeight: "700", lineHeight: 24 },
-  bsDayNumberSelected: { color: "#ffffff", fontWeight: "800" },
-  bsDayNumberToday: { color: "#20833b", fontWeight: "900" },
-  bsHolidayText: { color: "#dc2626" },
-  bsEventLabel: { color: "#64748b", fontSize: 7.5, fontWeight: "700", lineHeight: 9, marginTop: 1, minHeight: 18, paddingHorizontal: 1, textAlign: "center", width: "100%" },
-  bsEventLabelSelected: { color: "#ffffff" },
+  monthDayCell: { alignItems: "center", borderBottomColor: "#d9dee7", borderBottomWidth: StyleSheet.hairlineWidth, borderRightColor: "#d9dee7", borderRightWidth: StyleSheet.hairlineWidth, flex: 1, height: 76, justifyContent: "flex-start", paddingHorizontal: 2, paddingTop: 4, position: "relative" },
+  monthDayCellSelected: { backgroundColor: calendarColors.selected, borderColor: calendarColors.selected },
+  monthDayCellHoliday: { backgroundColor: calendarColors.holidaySoft },
+  monthDayCellObservance: { backgroundColor: calendarColors.observanceSoft },
+  monthDayCellToday: { backgroundColor: calendarColors.todaySoft, borderColor: calendarColors.selected, borderWidth: 1.5 },
+  monthSecondaryDate: { alignSelf: "flex-end", color: "#64748b", fontSize: 9, fontWeight: "700", lineHeight: 11, marginRight: 2 },
+  monthPrimaryDate: { color: "#1f2937", fontSize: 19, fontWeight: "700", lineHeight: 24 },
+  monthHolidayText: { color: calendarColors.holiday },
+  monthObservanceText: { color: calendarColors.observance },
+  monthTodayText: { color: calendarColors.selected, fontWeight: "900" },
+  monthSelectedText: { color: "#ffffff", fontWeight: "800" },
+  monthEventLabel: { color: "#64748b", fontSize: 8, fontWeight: "700", lineHeight: 9.5, marginTop: 1, minHeight: 19, paddingHorizontal: 1, textAlign: "center", width: "100%" },
   bsAttribution: { alignItems: "center", backgroundColor: "#f8fafc", flexDirection: "row", gap: 5, justifyContent: "center", paddingVertical: 7 },
   bsAttributionText: { color: palette.muted, fontSize: 9, fontWeight: "600" },
   dayHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginBottom: 10, marginTop: 18 },
@@ -562,16 +569,4 @@ const styles = StyleSheet.create({
   emptyCard: { alignItems: "center", backgroundColor: "#ffffff", borderColor: palette.border, borderRadius: 18, borderWidth: 1, gap: 4, paddingVertical: 34 },
   emptyTitle: { color: palette.inkSoft, fontSize: 14, fontWeight: "700", marginTop: 4 },
   emptyText: { color: palette.muted, fontSize: 12, paddingHorizontal: 24, textAlign: "center" },
-  // AD calendar custom day component styles
-  dayWrap: { alignItems: "center", flex: 1, paddingVertical: 1 },
-  dayCell: { alignItems: "center", borderColor: "transparent", borderRadius: 22, borderWidth: 1, height: 44, justifyContent: "center", width: 44 },
-  dayCellSelected: { backgroundColor: palette.primary, borderColor: palette.primary },
-  dayCellHoliday: { backgroundColor: "#ecfdf5" },
-  dayCellToday: { borderColor: palette.primary },
-  dayNumber: { color: palette.inkSoft, fontSize: 15, fontWeight: "700" },
-  dayNumberSelected: { color: "#ffffff", fontWeight: "800" },
-  dayNumberHoliday: { color: "#059669" },
-  dayNumberToday: { color: palette.primary, fontWeight: "800" },
-  dayDots: { flexDirection: "row", gap: 2, height: 5, marginTop: 2 },
-  dayDot: { borderRadius: 2, height: 4, width: 4 },
 });
