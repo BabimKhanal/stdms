@@ -70,7 +70,12 @@ function timeRange(event: CalendarEventItem) {
   return `${event.startTime}${event.endTime ? ` - ${event.endTime}` : ""}`;
 }
 
-type DayComponentProps = Parameters<NonNullable<CalendarProps["dayComponent"]>>[0];
+type DayComponentProps = {
+  date?: import("react-native-calendars").DateData;
+  state?: string;
+  marking?: { selected?: boolean; dots?: { key?: string; color: string }[]; disableTouchEvent?: boolean };
+  onPress?: (date: import("react-native-calendars").DateData) => void;
+};
 
 function MobileCalendarDay({ date, state, marking, onPress }: DayComponentProps) {
   if (!date) return null;
@@ -508,4 +513,16 @@ const styles = StyleSheet.create({
   emptyCard: { alignItems: "center", backgroundColor: "#ffffff", borderColor: palette.border, borderRadius: 18, borderWidth: 1, gap: 4, paddingVertical: 34 },
   emptyTitle: { color: palette.inkSoft, fontSize: 14, fontWeight: "700", marginTop: 4 },
   emptyText: { color: palette.muted, fontSize: 12, paddingHorizontal: 24, textAlign: "center" },
+  // AD calendar custom day component styles
+  dayWrap: { alignItems: "center", flex: 1, paddingVertical: 2 },
+  dayCell: { alignItems: "center", borderColor: "transparent", borderRadius: 20, borderWidth: 1, height: 36, justifyContent: "center", width: 36 },
+  dayCellSelected: { backgroundColor: palette.primary, borderColor: palette.primary },
+  dayCellHoliday: { backgroundColor: "#fef2f2" },
+  dayCellToday: { borderColor: palette.primary },
+  dayNumber: { color: palette.inkSoft, fontSize: 13, fontWeight: "600" },
+  dayNumberSelected: { color: "#ffffff", fontWeight: "800" },
+  dayNumberHoliday: { color: "#b91c1c" },
+  dayNumberToday: { color: palette.primary, fontWeight: "800" },
+  dayDots: { flexDirection: "row", gap: 2, height: 5, marginTop: 2 },
+  dayDot: { borderRadius: 2, height: 4, width: 4 },
 });
