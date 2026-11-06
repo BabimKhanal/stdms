@@ -128,7 +128,8 @@ type Panel =
   | "backups"
   | "provisioning"
   | "email-config"
-  | "account";
+  | "account"
+  | "demo-alerts";
 
 const featureCatalog = [
   "students",
@@ -246,6 +247,7 @@ export function SuperAdminPortal({
   const [accountConfirmPassword, setAccountConfirmPassword] = useState("");
   const [accountError, setAccountError] = useState("");
   const [accountSaving, setAccountSaving] = useState(false);
+  const [demoAlerts, setDemoAlerts] = useState<{ tone: "error" | "warning" | "success"; message: string }[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -548,6 +550,13 @@ export function SuperAdminPortal({
     }
   }
 
+  function triggerDemoAlert(tone: "error" | "warning" | "success", message: string) {
+    setDemoAlerts((current) => [...current, { tone, message }]);
+    setTimeout(() => {
+      setDemoAlerts((current) => current.slice(1));
+    }, 8000);
+  }
+
   const navigation: { key: Panel; label: string; icon: typeof Activity }[] = [
     { key: "overview", label: "Overview", icon: Activity },
     { key: "tenants", label: "Tenants", icon: Building2 },
@@ -556,6 +565,7 @@ export function SuperAdminPortal({
     { key: "provisioning", label: "Provisioning", icon: SlidersHorizontal },
     { key: "email-config", label: "Alert email", icon: Mail },
     { key: "account", label: "Account", icon: UserCog },
+    { key: "demo-alerts", label: "Demo alerts", icon: AlertTriangle },
   ];
   const heading =
     panel === "tenant-profile"
@@ -1577,6 +1587,111 @@ export function SuperAdminPortal({
                     </form>
                   </CardContent>
                 </Card>
+              </div>
+            </section>
+          )}
+          {panel === "demo-alerts" && (
+            <section className="space-y-6">
+              <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+                <div>
+                  <p className="text-sm font-medium text-emerald-800">
+                    Demo alerts
+                  </p>
+                  <h2 className="mt-1 text-3xl font-semibold tracking-tight">
+                    Platform alerts
+                  </h2>
+                  <p className="mt-2 text-sm text-slate-600">
+                    Trigger demo alert messages (400 / 500) to verify the alert
+                    UI and error handling.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <Button
+                  onClick={() =>
+                    triggerDemoAlert(
+                      "error",
+                      "Demo 500 error: Internal server error. The platform encountered an unexpected condition that prevented it from fulfilling the request.",
+                    )
+                  }
+                  className="w-full bg-rose-600 hover:bg-rose-700 text-white"
+                >
+                Trigger 500 error
+                </Button>
+                <Button
+                  onClick={() =>
+                    triggerDemoAlert(
+                      "error",
+                      "Demo 400 error: Bad request. The request could not be understood by the server due to malformed syntax.",
+                    )
+                  }
+                  className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+                >
+                Trigger 400 error
+                </Button>
+                <Button
+                  onClick={() =>
+                    triggerDemoAlert(
+                      "warning",
+                      "Demo warning: Session will expire in 5 minutes. Please save your work and refresh."
+                    )
+                  }
+                  className="w-full"
+                >
+                Trigger warning
+                </Button>
+                <Button
+                  onClick={() =>
+                    triggerDemoAlert(
+                      "success",
+                      "Demo success: Platform settings saved successfully."
+                    )
+                  }
+                  className="w-full"
+                >
+                Trigger success
+                </Button>
+              </div>
+
+              <div className="space-y-3">
+                {demoAlerts.map((alert, index) => (
+                  <div
+                    key={index}
+                    className={`flex items-start gap-3 rounded-lg border p-4 text-sm ${
+                      alert.tone === "error"
+                        ? "border-rose-200 bg-rose-50 text-rose-800"
+                        : alert.tone === "warning"
+                        ? "border-amber-200 bg-amber-50 text-amber-800"
+                        : "border-emerald-200 bg-emerald-50 text-emerald-800"
+                    }`}
+                  >
+                    {alert.tone === "error" ? (
+                      <AlertTriangle size={17} className="mt-0.5 shrink-0" />
+                    ) : alert.tone === "warning" ? (
+                      <AlertTriangle size={17} className="mt-0.5 shrink-0" />
+                    ) : (
+                      <Check size={17} className="mt-0.5 shrink-0" />
+                    )}
+                    <div className="min-w-0 flex-1">{alert.message}</div>
+                    <button
+                      onClick={() =>
+                        setDemoAlerts((current) =>
+                          current.filter((_, i) => i !== index),
+                        )
+                      }
+                      aria-label="Dismiss alert"
+                      className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+                {!demoAlerts.length && (
+                  <p className="border-y border-slate-200 py-10 text-center text-sm text-slate-500">
+                    No demo alerts triggered yet.
+                  </p>
+                )}
               </div>
             </section>
           )}
