@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import {
   CalendarDays,
+  LayoutList,
   Mail,
   Megaphone,
   MapPin,
@@ -20,6 +21,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { useToast } from "./ui/toast";
+import { formatAppDate, translate } from "../lib/locale";
+import { loadTrisambatHolidays } from "../lib/trisambat";
+import { SchoolCalendar } from "./school-calendar";
+import { ConfirmationDialog } from "./ui/confirmation-dialog";
 
 type Notice = {
   id: string;
@@ -35,6 +40,7 @@ type Notice = {
 type CalendarEvent = {
   id: string;
   title: string;
+  eventType?: "event" | "holiday" | "exam" | "deadline" | "meeting" | "other";
   description?: string | null;
   startDate: string;
   endDate?: string | null;
@@ -42,10 +48,12 @@ type CalendarEvent = {
   endTime?: string | null;
   venue?: string | null;
   audiences?: string[];
+  source?: "school" | "trisambat";
 };
 
 const audiences = ["everyone", "students", "parents", "teachers", "staff"];
 const priorities = ["low", "normal", "high", "urgent"] as const;
+const eventTypes = ["event", "holiday", "exam", "deadline", "meeting", "other"] as const;
 
 function readPermissions(): string[] {
   try {
@@ -58,12 +66,12 @@ function readPermissions(): string[] {
 
 function formatDate(value: string | null | undefined) {
   if (!value) return "No date";
-  return new Intl.DateTimeFormat("en", {
+  return formatAppDate(value, {
     weekday: "short",
     day: "numeric",
     month: "short",
     year: "numeric",
-  }).format(new Date(value.length === 10 ? `${value}T00:00:00` : value));
+  });
 }
 
 function priorityTone(priority: string) {
@@ -83,6 +91,7 @@ export function CommunicationWorkspace() {
   const canDeleteEvent = permissions.includes("event.delete");
 
   const [tab, setTab] = useState<"notices" | "events" | "bulk">("notices");
+  const [eventView, setEventView] = useState<"list" | "calendar">("calendar");
   const [notices, setNotices] = useState<Notice[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -90,17 +99,19 @@ export function CommunicationWorkspace() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [bulkDraft, setBulkDraft] = useState<{ subject: string; body: string; audience: string; form: HTMLFormElement } | null>(null);
 
   async function load() {
     setLoading(true);
     setError("");
     try {
-      const [noticeResult, eventResult] = await Promise.all([
+      const [noticeResult, eventResult, holidayEvents] = await Promise.all([
         api.get<{ data: Notice[] }>("/notices"),
         api.get<{ data: CalendarEvent[] }>("/events"),
+        loadTrisambatHolidays(),
       ]);
       setNotices(noticeResult.data);
-      setEvents(eventResult.data);
+      setEvents([...eventResult.data, ...holidayEvents]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load notices and events");
     } finally {
@@ -150,13 +161,14 @@ export function CommunicationWorkspace() {
     try {
       await api.post("/events", {
         title: form.get("title"),
+        eventType: form.get("eventType"),
         description: form.get("description") || null,
         startDate: form.get("startDate"),
         endDate: form.get("endDate") || null,
         startTime: form.get("startTime") || null,
         endTime: form.get("endTime") || null,
         venue: form.get("venue") || null,
-        audiences: ["everyone"],
+        audiences: [form.get("audience")],
       });
       formElement.reset();
       setShowForm(false);
@@ -170,21 +182,21 @@ export function CommunicationWorkspace() {
     }
   }
 
-  async function sendBulkMessage(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
+  async function sendBulkMessage() {
+    if (!bulkDraft) return;
+    const { form: formElement, subject, body, audience } = bulkDraft;
     setSaving(true);
     setError("");
     setMessage("");
     try {
       const result = await api.post<{ recipients: number }>("/messages/bulk", {
-        subject: form.get("subject"),
-        body: form.get("body"),
-        audiences: [form.get("audience")],
+        subject,
+        body,
+        audiences: [audience],
       });
       formElement.reset();
       setShowForm(false);
+      setBulkDraft(null);
       setMessage(`Message sent to ${result.recipients} recipient${result.recipients === 1 ? "" : "s"}.`);
       toast.success("Bulk message sent", `${result.recipients} recipient${result.recipients === 1 ? "" : "s"} received the broadcast.`);
     } catch (err) {
@@ -226,10 +238,10 @@ export function CommunicationWorkspace() {
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <p className="text-sm font-medium text-blue-600">Community updates</p>
-          <h2 className="mt-2 text-3xl font-semibold tracking-tight">Community messaging</h2>
+          <p className="text-sm font-medium text-blue-600">{translate("Community updates")}</p>
+          <h2 className="mt-2 text-3xl font-semibold tracking-tight">{translate("Community messaging")}</h2>
           <p className="mt-2 text-sm text-slate-500">
-            Share announcements, send targeted broadcasts, and keep the school calendar in one place.
+            {translate("Share announcements, send targeted broadcasts, and keep the school calendar in one place.")}
           </p>
         </div>
         {canCreate && (
@@ -251,33 +263,57 @@ export function CommunicationWorkspace() {
         }}
       >
         <TabsList ariaLabel="Community messaging">
-          <TabsTrigger value="notices" icon={<Megaphone size={15} />} badge={notices.length}>Notices</TabsTrigger>
-          <TabsTrigger value="events" icon={<CalendarDays size={15} />} badge={events.length}>Events</TabsTrigger>
-          <TabsTrigger value="bulk" icon={<Mail size={15} />}>Bulk message</TabsTrigger>
+           <TabsTrigger value="notices" icon={<Megaphone size={15} />} badge={notices.length}>{translate("Notices")}</TabsTrigger>
+           <TabsTrigger value="events" icon={<CalendarDays size={15} />} badge={events.length}>{translate("Events")}</TabsTrigger>
+           <TabsTrigger value="bulk" icon={<Mail size={15} />}>{translate("Bulk message")}</TabsTrigger>
         </TabsList>
       </Tabs>
+
+      {tab === "events" && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-slate-500">{translate("Switch between a month view and a compact list.")}</p>
+          <div className="inline-flex w-fit rounded-xl border border-slate-200 bg-white p-1" role="group" aria-label="Event view">
+            <button
+              type="button"
+              aria-pressed={eventView === "calendar"}
+              onClick={() => setEventView("calendar")}
+              className={`inline-flex min-h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition ${eventView === "calendar" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-900"}`}
+            >
+              <CalendarDays size={14} /> Calendar
+            </button>
+            <button
+              type="button"
+              aria-pressed={eventView === "list"}
+              onClick={() => setEventView("list")}
+              className={`inline-flex min-h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition ${eventView === "list" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-900"}`}
+            >
+              <LayoutList size={14} /> List
+            </button>
+          </div>
+        </div>
+      )}
 
       {showForm && tab === "bulk" && canCreateNotice && (
         <Card className="border-blue-200">
           <CardHeader>
-            <CardTitle>Send a targeted broadcast</CardTitle>
+             <CardTitle>{translate("Send a targeted broadcast")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={sendBulkMessage} className="grid gap-4 sm:grid-cols-2">
-              <Input name="subject" placeholder="Email subject" required minLength={3} maxLength={200} className="sm:col-span-2" />
-              <textarea
+            <form onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); setBulkDraft({ subject: String(form.get("subject") ?? ""), body: String(form.get("body") ?? ""), audience: String(form.get("audience") ?? "everyone"), form: event.currentTarget }); }} className="grid gap-4 sm:grid-cols-2">
+               <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">{translate("Email subject")}</span><Input name="subject" placeholder={translate("Email subject")} required minLength={3} maxLength={200} /></label>
+              <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Message</span><textarea
                 name="body"
                 placeholder="Write your message"
                 required
                 minLength={1}
                 maxLength={10000}
-                className="min-h-36 rounded-xl border border-slate-200 px-3.5 py-3 text-sm sm:col-span-2"
-              />
-              <select name="audience" defaultValue="everyone" className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm">
+                className="min-h-36 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm"
+              /></label>
+               <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">{translate("Audience")}</span><select name="audience" defaultValue="everyone" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">
                 {audiences.map((audience) => (
-                  <option key={audience} value={audience} className="capitalize">{audience}</option>
+                   <option key={audience} value={audience} className="capitalize">{translate(audience)}</option>
                 ))}
-              </select>
+              </select></label>
               <p className="self-center text-xs leading-5 text-slate-500">The broadcast creates an in-app notification and sends email when a production mail provider is configured.</p>
               <div className="sm:col-span-2">
                 <Button disabled={saving}>{saving ? "Sending..." : "Send broadcast"}</Button>
@@ -286,37 +322,38 @@ export function CommunicationWorkspace() {
           </CardContent>
         </Card>
       )}
+      <ConfirmationDialog open={Boolean(bulkDraft)} title="Send this broadcast?" description={bulkDraft ? `Audience: ${bulkDraft.audience}` : undefined} consequence="This creates notifications for the selected audience and may send email. A sent broadcast cannot be recalled." details={bulkDraft ? <div className="text-sm text-slate-700"><p><strong>Subject:</strong> {bulkDraft.subject}</p><p className="mt-2 line-clamp-4 whitespace-pre-wrap"><strong>Message:</strong> {bulkDraft.body}</p></div> : undefined} confirmLabel="Send broadcast" tone="danger" busy={saving} onClose={() => setBulkDraft(null)} onConfirm={() => void sendBulkMessage()} />
 
       {showForm && tab === "notices" && canCreateNotice && (
         <Card className="border-blue-200">
           <CardHeader>
-            <CardTitle>Publish a notice</CardTitle>
+             <CardTitle>{translate("Publish a notice")}</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={createNotice} className="grid gap-4 sm:grid-cols-2">
-              <Input name="title" placeholder="Notice title" required minLength={3} className="sm:col-span-2" />
-              <textarea
+               <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">{translate("Notice title")}</span><Input name="title" placeholder={translate("Notice title")} required minLength={3} /></label>
+              <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Notice message</span><textarea
                 name="body"
                 placeholder="What should the school community know?"
                 required
                 minLength={3}
-                className="min-h-28 rounded-xl border border-slate-200 px-3.5 py-3 text-sm sm:col-span-2"
-              />
-              <select name="priority" defaultValue="normal" className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm">
+                className="min-h-28 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm"
+              /></label>
+               <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">{translate("Priority")}</span><select name="priority" defaultValue="normal" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">
                 {priorities.map((priority) => (
                   <option key={priority} value={priority} className="capitalize">
                     {priority}
                   </option>
                 ))}
-              </select>
-              <select name="audience" defaultValue="everyone" className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm">
+              </select></label>
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Audience</span><select name="audience" defaultValue="everyone" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">
                 {audiences.map((audience) => (
                   <option key={audience} value={audience} className="capitalize">
                     {audience}
                   </option>
                 ))}
-              </select>
-              <Input name="publishAt" type="datetime-local" aria-label="Publish date" />
+              </select></label>
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Publish date and time <span className="font-normal text-slate-400">(optional)</span></span><Input name="publishAt" type="datetime-local" /></label>
               <div className="sm:col-span-2">
                 <Button disabled={saving}>{saving ? "Publishing..." : "Publish notice"}</Button>
               </div>
@@ -332,17 +369,19 @@ export function CommunicationWorkspace() {
           </CardHeader>
           <CardContent>
             <form onSubmit={createEvent} className="grid gap-4 sm:grid-cols-2">
-              <Input name="title" placeholder="Event title" required minLength={3} className="sm:col-span-2" />
-              <textarea
+              <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Event title</span><Input name="title" placeholder="Event title" required minLength={3} /></label>
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Calendar type</span><select name="eventType" defaultValue="event" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">{eventTypes.map((type) => <option key={type} value={type}>{type[0].toUpperCase() + type.slice(1)}</option>)}</select></label>
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Audience</span><select name="audience" defaultValue="everyone" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">{audiences.map((audience) => <option key={audience} value={audience} className="capitalize">{audience}</option>)}</select></label>
+              <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Description <span className="font-normal text-slate-400">(optional)</span></span><textarea
                 name="description"
                 placeholder="Short description (optional)"
-                className="min-h-24 rounded-xl border border-slate-200 px-3.5 py-3 text-sm sm:col-span-2"
-              />
-              <Input name="startDate" type="date" required aria-label="Start date" />
-              <Input name="endDate" type="date" aria-label="End date" />
-              <Input name="startTime" type="time" aria-label="Start time" />
-              <Input name="endTime" type="time" aria-label="End time" />
-              <Input name="venue" placeholder="Venue (optional)" className="sm:col-span-2" />
+                className="min-h-24 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm"
+              /></label>
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Start date</span><Input name="startDate" type="date" required /></label>
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">End date <span className="font-normal text-slate-400">(optional)</span></span><Input name="endDate" type="date" /></label>
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Start time <span className="font-normal text-slate-400">(optional)</span></span><Input name="startTime" type="time" /></label>
+              <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">End time <span className="font-normal text-slate-400">(optional)</span></span><Input name="endTime" type="time" /></label>
+              <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Venue <span className="font-normal text-slate-400">(optional)</span></span><Input name="venue" placeholder="Venue" /></label>
               <div className="sm:col-span-2">
                 <Button disabled={saving}>{saving ? "Saving..." : "Add event"}</Button>
               </div>
@@ -355,6 +394,12 @@ export function CommunicationWorkspace() {
         <Card>
           <CardContent className="py-12 text-center text-sm text-slate-500">Loading updates…</CardContent>
         </Card>
+      ) : tab === "events" && eventView === "calendar" ? (
+        <SchoolCalendar
+          events={events}
+          canDelete={canDeleteEvent}
+          onDelete={(id) => void removeEvent(id)}
+        />
       ) : tab === "notices" ? (
         notices.length ? (
           <div className="grid gap-4 lg:grid-cols-2">
@@ -398,10 +443,14 @@ export function CommunicationWorkspace() {
             </CardContent>
           </Card>
         )
-      ) : tab === "events" && events.length ? (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {events.map((event) => (
-            <Card key={event.id} className="h-full">
+      ) : tab === "events" && eventView === "list" && events.length ? (
+        <div className="space-y-3">
+          {events.some((event) => event.source === "trisambat") && (
+            <p className="text-xs text-slate-500">{translate("Public holidays powered by Trisambat")}</p>
+          )}
+          <div className="grid gap-4 lg:grid-cols-2">
+            {events.map((event) => (
+              <Card key={event.id} className="h-full">
               <CardContent className="flex h-full flex-col p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
@@ -409,13 +458,13 @@ export function CommunicationWorkspace() {
                       <CalendarDays size={19} />
                     </span>
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">
-                        {formatDate(event.startDate)}
+                       <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">
+                         {(event.eventType ?? "event").replaceAll("_", " ")} · {formatDate(event.startDate)}
                       </p>
                       <h3 className="mt-1 text-base font-semibold text-slate-900">{event.title}</h3>
                     </div>
                   </div>
-                  {canDeleteEvent && (
+                   {canDeleteEvent && event.source !== "trisambat" && (
                     <Button size="sm" variant="ghost" aria-label={`Delete ${event.title}`} onClick={() => void removeEvent(event.id)}>
                       <Trash2 size={14} />
                     </Button>
@@ -441,10 +490,11 @@ export function CommunicationWorkspace() {
                   )}
                 </div>
               </CardContent>
-            </Card>
-          ))}
+              </Card>
+            ))}
+          </div>
         </div>
-      ) : tab === "events" ? (
+      ) : tab === "events" && eventView === "list" ? (
         <Card>
           <CardContent className="py-12 text-center">
             <CalendarDays className="mx-auto text-slate-300" size={28} />

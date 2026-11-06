@@ -22,6 +22,12 @@ export const passwordResetSchema = z.object({
   newPassword: z.string().min(8).max(200),
 });
 
+export const changeEmailSchema = z.object({
+  currentEmail: z.email(),
+  newEmail: z.email(),
+});
+export type ChangeEmailInput = z.infer<typeof changeEmailSchema>;
+
 export const sessionUserSchema = z.object({
   id: z.uuid(),
   name: z.string(),

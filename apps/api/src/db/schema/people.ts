@@ -12,7 +12,7 @@ import {
   studentStatusEnum,
   updatedAtCol,
 } from "./tenant";
-import { organisations } from "./tenant";
+import { organisations, users } from "./tenant";
 
 export const students = pgTable(
   "students",
@@ -43,6 +43,23 @@ export const students = pgTable(
     uniqueIndex("students_org_code_uq").on(t.organisationId, t.studentId),
     uniqueIndex("students_org_admission_uq").on(t.organisationId, t.admissionNumber),
   ],
+);
+
+export const studentDocuments = pgTable(
+  "student_documents",
+  {
+    id: idCol(),
+    organisationId: orgIdCol(),
+    studentId: uuid("student_id").notNull().references(() => students.id, { onDelete: "cascade" }),
+    documentType: text("document_type").notNull(),
+    title: text("title").notNull(),
+    fileUrl: text("file_url").notNull(),
+    fileName: text("file_name"),
+    mimeType: text("mime_type"),
+    uploadedBy: uuid("uploaded_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAtCol(),
+  },
+  (t) => [uniqueIndex("student_documents_org_student_title_uq").on(t.organisationId, t.studentId, t.title)],
 );
 
 export const guardians = pgTable("guardians", {

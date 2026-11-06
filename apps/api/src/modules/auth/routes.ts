@@ -122,7 +122,7 @@ const studentProfileSchema = z.object({
   email: z.email().nullable().optional(),
   address: z.string().trim().max(300).nullable().optional(),
   nationality: z.string().trim().max(60).nullable().optional(),
-  photoUrl: z.string().max(500).nullable().optional(),
+  photoUrl: z.string().trim().max(2000).nullable().optional(),
 });
 
 authRoutes.get("/profile", requireAuth, async (c) => {

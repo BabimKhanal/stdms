@@ -7,7 +7,7 @@ import { requireAuth, requireOrg, requirePermission } from "../../middleware/gua
 import * as svc from "./service";
 import { env } from "../../env";
 import { getPaymentIntent } from "../../lib/redis";
-import { createEsewaRequest } from "./esewa";
+import { callbackTransactionUuid, createEsewaRequest } from "./esewa";
 import { writeAudit } from "../../lib/audit";
 export const feeRoutes = new Hono<AppEnv>(); feeRoutes.use("*", requireAuth, requireOrg);
 const db = (c: any) => c.get("db"); const org = (c: any) => c.get("orgId")!; const user = (c: any) => c.get("user")!.id;
@@ -46,6 +46,7 @@ feeRoutes.put("/submissions/:id/review", requirePermission("payment.approve"), a
 feeRoutes.get("/summary", requirePermission("fee.view"), async (c) => ok(c, await svc.feeSummary(db(c), org(c), c.get("user")!)));
 
 export const paymentCallbackRoutes = new Hono<AppEnv>();
+const paymentWebOrigin = env.WEB_ORIGIN.split(",")[0].trim().replace(/\/$/, "");
 paymentCallbackRoutes.get("/esewa/checkout/:transactionUuid", async (c) => {
   const transactionUuid = c.req.param("transactionUuid");
   const raw = await getPaymentIntent(transactionUuid);
@@ -56,17 +57,17 @@ paymentCallbackRoutes.get("/esewa/checkout/:transactionUuid", async (c) => {
   return c.html(`<!doctype html><html><body onload="document.forms[0].submit()"><p>Redirecting to eSewa...</p><form method="POST" action="${(intent.gateway?.formUrl || env.ESEWA_FORM_URL).replace(/"/g, "&quot;")}">${inputs}</form></body></html>`);
 });
 paymentCallbackRoutes.get("/esewa/success", async (c) => {
-  const transactionUuid = c.req.query("transaction_uuid");
-  if (!transactionUuid) return c.redirect(`${env.WEB_ORIGIN}/?payment=failed`);
+  const transactionUuid = callbackTransactionUuid(c.req.query());
+  if (!transactionUuid) return c.redirect(`${paymentWebOrigin}/?payment=failed`);
   try {
     const raw = await getPaymentIntent(transactionUuid);
-    if (!raw) return c.redirect(`${env.WEB_ORIGIN}/?payment=failed`);
+    if (!raw) return c.redirect(`${paymentWebOrigin}/?payment=failed`);
     const intent = JSON.parse(raw) as { orgId: string };
     await c.var.client.query("SELECT set_config('app.current_org_id', $1, false)", [intent.orgId]);
     const result = await svc.completeEsewa(c.get("db"), intent.orgId, transactionUuid);
-    return c.redirect(`${env.WEB_ORIGIN}/?payment=${result.duplicate ? "already-completed" : "success"}&invoice=${encodeURIComponent(result.invoiceId)}`);
+    return c.redirect(`${paymentWebOrigin}/?payment=${result.duplicate ? "already-completed" : "success"}&invoice=${encodeURIComponent(result.invoiceId)}`);
   } catch {
-    return c.redirect(`${env.WEB_ORIGIN}/?payment=failed`);
+    return c.redirect(`${paymentWebOrigin}/?payment=failed`);
   }
 });
-paymentCallbackRoutes.get("/esewa/failure", (c) => c.redirect(`${env.WEB_ORIGIN}/?payment=cancelled`));
+paymentCallbackRoutes.get("/esewa/failure", (c) => c.redirect(`${paymentWebOrigin}/?payment=cancelled`));

@@ -29,13 +29,34 @@ export function newTransactionUuid() {
   return `nucleus-${randomUUID()}`;
 }
 
+// eSewa v2 returns a base64-encoded JSON object in `data`. It is only a
+// transaction locator: completion still requires the server-side status check.
+export function callbackTransactionUuid(query: { data?: string; transaction_uuid?: string }): string | null {
+  if (query.data) {
+    if (query.data.length > 8192) return null;
+    try {
+      const payload: unknown = JSON.parse(Buffer.from(query.data, "base64").toString("utf8"));
+      if (!payload || typeof payload !== "object") return null;
+      const reference = (payload as { transaction_uuid?: unknown }).transaction_uuid;
+      return typeof reference === "string" && reference.length > 0 && reference.length <= 200 ? reference : null;
+    } catch {
+      return null;
+    }
+  }
+  const reference = query.transaction_uuid;
+  return reference && reference.length <= 200 ? reference : null;
+}
+
 export async function verifyEsewa(input: { transactionUuid: string; totalAmount: number; config?: EsewaConfig }) {
   const config = input.config ?? { merchantCode: env.ESEWA_MERCHANT_CODE, secretKey: env.ESEWA_SECRET_KEY };
-  const url = new URL("https://rc-epay.esewa.com.np/api/epay/transaction/status/");
+  const formUrl = new URL(input.config?.formUrl || env.ESEWA_FORM_URL);
+  const host = formUrl.hostname;
+  if (host !== "epay.esewa.com.np" && host !== "rc-epay.esewa.com.np") return false;
+  const url = new URL(`https://${host}/api/epay/transaction/status/`);
   url.searchParams.set("product_code", config.merchantCode);
   url.searchParams.set("total_amount", input.totalAmount.toFixed(2));
   url.searchParams.set("transaction_uuid", input.transactionUuid);
-  const response = await fetch(url);
+  const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
   if (!response.ok) return false;
   const payload = await response.json() as { status?: string; transaction_uuid?: string; total_amount?: string | number };
   return payload.status === "COMPLETE" && payload.transaction_uuid === input.transactionUuid && Number(payload.total_amount) === input.totalAmount;

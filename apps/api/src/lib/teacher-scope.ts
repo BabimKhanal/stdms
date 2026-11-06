@@ -9,7 +9,7 @@ export function isUnrestrictedAdmin(user: AuthUser) {
 }
 
 export function isScopedTeacher(user: AuthUser) {
-  return !isUnrestrictedAdmin(user) && user.roles.includes("teacher");
+  return !isUnrestrictedAdmin(user) && user.roles.some((role) => role === "teacher" || role === "class_teacher");
 }
 
 /** Student records linked to a guardian login. */
@@ -67,6 +67,13 @@ export async function assertClassSubjectAssigned(db: DB, user: AuthUser, orgId: 
 }
 
 export async function assertStudentAssigned(db: DB, user: AuthUser, orgId: string, studentId: string) {
+  const allowedStudents = await learnerStudentIds(db, orgId, user);
+  if (allowedStudents !== null) {
+    if (!allowedStudents.includes(studentId)) {
+      throw notFound("Student not found");
+    }
+    return;
+  }
   if (!isScopedTeacher(user)) return;
   const rows = await db.select({ classId: enrolments.classId, sectionId: enrolments.sectionId })
     .from(enrolments).where(and(eq(enrolments.studentId, studentId), eq(enrolments.organisationId, orgId)));

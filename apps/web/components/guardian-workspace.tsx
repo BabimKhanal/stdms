@@ -14,6 +14,8 @@ import { downloadCsv } from "../lib/csv";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
+import { Alert } from "./ui/alert";
+import { ConfirmationDialog } from "./ui/confirmation-dialog";
 type Student = {
   id: string;
   fullName?: string;
@@ -69,6 +71,7 @@ export function GuardianWorkspace() {
   const [message, setMessage] = useState("");
   const [search, setSearch] = useState("");
   const [accountResult, setAccountResult] = useState<{ username?: string; email?: string | null; temporaryPassword?: string } | null>(null);
+  const [confirmLink, setConfirmLink] = useState(false);
   async function loadLists() {
     const [studentResult, guardianResult] = await Promise.all([
       api.get<{ data: Student[] }>("/students?page=1&pageSize=200"),
@@ -113,6 +116,7 @@ export function GuardianWorkspace() {
       await selectStudent(studentId);
       await loadLists();
       setGuardianId("");
+      setConfirmLink(false);
       setMessage("Parent linked to student.");
     } catch (error) {
       setMessage(
@@ -277,15 +281,15 @@ export function GuardianWorkspace() {
                 onSubmit={saveGuardian}
                 className="mb-5 grid gap-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-2"
               >
-                <Input
+                <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Parent full name</span><Input
                   placeholder="Parent full name"
                   value={form.fullName}
                   onChange={(event) =>
                     setForm({ ...form, fullName: event.target.value })
                   }
                   required
-                />
-                <select
+                /></label>
+                <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Relationship</span><select
                   value={form.relationship}
                   onChange={(event) =>
                     setForm({ ...form, relationship: event.target.value })
@@ -296,36 +300,36 @@ export function GuardianWorkspace() {
                   <option value="mother">Mother</option>
                   <option value="guardian">Guardian</option>
                   <option value="other">Other</option>
-                </select>
-                <Input
+                </select></label>
+                <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Phone</span><Input
                   placeholder="Phone"
                   value={form.phone}
                   onChange={(event) =>
                     setForm({ ...form, phone: event.target.value })
                   }
-                />
-                <Input
+                /></label>
+                <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Email</span><Input
                   placeholder="Email"
                   type="email"
                   value={form.email}
                   onChange={(event) =>
                     setForm({ ...form, email: event.target.value })
                   }
-                />
-                <Input
+                /></label>
+                <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Address</span><Input
                   placeholder="Address"
                   value={form.address}
                   onChange={(event) =>
                     setForm({ ...form, address: event.target.value })
                   }
-                />
-                <Input
+                /></label>
+                <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Occupation</span><Input
                   placeholder="Occupation"
                   value={form.occupation}
                   onChange={(event) =>
                     setForm({ ...form, occupation: event.target.value })
                   }
-                />
+                /></label>
                 <Button disabled={saving}>
                   {saving ? "Saving..." : "Save parent"}
                 </Button>
@@ -347,7 +351,7 @@ export function GuardianWorkspace() {
                 </select>
                 <Button
                   variant="outline"
-                  onClick={() => void link()}
+                  onClick={() => setConfirmLink(true)}
                   disabled={!guardianId || saving}
                 >
                   <Link2 size={15} />
@@ -418,6 +422,17 @@ export function GuardianWorkspace() {
           </CardContent>
         </Card>
       )}
+      <ConfirmationDialog
+        open={confirmLink}
+        title="Link parent to student?"
+        description="Review this relationship before granting family access."
+        consequence="A linked parent or guardian may receive access to this student’s protected school information according to their account permissions."
+        details={<div className="space-y-3"><p className="text-sm text-slate-700"><strong>Student:</strong> {selectedStudent?.fullName ?? selectedStudent?.studentId}</p><p className="text-sm text-slate-700"><strong>Parent / guardian:</strong> {guardians.find((guardian) => guardian.id === guardianId)?.fullName}</p>{!selectedStudent?.guardians?.length && <Alert tone="warning" title="Primary guardian">This will become the student’s primary guardian because no guardian is currently linked.</Alert>}</div>}
+        confirmLabel="Link guardian"
+        busy={saving}
+        onClose={() => setConfirmLink(false)}
+        onConfirm={() => void link()}
+      />
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>

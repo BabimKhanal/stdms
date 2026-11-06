@@ -4,6 +4,7 @@ import {
   Image,
   Linking,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -19,26 +20,30 @@ import * as DocumentPicker from "expo-document-picker";
 import { Directory, File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import * as WebBrowser from "expo-web-browser";
-import { Platform } from "react-native";
 import { WebView } from "react-native-webview";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { createMarksheetPdf, type MarksheetResult } from "../../lib/marksheet";
+import { uploadToCloudinary, type CloudinaryFolder } from "../../lib/cloudinary";
 import { EduApiClient } from "@edu/api-client";
 import { mobileToken, refreshMobileSession, useAuth } from "../../auth";
 import { API_URL } from "../../config";
+import { formatAppDate, useAppLocale } from "../../lib/locale";
+import { ConfirmActionDialog, EmptyState } from "../../components";
 
 type Item = Record<string, unknown>;
+type LearnerSetup = { classId?: string | null; className?: string | null; sectionId?: string | null; sectionName?: string | null };
+type FeeAccessSettings = { studentVisible: number | boolean; guardianVisible: number | boolean };
 
 // ── Friendlier palette ────────────────────────────────────────────────────
 const palette = {
   primary: "#7c3aed",
   primarySoft: "#f5f3ff",
   primaryBorder: "#ddd6fe",
-  bg: "#faf9ff",
+  bg: "#f8fafc",
   ink: "#1e1b4b",
-  inkSoft: "#475569",
-  muted: "#94a3b8",
-  border: "#f1f0f9",
+  inkSoft: "#334155",
+  muted: "#64748b",
+  border: "#e2e8f0",
   success: "#059669",
   successSoft: "#ecfdf5",
   warn: "#d97706",
@@ -120,6 +125,47 @@ function useList(path: string) {
   };
 }
 
+function useLearnerSetup(enabled: boolean) {
+  const [setup, setSetup] = useState<LearnerSetup | null>(null);
+  const [checked, setChecked] = useState(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!enabled) {
+        setChecked(true);
+        return undefined;
+      }
+      let active = true;
+      void mobileToken()
+        .then((token) => token ? new EduApiClient(API_URL, () => token).get<LearnerSetup | null>("/auth/profile") : null)
+        .then((profile) => { if (active) setSetup(profile); })
+        .catch(() => undefined)
+        .finally(() => { if (active) setChecked(true); });
+      return () => { active = false; };
+    }, [enabled]),
+  );
+  return { setup, checked };
+}
+
+function useFeeVisibility() {
+  const { user } = useAuth();
+  const [settings, setSettings] = useState<FeeAccessSettings | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      void mobileToken()
+        .then((token) => token ? new EduApiClient(API_URL, () => token).get<FeeAccessSettings>("/fees/access-settings") : null)
+        .then((value) => { if (active) setSettings(value); })
+        .catch(() => undefined);
+      return () => { active = false; };
+    }, []),
+  );
+  const guardian = Boolean(user?.roles?.some((role) => role === "parent" || role === "guardian"));
+  const hidden = settings
+    ? guardian ? !Boolean(settings.guardianVisible) : Boolean(user?.studentId) && !Boolean(settings.studentVisible)
+    : false;
+  return hidden;
+}
+
 function ModuleList({
   title,
   subtitle,
@@ -127,10 +173,12 @@ function ModuleList({
   getTitle,
   getMeta,
   renderExtra,
+  renderDetail,
   renderSummary,
   renderBadge,
   emptyTitle,
   emptyText,
+  explainLearnerSetup = false,
 }: {
   title: string;
   subtitle: string;
@@ -138,21 +186,43 @@ function ModuleList({
   getTitle: (item: Item) => string;
   getMeta: (item: Item) => string;
   renderExtra?: (item: Item) => ReactNode;
+  renderDetail?: (item: Item) => ReactNode;
   renderSummary?: (items: Item[]) => ReactNode;
   renderBadge?: (item: Item) => ReactNode;
   emptyTitle?: string;
   emptyText?: string;
+  explainLearnerSetup?: boolean;
 }) {
   const { items, loading, refreshing, error, reload } = useList(path);
+  useAppLocale();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const theme = moduleTheme[title] ?? moduleTheme.Learning;
+  const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+  const { setup, checked: setupChecked } = useLearnerSetup(Boolean(user?.studentId) && explainLearnerSetup);
+  const setupMessage = setupChecked && user?.studentId && explainLearnerSetup
+    ? !setup?.classId
+      ? "Your school has not added you to a class yet. Ask your class teacher or school office for help."
+      : !setup.sectionId
+        ? `You are in ${setup.className ?? "a class"}, but no section is assigned. Ask the school to add your section.`
+        : null
+    : null;
+
+  useEffect(() => {
+    if (!selectedItem || Platform.OS !== "web") return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSelectedItem(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedItem]);
 
   return (
+    <>
     <ScrollView
       contentContainerStyle={[
         styles.container,
-        { paddingTop: insets.top + 12 },
+        { paddingBottom: insets.bottom + 24, paddingTop: insets.top + 12 },
       ]}
       showsVerticalScrollIndicator={false}
       refreshControl={
@@ -201,7 +271,13 @@ function ModuleList({
       ) : items.length ? (
         <View style={styles.list}>
           {items.map((item, index) => (
-            <View key={String(item.id ?? index)} style={styles.card}>
+            <Pressable
+              key={String(item.id ?? index)}
+              accessibilityRole={renderDetail ? "button" : undefined}
+              accessibilityLabel={renderDetail ? `Open ${getTitle(item)}` : undefined}
+              onPress={renderDetail ? () => setSelectedItem(item) : undefined}
+              style={({ pressed }) => [styles.card, pressed && renderDetail && styles.cardPressed]}
+            >
               <View style={styles.cardTop}>
                 <View style={[styles.cardIcon, { backgroundColor: theme.bg }]}>
                   <MaterialCommunityIcons
@@ -210,35 +286,68 @@ function ModuleList({
                     size={18}
                   />
                 </View>
-                <View style={styles.cardTopRight}>
-                  {renderBadge?.(item)}
-                  <Text style={styles.cardIndex}>
-                    {String(index + 1).padStart(2, "0")}
-                  </Text>
-                </View>
+                <View style={styles.cardTopRight}>{renderBadge?.(item)}</View>
               </View>
               <Text style={styles.cardTitle}>{getTitle(item)}</Text>
               <Text style={styles.cardMeta}>{getMeta(item)}</Text>
               {renderExtra?.(item)}
-            </View>
+            </Pressable>
           ))}
         </View>
       ) : (
-        <View style={styles.emptyCard}>
-          <View style={styles.emptyIcon}>
-            <MaterialCommunityIcons
-              name="inbox-outline"
-              color={palette.muted}
-              size={26}
-            />
-          </View>
-          <Text style={styles.emptyTitle}>{emptyTitle ?? "Nothing here yet"}</Text>
-          <Text style={styles.emptyText}>
-            {emptyText ?? "New activity will appear here when it's available. Check back soon!"}
-          </Text>
-        </View>
+        <EmptyState
+          icon="inbox-outline"
+          title={setupMessage ? "School setup needed" : emptyTitle ?? "Nothing here yet"}
+          description={setupMessage ?? emptyText ?? "New school work and information will show up here."}
+        />
       )}
     </ScrollView>
+    {renderDetail ? (
+      <Modal
+        visible={Boolean(selectedItem)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSelectedItem(null)}
+      >
+        <Pressable
+          style={styles.detailBackdrop}
+          onPress={() => setSelectedItem(null)}
+        >
+          <View
+            style={[styles.detailDrawer, { paddingBottom: insets.bottom + 18 }]}
+            onStartShouldSetResponder={() => true}
+          >
+            <View style={styles.detailHandle} />
+            <View style={styles.detailHeader}>
+              <View style={styles.detailHeaderCopy}>
+                <Text style={styles.detailTitle}>
+                  {selectedItem ? getTitle(selectedItem) : "Assignment"}
+                </Text>
+                {selectedItem ? (
+                  <Text style={styles.detailMeta}>{getMeta(selectedItem)}</Text>
+                ) : null}
+              </View>
+              <Pressable
+                accessibilityLabel="Close assignment details"
+                accessibilityRole="button"
+                hitSlop={10}
+                onPress={() => setSelectedItem(null)}
+                style={styles.detailClose}
+              >
+                <MaterialCommunityIcons name="close" color={palette.inkSoft} size={20} />
+              </Pressable>
+            </View>
+            <ScrollView
+              contentContainerStyle={styles.detailContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {selectedItem ? renderDetail(selectedItem) : null}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
+    ) : null}
+    </>
   );
 }
 
@@ -263,6 +372,7 @@ export function Attendance() {
       renderSummary={isLearner ? () => <AttendanceOverview /> : undefined}
       emptyTitle="No attendance yet"
       emptyText="Attendance appears here once your teacher marks the register."
+      explainLearnerSetup
     />
   );
 }
@@ -277,13 +387,16 @@ export function Learning() {
         `${String(item.subjectName ?? "Subject")} · assigned ${formatDate(item.assignedDate)} · due ${formatDate(item.submissionDate)}`
       }
       renderBadge={(item) => dueBadge(item.submissionDate)}
-      renderExtra={(item) => <AssignmentDetails item={item} />}
+      renderDetail={(item) => <AssignmentDetails item={item} />}
       emptyTitle="You're all caught up"
       emptyText="New homework will appear here as soon as your teacher posts it."
+      explainLearnerSetup
     />
   );
 }
+
 export function Fees() {
+  const hidden = useFeeVisibility();
   return (
     <ModuleList
       title="Fees"
@@ -298,8 +411,8 @@ export function Fees() {
       renderBadge={invoiceBadge}
       renderSummary={(items) => <FeesSummary items={items} />}
       renderExtra={(item) => <PayNowButton invoiceId={String(item.id ?? "")} balance={Number(item.balance ?? 0)} />}
-      emptyTitle="No invoices yet"
-      emptyText="Invoices will appear here once the school issues them."
+      emptyTitle={hidden ? "Fee access is turned off" : "No invoices yet"}
+      emptyText={hidden ? "Your school has chosen not to show family fee information in the app. Contact the accounts office if you need a statement." : "Invoices will appear here once the school issues them."}
     />
   );
 }
@@ -314,6 +427,7 @@ export function Timetable() {
       getMeta={(item) => `${String(item.periodName ?? "Period")} · ${String(item.startTime ?? "")} - ${String(item.endTime ?? "")} · ${String(item.room ?? "Room not set")}`}
       emptyTitle="No timetable published"
       emptyText="Your weekly classes will appear here once the school publishes the timetable."
+      explainLearnerSetup
     />
   );
 }
@@ -371,6 +485,7 @@ function ManualPaymentButton({ invoiceId, balance, method }: { invoiceId: string
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState(String(balance));
   const [reference, setReference] = useState("");
+  const [proof, setProof] = useState<SubmissionFile | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   async function submit() {
@@ -380,7 +495,7 @@ function ManualPaymentButton({ invoiceId, balance, method }: { invoiceId: string
     try {
       let token = await mobileToken();
       if (!token) throw new Error("Session expired. Please sign in again.");
-      const payload = { invoiceId, paymentMethodId: method.id, amount: parsedAmount, reference: reference.trim() || null, proofUrl: null };
+      const payload = { invoiceId, paymentMethodId: method.id, amount: parsedAmount, reference: reference.trim() || null, proofUrl: proof?.url ?? null };
       try { await new EduApiClient(API_URL, () => token).post("/fees/submissions", payload); }
       catch (error) {
         if (!(error instanceof Error) || !/unauthori[sz]ed|401|token|session/i.test(error.message)) throw error;
@@ -393,14 +508,40 @@ function ManualPaymentButton({ invoiceId, balance, method }: { invoiceId: string
     } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to submit payment"); }
     finally { setBusy(false); }
   }
-  return <View>{method.qrImageUrl ? <Image source={{ uri: method.qrImageUrl }} style={styles.paymentQr} resizeMode="contain" /> : null}<Text style={styles.payNowInfo}>{method.label}: {[method.bankName, method.accountName, method.accountNumber, method.instructions].filter(Boolean).join(" · ") || "Follow the school payment instructions."}</Text><Pressable onPress={() => setOpen(true)} style={styles.manualPayButton}><MaterialCommunityIcons name="bank-transfer" color={palette.primary} size={16} /><Text style={styles.manualPayText}>I transferred via {method.label}</Text></Pressable>{message ? <Text style={styles.payNowMessage}>{message}</Text> : null}<Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}><View style={styles.modalBackdrop}><View style={styles.paymentModal}><Text style={styles.modalTitle}>{method.label} payment</Text><Text style={styles.payNowInfo}>Transfer to: {[method.bankName, method.accountName, method.accountNumber].filter(Boolean).join(" · ") || "See school instructions"}</Text><TextInput value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="Amount" style={styles.paymentInput} /><TextInput value={reference} onChangeText={setReference} placeholder="Bank reference / voucher number" style={styles.paymentInput} /><View style={styles.modalActions}><Pressable onPress={() => setOpen(false)} style={styles.modalCancel}><Text>Cancel</Text></Pressable><Pressable disabled={busy} onPress={() => void submit()} style={styles.modalSubmit}><Text style={styles.modalSubmitText}>{busy ? "Submitting..." : "Submit payment"}</Text></Pressable></View></View></View></Modal></View>;
+  async function chooseProof() {
+    setMessage("");
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ["image/*", "video/*", "application/pdf"],
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    if (asset.size && asset.size > 15 * 1024 * 1024) {
+      setMessage("Please choose a proof file smaller than 15 MB.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const token = await mobileToken();
+      if (!token) throw new Error("Session expired. Please sign in again.");
+      setProof(await uploadSubmissionFile(asset, token, "payments"));
+      setMessage("Proof attached.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to upload proof");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return <View>{method.qrImageUrl ? <Image source={{ uri: method.qrImageUrl }} style={styles.paymentQr} resizeMode="contain" /> : null}<Text style={styles.payNowInfo}>{method.label}: {[method.bankName, method.accountName, method.accountNumber, method.instructions].filter(Boolean).join(" · ") || "Follow the school payment instructions."}</Text><Pressable onPress={() => setOpen(true)} style={styles.manualPayButton}><MaterialCommunityIcons name="bank-transfer" color={palette.primary} size={16} /><Text style={styles.manualPayText}>I transferred via {method.label}</Text></Pressable>{message ? <Text style={styles.payNowMessage}>{message}</Text> : null}<Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}><View style={styles.modalBackdrop}><View style={styles.paymentModal}><Text style={styles.modalTitle}>{method.label} payment</Text><Text style={styles.payNowInfo}>Transfer to: {[method.bankName, method.accountName, method.accountNumber].filter(Boolean).join(" · ") || "See school instructions"}</Text><TextInput value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="Amount" style={styles.paymentInput} /><TextInput value={reference} onChangeText={setReference} placeholder="Bank reference / voucher number" style={styles.paymentInput} /><Pressable disabled={busy} onPress={() => void chooseProof()} style={styles.manualPayButton}><MaterialCommunityIcons name="paperclip" color={palette.primary} size={16} /><Text style={styles.manualPayText}>{proof ? `Replace proof: ${proof.name}` : "Attach transfer proof (optional)"}</Text></Pressable><View style={styles.modalActions}><Pressable onPress={() => setOpen(false)} style={styles.modalCancel}><Text>Cancel</Text></Pressable><Pressable disabled={busy} onPress={() => void submit()} style={styles.modalSubmit}><Text style={styles.modalSubmitText}>{busy ? "Submitting..." : "Submit payment"}</Text></Pressable></View></View></View></Modal></View>;
 }
 export function Results() {
+  const { user } = useAuth();
+  const learner = Boolean(user?.studentId || user?.roles?.some((role) => role === "parent" || role === "guardian"));
   return (
     <ModuleList
       title="Results"
       subtitle="Your exams and published assessment records."
-      path="/exams"
+      path={learner ? "/exams/available-results" : "/exams"}
       getTitle={(item) => String(item.name ?? "Examination")}
       getMeta={(item) =>
         `${String(item.type ?? "")} · ${String(item.status ?? "draft")}`
@@ -412,8 +553,9 @@ export function Results() {
           examName={String(item.name ?? "Examination")}
         />
       )}
-      emptyTitle="No exams yet"
-      emptyText="Published exams and marksheets will show up here."
+      emptyTitle="No published results yet"
+      emptyText="Results will appear after your school publishes marks for you."
+      explainLearnerSetup
     />
   );
 }
@@ -619,11 +761,16 @@ function formatDate(value: unknown) {
   const date = new Date(`${value}T00:00:00`);
   return Number.isNaN(date.getTime())
     ? value
-    : date.toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
+    : formatAppDate(value, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function playableVideoUrl(url: string) {
+  return /\/video\/upload\//i.test(url)
+    ? url.replace(
+        /\/video\/upload\//i,
+        "/video/upload/f_mp4,vc_h264,q_auto/",
+      )
+    : url;
 }
 
 function AssignmentDetails({ item }: { item: Item }) {
@@ -672,41 +819,9 @@ type SubmissionFile = { url: string; name: string; mimeType: string };
 async function uploadSubmissionFile(
   asset: DocumentPicker.DocumentPickerAsset,
   token: string,
-) {
-  const mimeType =
-    asset.mimeType ??
-    (asset.name.toLowerCase().endsWith(".pdf")
-      ? "application/pdf"
-      : "image/jpeg");
-  const resourceType = mimeType.startsWith("image/") ? "image" : "raw";
-  const signed = await new EduApiClient(API_URL, () => token).post<{
-    cloudName: string;
-    apiKey: string;
-    timestamp: number;
-    signature: string;
-    folder: string;
-  }>("/uploads/sign", { folder: "assignments", resourceType });
-  const body = new FormData();
-  body.append("file", {
-    uri: asset.uri,
-    name: asset.name,
-    type: mimeType,
-  } as unknown as Blob);
-  body.append("api_key", signed.apiKey);
-  body.append("timestamp", String(signed.timestamp));
-  body.append("signature", signed.signature);
-  body.append("folder", signed.folder);
-  const response = await fetch(
-    `https://api.cloudinary.com/v1_1/${signed.cloudName}/${resourceType}/upload`,
-    { method: "POST", body },
-  );
-  const result = (await response.json()) as {
-    secure_url?: string;
-    error?: { message?: string };
-  };
-  if (!response.ok || !result.secure_url)
-    throw new Error(result.error?.message ?? "File upload failed");
-  return { url: result.secure_url, name: asset.name, mimeType };
+  folder: CloudinaryFolder = "assignments",
+): Promise<SubmissionFile> {
+  return uploadToCloudinary(asset, folder, token);
 }
 
 function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
@@ -719,6 +834,7 @@ function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
     feedback: string | null;
   } | null>(null);
   const [busy, setBusy] = useState<"upload" | "submit" | null>(null);
+  const [confirmReplace, setConfirmReplace] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -808,6 +924,7 @@ function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
         { content: content.trim() || null, fileUrl: attachment?.url ?? null },
       );
       setSaved({ marks: null, feedback: null });
+      setConfirmReplace(false);
       setStatus("✓ Submission saved — nice work!");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Unable to submit");
@@ -922,7 +1039,7 @@ function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
 
       <Pressable
         disabled={busy !== null}
-        onPress={() => void submit()}
+        onPress={() => saved ? setConfirmReplace(true) : void submit()}
         style={({ pressed }) => [
           submissionStyles.submitButton,
           pressed && { opacity: 0.9 },
@@ -945,6 +1062,17 @@ function FileSubmissionForm({ homeworkId }: { homeworkId: string }) {
       {status ? (
         <Text style={submissionStyles.submissionStatus}>{status}</Text>
       ) : null}
+      <ConfirmActionDialog
+        visible={confirmReplace}
+        title={saved?.marks === null ? "Replace existing submission?" : "Replace graded submission?"}
+        message="Your current answer or attachment will be replaced by the version shown in this form."
+        consequence={saved?.marks === null ? "The previous submission will no longer be the active version." : "This work has already been graded. Replacing it may invalidate the teacher’s feedback and recorded marks."}
+        confirmLabel="Replace submission"
+        tone={saved?.marks === null ? "warning" : "danger"}
+        busy={busy === "submit"}
+        onCancel={() => setConfirmReplace(false)}
+        onConfirm={() => void submit()}
+      />
     </View>
   );
 }
@@ -956,6 +1084,7 @@ function MarksheetButton({
   examId: string;
   examName: string;
 }) {
+  useAppLocale();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [choices, setChoices] = useState<MarksheetResult[] | null>(null);
@@ -1341,7 +1470,7 @@ const submissionStyles = StyleSheet.create({
   },
   feedbackLabel: {
     color: palette.inkSoft,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: "800",
     letterSpacing: 0.6,
     textTransform: "uppercase",
@@ -1362,15 +1491,20 @@ const submissionStyles = StyleSheet.create({
 });
 
 function VideoPreview({ url }: { url: string }) {
-  const player = useVideoPlayer(url);
+  const player = useVideoPlayer(playableVideoUrl(url), (videoPlayer) => {
+    videoPlayer.play();
+  });
   return (
     <VideoView
       player={player}
-      style={{ backgroundColor: "#0f172a", flex: 1, width: "100%" }}
+      style={styles.previewVideo}
       nativeControls
       fullscreenOptions={{ enable: true }}
       allowsPictureInPicture
+      playsInline
       contentFit="contain"
+      surfaceType="textureView"
+      useExoShutter={false}
     />
   );
 }
@@ -1393,7 +1527,7 @@ function PreviewModal({
   onDownload: () => void;
 }) {
   const viewerUrl =
-    !isImage && !isVideo && !/\.pdf(\?|$)/i.test(url)
+    !isImage && !isVideo
       ? `https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(url)}`
       : url;
   return (
@@ -1419,7 +1553,9 @@ function PreviewModal({
             resizeMode="contain"
           />
         ) : isVideo ? (
-          <VideoPreview url={url} />
+          <View style={styles.previewMedia}>
+            <VideoPreview url={url} />
+          </View>
         ) : Platform.OS === "web" ? (
           <iframe
             title={label}
@@ -1430,18 +1566,22 @@ function PreviewModal({
           <WebView
             source={{ uri: viewerUrl }}
             style={styles.previewWebView}
+            originWhitelist={["*"]}
+            javaScriptEnabled
             allowsFullscreenMedia
             mediaPlaybackRequiresUserAction={false}
           />
         )}
-        <Pressable onPress={onDownload} style={styles.previewDownload}>
+        <View style={styles.previewFooter}>
+          <Pressable onPress={onDownload} style={styles.previewDownload}>
           <MaterialCommunityIcons
             name="download-outline"
             color="#fff"
             size={18}
           />
           <Text style={styles.previewDownloadText}>Save file</Text>
-        </Pressable>
+          </Pressable>
+        </View>
       </View>
     </Modal>
   );
@@ -1503,14 +1643,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#fff",
     borderRadius: 10,
-    height: 38,
+    height: 48,
     justifyContent: "center",
-    width: 38,
+    width: 48,
   },
   errorText: {
     color: palette.danger,
     flex: 1,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "600",
     lineHeight: 18,
   },
@@ -1529,6 +1669,7 @@ const styles = StyleSheet.create({
     shadowOffset: { height: 4, width: 0 },
     elevation: 1,
   },
+  cardPressed: { backgroundColor: palette.primarySoft, transform: [{ scale: 0.99 }] },
   cardTop: {
     alignItems: "center",
     flexDirection: "row",
@@ -1633,7 +1774,7 @@ const styles = StyleSheet.create({
   summaryStatValue: { fontSize: 19, fontWeight: "800" },
   summaryStatLabel: {
     color: palette.muted,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: "700",
     marginTop: 2,
     textTransform: "uppercase",
@@ -1691,6 +1832,54 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     marginBottom: 8,
   },
+  detailBackdrop: {
+    backgroundColor: "rgba(15, 23, 42, 0.48)",
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  detailDrawer: {
+    alignSelf: "center",
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    maxHeight: "88%",
+    maxWidth: "100%",
+    overflow: "hidden",
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    width: "100%",
+  },
+  detailHandle: {
+    alignSelf: "center",
+    backgroundColor: palette.border,
+    borderRadius: 4,
+    height: 5,
+    width: 42,
+  },
+  detailHeader: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 12,
+    paddingBottom: 14,
+    paddingTop: 18,
+  },
+  detailHeaderCopy: { flex: 1, minWidth: 0 },
+  detailTitle: {
+    color: palette.ink,
+    flexShrink: 1,
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  detailMeta: { color: palette.inkSoft, fontSize: 13, lineHeight: 19, marginTop: 5 },
+  detailClose: {
+    alignItems: "center",
+    backgroundColor: palette.bg,
+    borderRadius: 18,
+    height: 36,
+    justifyContent: "center",
+    width: 36,
+  },
+  detailContent: { paddingBottom: 8 },
 
   // Marksheet
   marksheet: { marginTop: 14 },
@@ -1878,7 +2067,10 @@ const styles = StyleSheet.create({
     width: 40,
   },
   previewImage: { flex: 1, width: "100%" },
+  previewMedia: { flex: 1, minHeight: 0, width: "100%" },
+  previewVideo: { backgroundColor: "#0f172a", flex: 1, minHeight: 280, width: "100%" },
   previewWebView: { backgroundColor: "#fff", flex: 1 },
+  previewFooter: { backgroundColor: "#f8fafc", paddingBottom: 4 },
   previewDownload: {
     alignItems: "center",
     backgroundColor: palette.primary,

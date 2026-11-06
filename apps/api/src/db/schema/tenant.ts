@@ -21,7 +21,12 @@ export const organisationStatusEnum = pgEnum("organisation_status", [
   "trial",
 ]);
 
-export const academicTypeEnum = pgEnum("academic_type", ["school", "college", "academy", "university"]);
+export const academicTypeEnum = pgEnum("academic_type", [
+  "school",
+  "college",
+  "academy",
+  "university",
+]);
 
 export const genderEnum = pgEnum("gender", ["male", "female", "other"]);
 
@@ -52,9 +57,16 @@ export const leaveTypeEnum = pgEnum("leave_type", [
   "custom",
 ]);
 
-export const leaveStatusEnum = pgEnum("leave_status", ["pending", "approved", "rejected"]);
+export const leaveStatusEnum = pgEnum("leave_status", [
+  "pending",
+  "approved",
+  "rejected",
+]);
 
-export const leaveApplicantEnum = pgEnum("leave_applicant", ["student", "employee"]);
+export const leaveApplicantEnum = pgEnum("leave_applicant", [
+  "student",
+  "employee",
+]);
 
 export const employeeTypeEnum = pgEnum("employee_type", [
   "teaching",
@@ -86,7 +98,12 @@ export const examTypeEnum = pgEnum("exam_type", [
   "practical",
 ]);
 
-export const examStatusEnum = pgEnum("exam_status", ["draft", "ongoing", "completed", "published"]);
+export const examStatusEnum = pgEnum("exam_status", [
+  "draft",
+  "ongoing",
+  "completed",
+  "published",
+]);
 
 export const feeFrequencyEnum = pgEnum("fee_frequency", [
   "monthly",
@@ -106,7 +123,11 @@ export const paymentMethodEnum = pgEnum("payment_method", [
   "other",
 ]);
 
-export const paymentSubmissionStatusEnum = pgEnum("payment_submission_status", ["pending", "approved", "rejected"]);
+export const paymentSubmissionStatusEnum = pgEnum("payment_submission_status", [
+  "pending",
+  "approved",
+  "rejected",
+]);
 
 export const invoiceStatusEnum = pgEnum("invoice_status", [
   "unpaid",
@@ -124,7 +145,12 @@ export const homeworkStatusEnum = pgEnum("homework_status", [
   "resubmission_requested",
 ]);
 
-export const noticePriorityEnum = pgEnum("notice_priority", ["low", "normal", "high", "urgent"]);
+export const noticePriorityEnum = pgEnum("notice_priority", [
+  "low",
+  "normal",
+  "high",
+  "urgent",
+]);
 
 export const guardianRelationshipEnum = pgEnum("guardian_relationship", [
   "father",
@@ -133,7 +159,11 @@ export const guardianRelationshipEnum = pgEnum("guardian_relationship", [
   "emergency",
 ]);
 
-export const subjectTypeEnum = pgEnum("subject_type", ["theory", "practical", "both"]);
+export const subjectTypeEnum = pgEnum("subject_type", [
+  "theory",
+  "practical",
+  "both",
+]);
 
 export const weekDayEnum = pgEnum("week_day", [
   "monday",
@@ -210,7 +240,9 @@ export const permissions = pgTable(
     action: text("action").notNull(),
     name: text("name").notNull(),
   },
-  (t) => [uniqueIndex("permissions_resource_action_uq").on(t.resource, t.action)],
+  (t) => [
+    uniqueIndex("permissions_resource_action_uq").on(t.resource, t.action),
+  ],
 );
 
 /** Roles belong to one institution; system roles cannot be deleted. */
@@ -260,7 +292,9 @@ export const users = pgTable(
     avatarUrl: text("avatar_url"),
     isPlatformAdmin: boolean("is_platform_admin").notNull().default(false),
     status: text("status").notNull().default("active"),
-    mustChangePassword: boolean("must_change_password").notNull().default(false),
+    mustChangePassword: boolean("must_change_password")
+      .notNull()
+      .default(false),
     locale: text("locale").notNull().default("en"),
     /** Login linkage: a user may represent an employee, student or guardian. */
     employeeId: uuid("employee_id"),
@@ -307,6 +341,22 @@ export const auditLogs = pgTable("audit_logs", {
   createdAt: createdAtCol(),
 });
 
+/** Platform-level audit trail for cross-tenant operator actions. */
+export const platformAuditLogs = pgTable("platform_audit_logs", {
+  id: idCol(),
+  actorId: uuid("actor_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  actorName: text("actor_name"),
+  action: text("action").notNull(),
+  entity: text("entity").notNull(),
+  entityId: text("entity_id"),
+  oldValue: jsonb("old_value"),
+  newValue: jsonb("new_value"),
+  ip: text("ip"),
+  createdAt: createdAtCol(),
+});
+
 /** Per-institution module switches (SRS §55). */
 export const featureFlags = pgTable(
   "feature_flags",
@@ -333,13 +383,19 @@ export const rolesRelations = relations(roles, ({ many }) => ({
   userRoles: many(userRoles),
 }));
 
-export const rolePermissionsRelations = relations(rolePermissions, ({ one }) => ({
-  role: one(roles, { fields: [rolePermissions.roleId], references: [roles.id] }),
-  permission: one(permissions, {
-    fields: [rolePermissions.permissionId],
-        references: [permissions.id],
+export const rolePermissionsRelations = relations(
+  rolePermissions,
+  ({ one }) => ({
+    role: one(roles, {
+      fields: [rolePermissions.roleId],
+      references: [roles.id],
+    }),
+    permission: one(permissions, {
+      fields: [rolePermissions.permissionId],
+      references: [permissions.id],
+    }),
   }),
-}));
+);
 
 export const permissionsRelations = relations(permissions, ({ many }) => ({
   rolePermissions: many(rolePermissions),

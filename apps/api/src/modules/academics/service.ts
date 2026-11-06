@@ -2,6 +2,7 @@ import { and, asc, desc, eq, or, sql } from "drizzle-orm";
 import type { DB } from "../../lib/types";
 import {
   academicYears,
+  organisations,
   classes,
   classSubjects,
   employees,
@@ -39,33 +40,25 @@ export async function listYears(db: DB, orgId: string) {
 }
 
 export async function createYear(db: DB, orgId: string, input: AcademicYearInput) {
-  if (input.isCurrent) {
-    await db
-      .update(academicYears)
-      .set({ isCurrent: false })
-      .where(eq(academicYears.organisationId, orgId));
-  }
-  const [row] = await db
-    .insert(academicYears)
-    .values({ organisationId: orgId, ...input })
-    .returning();
-  return row;
+  return db.transaction(async (tx) => {
+    // Serialize current-year changes per institution, including concurrent
+    // creation. A failed insert must not clear the previous current year.
+    await tx.select({ id: organisations.id }).from(organisations).where(eq(organisations.id, orgId)).for("update");
+    if (input.isCurrent) await tx.update(academicYears).set({ isCurrent: false }).where(eq(academicYears.organisationId, orgId));
+    const [row] = await tx.insert(academicYears).values({ organisationId: orgId, ...input }).returning();
+    return row;
+  });
 }
 
 export async function updateYear(db: DB, orgId: string, id: string, input: Partial<AcademicYearInput>) {
-  if (input.isCurrent) {
-    await db
-      .update(academicYears)
-      .set({ isCurrent: false })
-      .where(eq(academicYears.organisationId, orgId));
-  }
-  const [row] = await db
-    .update(academicYears)
-    .set(input)
-    .where(and(eq(academicYears.id, id), eq(academicYears.organisationId, orgId)))
-    .returning();
-  if (!row) throw notFound("Academic year not found");
-  return row;
+  return db.transaction(async (tx) => {
+    await tx.select({ id: organisations.id }).from(organisations).where(eq(organisations.id, orgId)).for("update");
+    const [existing] = await tx.select({ id: academicYears.id }).from(academicYears).where(and(eq(academicYears.id, id), eq(academicYears.organisationId, orgId))).for("update");
+    if (!existing) throw notFound("Academic year not found");
+    if (input.isCurrent) await tx.update(academicYears).set({ isCurrent: false }).where(eq(academicYears.organisationId, orgId));
+    const [row] = await tx.update(academicYears).set(input).where(and(eq(academicYears.id, id), eq(academicYears.organisationId, orgId))).returning();
+    return row;
+  });
 }
 
 export async function deleteYear(db: DB, orgId: string, id: string) {
@@ -100,7 +93,7 @@ export async function deleteTerm(db: DB, orgId: string, id: string) {
 
 /* ------------------------------ Classes ------------------------------ */
 
-export async function listClasses(db: DB, orgId: string, academicYearId: string, principal?: AuthUser) {
+export async function listClasses(db: DB, orgId: string, academicYearId: string | null, principal?: AuthUser) {
   return db
     .select({
       id: classes.id,
@@ -108,10 +101,10 @@ export async function listClasses(db: DB, orgId: string, academicYearId: string,
       numericLevel: classes.numericLevel,
       classTeacherId: classes.classTeacherId,
       classTeacherName: employees.fullName,
-      studentCount: sql<number>`(
+      studentCount: academicYearId ? sql<number>`(
         SELECT count(*) FROM enrolments e
          WHERE e.class_id = ${classes.id} AND e.academic_year_id = ${academicYearId}
-      )`,
+      )` : sql<number>`0`,
       sectionCount: sql<number>`(SELECT count(*) FROM sections s WHERE s.class_id = ${classes.id})`,
     })
     .from(classes)

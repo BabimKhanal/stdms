@@ -141,6 +141,36 @@ examRoutes.get("/results", requirePermission("result.view"), async (c) => {
   );
   return okList(c, rows, rows.length, 1, 1000);
 });
+examRoutes.get(
+  "/available-results",
+  requirePermission("exam.view"),
+  requirePermission("result.view"),
+  async (c) => {
+    const principal = c.get("user")!;
+    const canViewDraft =
+      principal.isPlatformAdmin ||
+      principal.permissions.includes("exam.edit") ||
+      principal.permissions.includes("result.edit");
+    const available = await svc.listExams(db(c), org(c), principal);
+    const rows = await Promise.all(
+      available.map(async (exam) => {
+        const results = await scopedResultRows(
+          db(c),
+          org(c),
+          exam.id,
+          undefined,
+          undefined,
+          principal.studentId,
+          canViewDraft,
+          principal,
+        );
+        return results.length ? { ...exam, resultCount: results.length } : null;
+      }),
+    );
+    const visible = rows.filter((row): row is NonNullable<typeof row> => Boolean(row));
+    return okList(c, visible, visible.length, 1, 1000);
+  },
+);
 examRoutes.post("/:id/publish", requirePermission("exam.edit"), async (c) =>
   ok(
     c,

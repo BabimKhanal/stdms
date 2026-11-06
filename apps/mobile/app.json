@@ -12,6 +12,7 @@
       "bundleIdentifier": "com.nucleus.education"
     },
     "android": {
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -30,9 +31,18 @@
           "image": "./assets/splash-icon.png"
         }
       ],
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "updates",
+          "color": "#7c3aed"
+        }
+      ],
       "expo-sharing",
       "expo-web-browser",
-      "expo-video"
+      "expo-video",
+      "expo-secure-store",
+      "expo-font"
     ],
     "extra": {
       "eas": {

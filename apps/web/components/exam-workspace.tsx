@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { Download, Plus, Search } from "lucide-react";
-import { EduApiClient } from "@edu/api-client";
+import { EduApiClient, getApiBaseUrl } from "@edu/api-client";
 import { downloadCsv } from "../lib/csv";
+import { translate } from "../lib/locale";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
@@ -10,6 +11,7 @@ import { Badge } from "./ui/badge";
 import { Alert } from "./ui/alert";
 import { useToast } from "./ui/toast";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
+import { ConfirmationDialog } from "./ui/confirmation-dialog";
 type Exam = {
   id: string;
   name: string;
@@ -17,8 +19,10 @@ type Exam = {
   academicYearId: string;
   status: string;
   subjectCount?: number;
+  classNames?: string | null;
 };
 type Option = { id: string; name: string };
+type Section = Option & { classId: string };
 type Subject = {
   id: string;
   classId: string;
@@ -31,6 +35,8 @@ type Subject = {
 type Result = {
   studentId: string;
   studentName: string;
+  totalObtained: number;
+  totalFull: number;
   percentage: number;
   grade: string | null;
   gpa: number | null;
@@ -39,7 +45,7 @@ type Result = {
   passed: boolean;
 };
 type Student = { id: string; fullName?: string; studentId?: string };
-export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
+export function ExamWorkspace({ canManage = true, canApprove = false }: { canManage?: boolean; canApprove?: boolean }) {
   const api = new EduApiClient(undefined, () =>
     localStorage.getItem("edu_access_token"),
   );
@@ -47,6 +53,7 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
   const [exams, setExams] = useState<Exam[]>([]);
   const [years, setYears] = useState<Option[]>([]);
   const [classes, setClasses] = useState<Option[]>([]);
+  const [sections, setSections] = useState<Section[]>([]);
   const [subjects, setSubjects] = useState<Option[]>([]);
   const [selected, setSelected] = useState<Exam | null>(null);
   const [examSubjects, setExamSubjects] = useState<Subject[]>([]);
@@ -54,24 +61,30 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
   const [marksSubject, setMarksSubject] = useState<Subject | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
   const [marks, setMarks] = useState<Record<string, string>>({});
+  const [marksSectionId, setMarksSectionId] = useState("");
+  const [resultClassId, setResultClassId] = useState("");
+  const [resultSectionId, setResultSectionId] = useState("");
   const [showExamForm, setShowExamForm] = useState(false);
   const [showSubjectForm, setShowSubjectForm] = useState(false);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [error, setError] = useState("");
+  const [workflowAction, setWorkflowAction] = useState<"approve" | "publish" | null>(null);
   const [saving, setSaving] = useState(false);
   async function load() {
     try {
-      const [e, y, c, s] = await Promise.all([
+      const [e, y, c, s, sectionResult] = await Promise.all([
         api.get<{ data: Exam[] }>("/exams"),
         api.get<{ data: Option[] }>("/academics/years"),
         api.get<{ data: Option[] }>("/academics/classes"),
         api.get<{ data: Option[] }>("/academics/subjects"),
+        api.get<{ data: Section[] }>("/academics/sections"),
       ]);
       setExams(e.data);
       setYears(y.data);
       setClasses(c.data);
       setSubjects(s.data);
+      setSections(sectionResult.data);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Unable to load examinations",
@@ -87,12 +100,18 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
     setSelected(exam);
     setMarksSubject(null);
     try {
-      const [s, r] = await Promise.all([
-        api.get<{ data: Subject[] }>(`/exams/${exam.id}/subjects`),
-        api.get<{ data: Result[] }>(`/exams/results?examId=${exam.id}`),
-      ]);
+      const s = await api.get<{ data: Subject[] }>(`/exams/${exam.id}/subjects`);
       setExamSubjects(s.data);
-      setResults(r.data);
+      const firstClassId = s.data[0]?.classId ?? "";
+      setSelected({ ...exam, classNames: [...new Set(s.data.map((subject) => subject.className ?? subject.classId))].join(", ") || exam.classNames });
+      setResultClassId(firstClassId);
+      setResultSectionId("");
+      if (firstClassId) {
+        const r = await api.get<{ data: Result[] }>(`/exams/results?examId=${exam.id}&classId=${firstClassId}`);
+        setResults(r.data);
+      } else {
+        setResults([]);
+      }
     } catch (err) {
       setError(
         err instanceof Error
@@ -151,6 +170,7 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
   }
   async function enterMarks(subject: Subject) {
     setMarksSubject(subject);
+    setMarksSectionId("");
     try {
       const [s, m] = await Promise.all([
         api.get<{ data: Student[] }>(
@@ -173,6 +193,31 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
       setError(err instanceof Error ? err.message : "Unable to load marks");
     }
   }
+  async function loadResultsScope(classId: string, sectionId: string) {
+    if (!selected || !classId) return;
+    setResultClassId(classId);
+    setResultSectionId(sectionId);
+    try {
+      const query = new URLSearchParams({ examId: selected.id, classId });
+      if (sectionId) query.set("sectionId", sectionId);
+      const response = await api.get<{ data: Result[] }>(`/exams/results?${query.toString()}`);
+      setResults(response.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load results for this class");
+    }
+  }
+  async function changeMarksSection(sectionId: string) {
+    if (!marksSubject) return;
+    setMarksSectionId(sectionId);
+    try {
+      const query = new URLSearchParams({ page: "1", pageSize: "200", classId: marksSubject.classId });
+      if (sectionId) query.set("sectionId", sectionId);
+      const response = await api.get<{ data: Student[] }>(`/students?${query.toString()}`);
+      setStudents(response.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load students for this section");
+    }
+  }
   async function publishExam() {
     if (!selected) return;
     setSaving(true);
@@ -184,10 +229,29 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
       await load();
       await openExam(updated);
       toast.success("Results published", "Learners and guardians can now view this exam.");
+      setWorkflowAction(null);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Unable to publish results",
       );
+    } finally {
+      setSaving(false);
+    }
+  }
+  async function approveExam() {
+    if (!selected) return;
+    setSaving(true);
+    setError("");
+    try {
+      const approved = await api.post<Exam>(`/exams/${selected.id}/approve`, {});
+      const updated = { ...selected, ...approved, status: "completed" };
+      setSelected(updated);
+      await load();
+      await openExam(updated);
+      toast.success("Examination approved", "Marks are locked and the results can now be published.");
+      setWorkflowAction(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to approve examination");
     } finally {
       setSaving(false);
     }
@@ -202,8 +266,7 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
     }
     try {
       const token = localStorage.getItem("edu_access_token");
-      const base =
-        process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
+      const base = getApiBaseUrl();
       const response = await fetch(
         `${base}/exams/${selected.id}/report-card/${studentId}`,
         { headers: token ? { Authorization: `Bearer ${token}` } : {} },
@@ -222,7 +285,7 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
   async function downloadTranscript(studentId: string) {
     try {
       const token = localStorage.getItem("edu_access_token");
-      const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
+      const base = getApiBaseUrl();
       const response = await fetch(`${base}/exams/transcript/${studentId}/export`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (!response.ok) throw new Error("Unable to export transcript");
       const blob = await response.blob();
@@ -268,28 +331,35 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
       ),
     [exams, search, status],
   );
+  const activeStep = marksSubject ? 2 : selected?.status === "completed" || selected?.status === "published" ? 3 : selected ? 1 : 0;
   return (
     <div className="space-y-6">
       <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <p className="text-sm font-medium text-blue-600">
-            Assessment workspace
+             {translate("Assessment workspace")}
           </p>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight">
-            Exams & results
+             {translate("Exams & results")}
           </h2>
           <p className="mt-2 text-sm text-slate-500">
-            Configure examinations, allocate subjects, enter marks and review
-            results.
+             {translate("Configure examinations, allocate subjects, enter marks and review results.")}
           </p>
         </div>
         {canManage && (
           <Button onClick={() => setShowExamForm(!showExamForm)}>
             <Plus size={16} />
-            {showExamForm ? "Close" : "Create exam"}
+             {showExamForm ? translate("Close") : translate("Create exam")}
           </Button>
         )}
       </header>
+      <div className="grid gap-2 rounded-2xl border border-slate-200 bg-white p-3 sm:grid-cols-4">
+        {["1. Create exam", "2. Add class subjects", "3. Enter section marks", "4. Review and publish"].map((step, index) => (
+          <div key={step} className={`rounded-xl px-3 py-2 text-xs font-semibold ${index === activeStep ? "bg-blue-50 text-blue-700" : "bg-slate-50 text-slate-500"}`}>
+            {step}
+          </div>
+        ))}
+      </div>
       {error && (
         <Alert tone="error" title="Examinations" onDismiss={() => setError("")}>
           {error}
@@ -298,12 +368,12 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
       {canManage && showExamForm && (
         <Card>
           <CardHeader>
-            <CardTitle>Create examination</CardTitle>
+             <CardTitle>{translate("Create examination")}</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={createExam} className="grid gap-4 sm:grid-cols-2">
-              <Input name="name" placeholder="Exam name" required />
-              <select
+               <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Exam name</span><Input name="name" placeholder="e.g. First Term Examination" required /></label>
+               <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Exam type</span><select
                 name="type"
                 defaultValue="term"
                 className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
@@ -312,21 +382,21 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
                 <option value="mid_term">Mid-term</option>
                 <option value="term">Term exam</option>
                 <option value="final">Final exam</option>
-              </select>
-              <select
+               </select></label>
+               <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Academic year</span><select
                 name="academicYearId"
                 required
                 className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
               >
-                <option value="">Academic year</option>
+                 <option value="">Select academic year</option>
                 {years.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>
                 ))}
-              </select>
-              <Input name="startDate" type="date" />
-              <Input name="endDate" type="date" />
+               </select></label>
+               <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Start date <span className="font-normal text-slate-400">(optional)</span></span><Input name="startDate" type="date" /></label>
+               <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">End date <span className="font-normal text-slate-400">(optional)</span></span><Input name="endDate" type="date" /></label>
               <Button disabled={saving}>
                 {saving ? "Saving..." : "Create examination"}
               </Button>
@@ -337,7 +407,7 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
       <div className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
         <Card>
           <CardHeader className="space-y-3">
-            <CardTitle>Examinations</CardTitle>
+             <CardTitle>{translate("Examinations")}</CardTitle>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Search
@@ -351,7 +421,7 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
                   className="pl-9"
                 />
               </div>
-              <select
+                     <select
                 value={status}
                 onChange={(event) => setStatus(event.target.value)}
                 className="h-11 rounded-xl border border-slate-200 bg-white px-2 text-xs"
@@ -360,18 +430,19 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
                 <option value="draft">Draft</option>
                 <option value="published">Published</option>
                 <option value="completed">Completed</option>
-              </select>
+               </select>
               <Button
                 variant="outline"
                 onClick={() =>
                   downloadCsv(
                     "exams.csv",
-                    ["Name", "Type", "Status", "Subjects"],
+                     ["Name", "Type", "Status", "Classes", "Subjects"],
                     visible.map((exam) => [
                       exam.name,
                       exam.type,
-                      exam.status,
-                      exam.subjectCount ?? 0,
+                       exam.status,
+                       exam.classNames ?? "Not configured",
+                       exam.subjectCount ?? 0,
                     ]),
                   )
                 }
@@ -384,9 +455,10 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
             <Table stack>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Examination</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Subjects</TableHead>
+                   <TableHead>Examination</TableHead>
+                   <TableHead>Status</TableHead>
+                   <TableHead>Classes</TableHead>
+                   <TableHead>Subjects</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -402,10 +474,11 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
                         {exam.type.replace(/_/g, " ")}
                       </span>
                     </TableCell>
-                    <TableCell label="Status">
+                   <TableCell label="Status">
                       <Badge tone={exam.status === "published" ? "green" : exam.status === "completed" ? "violet" : "amber"}>{exam.status}</Badge>
                     </TableCell>
-                    <TableCell label="Subjects">{exam.subjectCount ?? 0}</TableCell>
+                   <TableCell label="Classes">{exam.classNames ?? "Not configured"}</TableCell>
+                   <TableCell label="Subjects">{exam.subjectCount ?? 0}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -419,28 +492,40 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>
-              {selected ? `${selected.name} results` : "Select an examination"}
-            </CardTitle>
-            {selected && canManage && (
+             <div>
+               <CardTitle>{selected ? `${selected.name} results` : "Select an examination"}</CardTitle>
+               {selected && <p className="mt-1 text-xs text-slate-500">Academic year: {years.find((year) => year.id === selected.academicYearId)?.name ?? "Not specified"} · Classes: {selected.classNames ?? "Not configured"}</p>}
+             </div>
+            {selected && (canManage || canApprove) && (
               <div className="flex flex-wrap gap-2">
-                {selected.status !== "published" && (
+                 {selected.status !== "published" && selected.status !== "completed" && canApprove && (
                   <Button
                     size="sm"
-                    onClick={() => void publishExam()}
+                    variant="outline"
+                    onClick={() => setWorkflowAction("approve")}
+                    disabled={saving}
+                  >
+                    {saving ? "Approving..." : "Approve & lock"}
+                  </Button>
+                )}
+                {selected.status === "completed" && canApprove && (
+                  <Button
+                    size="sm"
+                    onClick={() => setWorkflowAction("publish")}
                     disabled={saving}
                   >
                     {saving ? "Publishing..." : "Publish results"}
                   </Button>
                 )}
-                <Button
+                {selected.status !== "published" && !canApprove && <span className="self-center text-xs text-slate-500">An approver must lock this exam before results can be published.</span>}
+                {canManage && <Button
                   size="sm"
                   variant="outline"
                   onClick={() => setShowSubjectForm(!showSubjectForm)}
                 >
                   <Plus size={15} />
                   Subject
-                </Button>
+                </Button>}
               </div>
             )}
           </CardHeader>
@@ -448,17 +533,14 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
             {selected ? (
               <>
                 <div className="mb-5 space-y-2 rounded-2xl bg-slate-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    Configured subjects
-                  </p>
+                   <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Configured subjects</p><p className="mt-1 text-xs text-slate-500">Subjects apply to the entire class and all of its sections.</p></div><div className="flex flex-wrap items-center gap-2"><label className="text-xs font-medium text-slate-600">Results class<select value={resultClassId} onChange={(event) => void loadResultsScope(event.target.value, "")} className="ml-2 h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs"><option value="">Select class</option>{[...new Map(examSubjects.map((subject) => [subject.classId, subject.className ?? subject.classId])).entries()].map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>{resultClassId && <label className="text-xs font-medium text-slate-600">Section<select value={resultSectionId} onChange={(event) => void loadResultsScope(resultClassId, event.target.value)} className="ml-2 h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs"><option value="">All sections</option>{sections.filter((section) => section.classId === resultClassId).map((section) => <option key={section.id} value={section.id}>{section.name}</option>)}</select></label>}</div></div>
                   {examSubjects.map((subject) => (
                     <div
                       key={subject.id}
                       className="flex items-center justify-between rounded-xl bg-white p-3 text-sm"
                     >
                       <span>
-                        {subject.subjectName ?? subject.subjectId} ·{" "}
-                        {subject.className ?? subject.classId}{" "}
+                         {subject.subjectName ?? subject.subjectId} · Class {subject.className ?? subject.classId}{" "}
                         <span className="text-slate-400">
                           ({subject.passMarks}/{subject.fullMarks})
                         </span>
@@ -480,7 +562,7 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
                     onSubmit={addSubject}
                     className="mb-5 grid gap-3 rounded-2xl bg-blue-50/40 p-4 sm:grid-cols-2"
                   >
-                    <select
+                      <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Class for this subject</span><select
                       name="classId"
                       required
                       className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
@@ -491,8 +573,8 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
                           {item.name}
                         </option>
                       ))}
-                    </select>
-                    <select
+                      </select></label>
+                     <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Subject</span><select
                       name="subjectId"
                       required
                       className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
@@ -503,30 +585,28 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
                           {item.name}
                         </option>
                       ))}
-                    </select>
-                    <Input
+                     </select></label>
+                     <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Full marks</span><Input
                       name="fullMarks"
                       type="number"
                       min="1"
                       defaultValue="100"
-                    />
-                    <Input
+                     /></label>
+                     <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Pass marks</span><Input
                       name="passMarks"
                       type="number"
                       min="1"
                       defaultValue="35"
-                    />
-                    <Button disabled={saving}>Add subject</Button>
+                     /></label>
+                     <p className="self-center text-xs leading-5 text-slate-500">This subject will be available to every section in the selected class.</p><Button disabled={saving}>Add subject</Button>
                   </form>
                 )}
                 {canManage && marksSubject ? (
                   <form onSubmit={saveMarks} className="space-y-3">
-                    <div className="flex justify-between">
-                      <p className="font-medium">
-                        Marks:{" "}
-                        {marksSubject.subjectName ?? marksSubject.subjectId}
-                      </p>
-                      <Button disabled={saving}>
+                     <div className="flex flex-wrap items-end justify-between gap-3">
+                       <div><p className="font-medium">Enter marks: {marksSubject.subjectName ?? marksSubject.subjectId}</p><p className="mt-1 text-xs text-slate-500">Class {marksSubject.className ?? marksSubject.classId} · {marksSubject.passMarks}/{marksSubject.fullMarks} pass/full marks</p><p className="mt-1 text-xs text-slate-400">Leave a mark blank only when the student was absent.</p></div>
+                       <label className="text-xs font-medium text-slate-600">Student section<select value={marksSectionId} onChange={(event) => void changeMarksSection(event.target.value)} className="ml-2 h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs"><option value="">All sections</option>{sections.filter((section) => section.classId === marksSubject.classId).map((section) => <option key={section.id} value={section.id}>{section.name}</option>)}</select></label>
+                       <Button disabled={saving}>
                         {saving ? "Saving..." : "Save marks"}
                       </Button>
                     </div>
@@ -551,11 +631,12 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
                       </div>
                     ))}
                   </form>
-                ) : (
+                 ) : examSubjects.length && resultClassId ? (
                   <div className="table-scroll overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm">
                     <thead className="border-b border-slate-100 text-xs text-slate-400">
                       <tr>
                         <th className="py-2">Student</th>
+                        <th className="py-2">Marks</th>
                         <th className="py-2">Percentage</th>
                         <th className="py-2">Grade</th>
                         <th className="py-2">GPA</th>
@@ -568,6 +649,7 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
                       {results.map((result) => (
                         <tr key={result.studentId}>
                           <td className="py-3">{result.studentName}</td>
+                          <td className="py-3">{result.totalObtained}/{result.totalFull}</td>
                           <td className="py-3">{result.percentage}%</td>
                           <td className="py-3">{result.grade ?? "—"}</td>
                           <td className="py-3">
@@ -584,7 +666,9 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
                       ))}
                     </tbody>
                   </table></div>
-                )}
+                 ) : (
+                   <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center"><p className="font-medium text-slate-800">No result scope is ready</p><p className="mt-1 text-sm text-slate-500">Add at least one class subject, then choose the class above to view its results.</p></div>
+                 )}
               </>
             ) : (
               <p className="py-10 text-center text-sm text-slate-500">
@@ -595,6 +679,7 @@ export function ExamWorkspace({ canManage = true }: { canManage?: boolean }) {
         </Card>
       </div>
       <GradingScalePanel canManage={canManage} />
+      <ConfirmationDialog open={Boolean(workflowAction)} title={workflowAction === "approve" ? "Approve and lock marks?" : "Publish results now?"} description={selected?.name} consequence={workflowAction === "approve" ? "Approval locks mark editing. Verify all subject marks before continuing." : "Results become visible to learners and guardians immediately and cannot currently be unpublished."} confirmLabel={workflowAction === "approve" ? "Approve and lock" : "Publish results"} tone={workflowAction === "publish" ? "danger" : "warning"} busy={saving} onClose={() => setWorkflowAction(null)} onConfirm={() => workflowAction === "approve" ? void approveExam() : void publishExam()} />
     </div>
   );
 }

@@ -1,4 +1,7 @@
 {
+  "cli": {
+    "version": ">=26.0.0"
+  },
   "build": {
     "development": {
       "developmentClient": true,
@@ -17,6 +20,11 @@
         "buildType": "apk"
       }
     },
-    "production": {}
+    "production": {
+      "distribution": "store",
+      "android": {
+        "buildType": "app-bundle"
+      }
+    }
   }
 }

@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [monorepo, main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: education_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d education_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/education_ci
+      APP_DATABASE_URL: postgresql://edu_app:app_password@localhost:5432/education_ci
+      REDIS_URL: redis://localhost:6379
+      JWT_ACCESS_SECRET: ci-access-secret-at-least-32-characters
+      JWT_REFRESH_SECRET: ci-refresh-secret-at-least-32-characters
+      WEB_ORIGIN: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run ci
+      - run: npm run db:migrate -w @edu/api
+      - run: npm run db:seed -w @edu/api
+      - run: npm run db:seed:integration -w @edu/api
+      - name: Tenant isolation integration test
+        env:
+          RUN_INTEGRATION_TESTS: "1"
+          TEST_TENANT_A_IDENTIFIER: owner@greenwood.edu.np
+          TEST_TENANT_A_PASSWORD: Owner@123
+          TEST_TENANT_B_IDENTIFIER: owner@integration.test
+          TEST_TENANT_B_PASSWORD: Integration@123
+        run: npm run test:integration -w @edu/api
+      - name: Audit deployed API and web dependencies
+        run: npm audit --workspace @edu/api --workspace @edu/web --workspace @edu/api-client --workspace @edu/shared --omit=dev --audit-level=high

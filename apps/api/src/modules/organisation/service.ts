@@ -66,7 +66,8 @@ export type EmailSettingsInput = {
 function publicEmailSettings(row: typeof emailSettings.$inferSelect) {
   const credentials = readEmailCredentials(row.credentialsEncrypted);
   const { credentialsEncrypted: _ignored, ...rest } = row;
-  return { ...rest, hasCredentials: Boolean(row.credentialsEncrypted), hasApiKey: Boolean(credentials.apiKey), hasSmtpPassword: Boolean(credentials.smtpPassword) };
+  const smtpSecure = row.smtpPort === 465 ? true : row.smtpPort === 587 ? false : row.smtpSecure;
+  return { ...rest, smtpSecure, hasCredentials: Boolean(row.credentialsEncrypted), hasApiKey: Boolean(credentials.apiKey), hasSmtpPassword: Boolean(credentials.smtpPassword) };
 }
 
 export async function getEmailSettings(db: DB, orgId: string) {
@@ -86,7 +87,7 @@ export async function getEmailSettings(db: DB, orgId: string) {
     providerDomain: null,
     smtpHost: null,
     smtpPort: null,
-    smtpSecure: true,
+    smtpSecure: false,
     smtpUsername: null,
     lastTestedAt: null,
     lastTestError: null,
@@ -119,7 +120,7 @@ export async function saveEmailSettings(db: DB, orgId: string, input: EmailSetti
     providerDomain: input.providerDomain ?? null,
     smtpHost: input.smtpHost ?? null,
     smtpPort: input.smtpPort ?? null,
-    smtpSecure: input.smtpSecure ?? true,
+    smtpSecure: input.smtpSecure ?? input.smtpPort === 465,
     smtpUsername: input.smtpUsername ?? null,
     credentialsEncrypted,
   };

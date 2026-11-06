@@ -9,21 +9,24 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EduApiClient } from "@edu/api-client";
 import { mobileToken, useAuth } from "../../auth";
 import { API_URL } from "../../config";
+import { ConfirmActionDialog, DatePicker } from "../../components";
 
 const palette = {
   primary: "#7c3aed",
   primarySoft: "#f5f3ff",
   primaryBorder: "#ddd6fe",
-  bg: "#faf9ff",
+  bg: "#f8fafc",
   ink: "#1e1b4b",
-  inkSoft: "#475569",
-  muted: "#94a3b8",
-  border: "#f1f0f9",
+  inkSoft: "#334155",
+  muted: "#64748b",
+  border: "#e2e8f0",
   success: "#059669",
   successSoft: "#ecfdf5",
   warn: "#d97706",
@@ -82,6 +85,7 @@ const statusTone = {
 
 export function Leave() {
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<LeaveRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -93,7 +97,10 @@ export function Leave() {
   const [reason, setReason] = useState("");
   const [fromDate, setFromDate] = useState(today());
   const [toDate, setToDate] = useState(today());
+  const [fromPicker, setFromPicker] = useState(false);
+  const [toPicker, setToPicker] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   const load = useCallback(async (mode: "initial" | "refresh" = "initial") => {
     if (mode === "refresh") setRefreshing(true);
@@ -157,6 +164,7 @@ export function Leave() {
         toDate,
       });
       setMessage("✓ Leave request sent to your class teacher.");
+      setReviewOpen(false);
       setReason("");
       setCustomType("");
       await load("refresh");
@@ -171,7 +179,10 @@ export function Leave() {
 
   return (
     <ScrollView
-      contentContainerStyle={styles.container}
+      contentContainerStyle={[
+        styles.container,
+        { paddingBottom: insets.bottom + 24, paddingTop: insets.top + 12 },
+      ]}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
       refreshControl={
@@ -242,22 +253,55 @@ export function Leave() {
         <View style={styles.dateRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.label}>From</Text>
-            <TextInput
+            <TouchableOpacity
+              accessibilityLabel="Choose start date"
+              onPress={() => setFromPicker(true)}
+              style={[styles.input, styles.inputReadOnly]}
+            >
+              <Text style={styles.inputText}>{fromDate}</Text>
+              <MaterialCommunityIcons
+                name="calendar-outline"
+                color={palette.muted}
+                size={16}
+              />
+            </TouchableOpacity>
+            <DatePicker
+              visible={fromPicker}
               value={fromDate}
-              onChangeText={setFromDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={palette.muted}
-              style={styles.input}
+              min={today()}
+              onChange={(date) => {
+                setFromDate(date);
+                setFromPicker(false);
+                if (date > toDate) setToDate(date);
+              }}
+              onClose={() => setFromPicker(false)}
+              label="Start date"
             />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.label}>To</Text>
-            <TextInput
+            <TouchableOpacity
+              accessibilityLabel="Choose end date"
+              onPress={() => setToPicker(true)}
+              style={[styles.input, styles.inputReadOnly]}
+            >
+              <Text style={styles.inputText}>{toDate}</Text>
+              <MaterialCommunityIcons
+                name="calendar-outline"
+                color={palette.muted}
+                size={16}
+              />
+            </TouchableOpacity>
+            <DatePicker
+              visible={toPicker}
               value={toDate}
-              onChangeText={setToDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={palette.muted}
-              style={styles.input}
+              min={fromDate}
+              onChange={(date) => {
+                setToDate(date);
+                setToPicker(false);
+              }}
+              onClose={() => setToPicker(false)}
+              label="End date"
             />
           </View>
         </View>
@@ -278,7 +322,13 @@ export function Leave() {
 
         <Pressable
           disabled={saving}
-          onPress={() => void submit()}
+          onPress={() => {
+            setError("");
+            if (reason.trim().length < 3) { setError("Please describe the reason in at least 3 characters."); return; }
+            if (type === "custom" && customType.trim().length < 2) { setError("Please name the leave type."); return; }
+            if (!fromDate || !toDate || fromDate > toDate) { setError("Please choose a valid start and end date."); return; }
+            setReviewOpen(true);
+          }}
           style={({ pressed }) => [
             styles.submit,
             (pressed || saving) && { opacity: 0.85 },
@@ -294,6 +344,18 @@ export function Leave() {
           </Text>
         </Pressable>
       </View>
+
+      <ConfirmActionDialog
+        visible={reviewOpen}
+        title="Send leave request?"
+        message="Review the details that will be shared with school staff."
+        consequence="After sending, this mobile screen does not currently allow you to edit or withdraw the request."
+        confirmLabel="Send leave request"
+        busy={saving}
+        onCancel={() => setReviewOpen(false)}
+        onConfirm={() => void submit()}
+        details={<View style={styles.review}><Text style={styles.reviewLabel}>Type</Text><Text style={styles.reviewValue}>{labelFor(type, type === "custom" ? customType.trim() : null)}</Text><Text style={styles.reviewLabel}>Dates</Text><Text style={styles.reviewValue}>{formatDate(fromDate)} → {formatDate(toDate)}</Text><Text style={styles.reviewLabel}>Reason</Text><Text style={styles.reviewValue}>{reason.trim()}</Text></View>}
+      />
 
       <Text style={styles.sectionLabel}>Your requests</Text>
 
@@ -349,7 +411,7 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: palette.bg,
     flexGrow: 1,
-    padding: 20,
+    paddingHorizontal: 20,
     paddingBottom: 60,
   },
   hero: {
@@ -425,6 +487,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 11,
   },
+  inputReadOnly: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingRight: 10,
+  },
+  inputText: {
+    color: palette.ink,
+    fontSize: 14,
+  },
   textarea: { minHeight: 92, textAlignVertical: "top" },
   dateRow: { flexDirection: "row", gap: 10 },
   error: {
@@ -456,6 +528,9 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   submitText: { color: "#fff", fontSize: 14, fontWeight: "800" },
+  review: { backgroundColor: palette.bg, borderColor: palette.border, borderRadius: 14, borderWidth: 1, padding: 12 },
+  reviewLabel: { color: palette.muted, fontSize: 10, fontWeight: "800", letterSpacing: 0.5, marginTop: 7, textTransform: "uppercase" },
+  reviewValue: { color: palette.ink, fontSize: 13, lineHeight: 19, marginTop: 2 },
   sectionLabel: {
     color: palette.inkSoft,
     fontSize: 11,

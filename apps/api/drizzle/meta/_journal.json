@@ -106,6 +106,90 @@
       "when": 1791991000000,
       "tag": "0014_email_system",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1791992000000,
+      "tag": "0015_email_settings_credentials",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1793622344828,
+      "tag": "0016_student_lifecycle_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793624242297,
+      "tag": "0017_slow_doctor_octopus",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793628174059,
+      "tag": "0018_uneven_joshua_kane",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793630000000,
+      "tag": "0019_student_view_permission",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793631000000,
+      "tag": "0020_repair_student_lifecycle_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793632000000,
+      "tag": "0021_student_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1793633000000,
+      "tag": "0022_smtp_starttls_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1793793698116,
+      "tag": "0023_shocking_blindfold",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793794457951,
+      "tag": "0024_previous_giant_girl",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793804804676,
+      "tag": "0025_supreme_sentinel",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1793804853886,
+      "tag": "0026_broad_thaddeus_ross",
+      "breakpoints": true
     }
   ]
 }

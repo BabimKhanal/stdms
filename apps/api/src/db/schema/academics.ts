@@ -123,6 +123,26 @@ export const enrolments = pgTable(
   (t) => [uniqueIndex("enrolments_year_student_uq").on(t.academicYearId, t.studentId)],
 );
 
+/** Append-only, auditable student lifecycle history. */
+export const studentLifecycleEvents = pgTable("student_lifecycle_events", {
+  id: idCol(),
+  organisationId: orgIdCol(),
+  studentId: uuid("student_id").notNull().references(() => students.id, { onDelete: "restrict" }),
+  actorId: uuid("actor_id").notNull(),
+  action: text("action").notNull(),
+  reason: text("reason").notNull(),
+  effectiveDate: date("effective_date").notNull(),
+  previousStatus: text("previous_status"),
+  newStatus: text("new_status"),
+  sourceAcademicYearId: uuid("source_academic_year_id").references(() => academicYears.id, { onDelete: "restrict" }),
+  sourceClassId: uuid("source_class_id").references(() => classes.id, { onDelete: "restrict" }),
+  sourceSectionId: uuid("source_section_id").references(() => sections.id, { onDelete: "set null" }),
+  destinationAcademicYearId: uuid("destination_academic_year_id").references(() => academicYears.id, { onDelete: "restrict" }),
+  destinationClassId: uuid("destination_class_id").references(() => classes.id, { onDelete: "restrict" }),
+  destinationSectionId: uuid("destination_section_id").references(() => sections.id, { onDelete: "set null" }),
+  createdAt: createdAtCol(),
+});
+
 export const timetablePeriods = pgTable(
   "timetable_periods",
   {

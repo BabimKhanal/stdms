@@ -133,11 +133,16 @@ export const homeworkSchema = z.object({
   attachmentUrls: z.array(z.string()).optional(),
   link: z.string().nullable(),
   maxMarks: z.number().nullable(),
+  archivedAt: z.string().nullable().optional(),
   className: z.string().optional(),
   sectionName: z.string().optional(),
   subjectName: z.string().optional(),
   teacherName: z.string().nullable().optional(),
   submissionCount: z.number().optional(),
+  gradedCount: z.number().optional(),
+  submissionStatus: z.enum(HOMEWORK_STATUSES).nullable().optional(),
+  submissionMarks: z.number().nullable().optional(),
+  submissionFeedback: z.string().nullable().optional(),
 });
 export type Homework = z.infer<typeof homeworkSchema>;
 
@@ -222,6 +227,7 @@ export type NoticeInput = z.infer<typeof noticeInputSchema>;
 export const eventSchema = z.object({
   id: idSchema,
   title: z.string(),
+  eventType: z.enum(["event", "holiday", "exam", "deadline", "meeting", "other"]),
   description: z.string().nullable(),
   startDate: dateSchema,
   endDate: dateSchema.nullable(),
@@ -235,12 +241,23 @@ export type CalendarEvent = z.infer<typeof eventSchema>;
 
 export const eventInputSchema = z.object({
   title: z.string().trim().min(3).max(150),
+  eventType: z.enum(["event", "holiday", "exam", "deadline", "meeting", "other"]).default("event"),
   description: z.string().trim().max(2000).nullable().optional(),
   startDate: dateSchema,
   endDate: dateSchema.nullable().optional(),
-  startTime: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
-  endTime: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
+  startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use a valid time in HH:MM format").nullable().optional(),
+  endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use a valid time in HH:MM format").nullable().optional(),
   venue: z.string().trim().max(150).nullable().optional(),
   imageUrl: z.string().max(500).nullable().optional(),
-  audiences: z.array(z.string()).min(1).default(["everyone"]),
+  audiences: z.array(z.enum(["everyone", "students", "parents", "guardians", "teachers", "staff"])).min(1).default(["everyone"]),
+}).superRefine((value, context) => {
+  if (value.endTime && !value.startTime) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["startTime"], message: "Choose a start time when providing an end time" });
+  }
+  if (value.endDate && value.endDate < value.startDate) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["endDate"], message: "End date cannot be before the start date" });
+  }
+  if (value.startTime && value.endTime && value.endTime < value.startTime && (!value.endDate || value.endDate === value.startDate)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["endTime"], message: "End time cannot be before the start time" });
+  }
 });

@@ -163,6 +163,7 @@ export const DEFAULT_ROLES: Record<string, { name: string; description: string; 
     permissions: [
       ...perms("organisation", ["view"]),
       ...perms("academic", ["view"]),
+      ...perms("student", ["view"]),
       ...perms("timetable", ["view"]),
       ...perms("attendance", ["view"]),
       ...perms("leave", ["view", "create"]),

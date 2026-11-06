@@ -2,10 +2,12 @@
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
     "dev": {
+      "env": ["API_URL", "NEXT_PUBLIC_API_URL", "NEXT_DIST_DIR"],
       "cache": false,
       "persistent": true
     },
     "build": {
+      "env": ["API_URL", "NEXT_PUBLIC_API_URL", "NEXT_DIST_DIR"],
       "dependsOn": ["^build"],
       "outputs": [".next/**", "!.next/cache/**", "dist/**"]
     },

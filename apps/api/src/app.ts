@@ -18,8 +18,56 @@ import { uploadRoutes } from "./modules/uploads/routes";
 import { notificationRoutes } from "./modules/notifications/routes";
 import type { AppEnv } from "./lib/types";
 import { writeAudit } from "./lib/audit";
+import { forbidden } from "./lib/errors";
+import { readiness } from "./lib/health";
+import { randomUUID } from "node:crypto";
+import { alertPlatformAdmins } from "./lib/operation-alert";
 
 export const app = new Hono<AppEnv>();
+
+app.use("*", async (c, next) => {
+  const requestId = c.req.header("x-request-id")?.slice(0, 100) || randomUUID();
+  c.header("x-request-id", requestId);
+  const startedAt = Date.now();
+  try {
+    await next();
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(c.req.method) && c.res.status >= 400) {
+      void alertPlatformAdmins(c.get("db"), {
+        requestId,
+        method: c.req.method,
+        path: c.req.path,
+        status: c.res.status,
+        organisationId: c.get("orgId") ?? null,
+        userId: c.get("user")?.id ?? null,
+        userName: c.get("user")?.name ?? null,
+        error: `HTTP ${c.res.status}`,
+      });
+    }
+  } catch (error) {
+    const status = (error as { status?: number }).status ?? 500;
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(c.req.method) && status >= 400) {
+      void alertPlatformAdmins(c.get("db"), {
+        requestId,
+        method: c.req.method,
+        path: c.req.path,
+        status,
+        organisationId: c.get("orgId") ?? null,
+        userId: c.get("user")?.id ?? null,
+        userName: c.get("user")?.name ?? null,
+        error: error instanceof Error ? error.message : "Request failed",
+      });
+    }
+    throw error;
+  } finally {
+    console.log(JSON.stringify({ level: "info", event: "http_request", requestId, method: c.req.method, path: c.req.path, status: c.res?.status ?? 500, durationMs: Date.now() - startedAt, userId: c.get("user")?.id ?? null, organisationId: c.get("orgId") ?? null }));
+  }
+});
+
+app.get("/live", (c) => c.json({ ok: true, service: "edu-api", time: new Date().toISOString() }));
+app.get("/ready", async (c) => {
+  const result = await readiness();
+  return c.json(result, result.ok ? 200 : 503);
+});
 
 const configuredWebOrigins = env.WEB_ORIGIN.split(",")
   .map((origin) => origin.trim())
@@ -42,6 +90,17 @@ app.use(
 
 // Every request gets a scoped DB connection + RLS session GUCs.
 app.use("*", requestScope);
+
+// Temporary credentials may only be used to establish a session and choose a
+// private password. Enforce this on the API as well as in the clients.
+app.use("/api/v1/*", async (c, next) => {
+  const user = c.get("user");
+  const allowed = ["/api/v1/auth/me", "/api/v1/auth/change-password", "/api/v1/auth/logout", "/api/v1/auth/refresh"];
+  if (user?.mustChangePassword && !allowed.includes(c.req.path)) {
+    throw forbidden("You must change your temporary password before continuing");
+  }
+  await next();
+});
 
 app.use("/api/v1/*", async (c, next) => {
   await next();
@@ -68,7 +127,6 @@ app.route("/api/v1/enrolments", enrolmentRoutes);
 // Register platform routes before the broad operations router. The operations
 // router has an institution-context guard; platform admins intentionally do not.
 app.route("/api/v1/super", superAdminRoutes);
-app.route("/api/v1", operationRoutes);
 app.route("/api/v1/fees", feeRoutes);
 app.route("/api/v1/payments", paymentCallbackRoutes);
 app.route("/api/v1/exams", examRoutes);
@@ -78,6 +136,9 @@ app.route("/api/v1/organisation", organisationRoutes);
 app.route("/api/v1/users", userRoutes);
 app.route("/api/v1/roles", roleRoutes);
 app.route("/api/v1/notifications", notificationRoutes);
+// The operations router has a broad authentication guard. Register it last so
+// it cannot intercept public payment callbacks or other module routes.
+app.route("/api/v1", operationRoutes);
 
 app.notFound((c) => c.json({ ok: false, error: `Not found: ${c.req.path}` }, 404));
 
@@ -85,7 +146,7 @@ app.onError((err, c) => {
   const status = ((err as { status?: number }).status ?? 500) as ContentfulStatusCode;
   if (status >= 500) console.error("[api]", err);
   return c.json(
-    { ok: false, error: err.message || "Internal server error", code: (err as { code?: string }).code },
+    { ok: false, error: status >= 500 ? "Internal server error" : err.message || "Request failed", code: (err as { code?: string }).code },
     status,
   );
 });

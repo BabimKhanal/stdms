@@ -17,9 +17,12 @@ test("login accepts student identifiers", () => {
 
 test("student and parent roles have read access to learning and results", () => {
   assert.ok(DEFAULT_ROLES.student.permissions.includes("homework.view"));
+  assert.ok(DEFAULT_ROLES.student.permissions.includes("student.view"));
   assert.ok(DEFAULT_ROLES.student.permissions.includes("result.view"));
+  assert.ok(DEFAULT_ROLES.student.permissions.includes("exam.view"));
   assert.ok(DEFAULT_ROLES.parent.permissions.includes("homework.view"));
   assert.ok(DEFAULT_ROLES.parent.permissions.includes("result.view"));
+  assert.ok(DEFAULT_ROLES.parent.permissions.includes("exam.view"));
   assert.equal(DEFAULT_ROLES.student.permissions.includes("homework.create"), false);
 });
 

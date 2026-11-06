@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,10 +8,14 @@ import {
   TextInput,
   View,
 } from "react-native";
+import * as DocumentPicker from "expo-document-picker";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EduApiClient } from "@edu/api-client";
 import { API_URL } from "../../config";
 import { mobileToken, useAuth } from "../../auth";
+import { ProfileAvatar } from "../../components/ProfileAvatar";
+import { uploadToCloudinary } from "../../lib/cloudinary";
 
 type StudentProfile = {
   fullName: string;
@@ -44,23 +47,24 @@ const palette = {
   primary: "#7c3aed",
   primarySoft: "#f5f3ff",
   primaryBorder: "#ddd6fe",
-  bg: "#faf9ff",
+  bg: "#f8fafc",
   ink: "#1e1b4b",
-  inkSoft: "#475569",
-  muted: "#94a3b8",
-  border: "#f1f0f9",
+  inkSoft: "#334155",
+  muted: "#64748b",
+  border: "#e2e8f0",
   success: "#059669",
   successSoft: "#ecfdf5",
 };
 
 export function Profile() {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
+  const insets = useSafeAreaInsets();
   const [profile, setProfile] = useState<StudentProfile | null>(null);
-  const [imageFailed, setImageFailed] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(Boolean(user?.studentId));
   const [message, setMessage] = useState("");
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [form, setForm] = useState({
     phone: "",
     email: "",
@@ -129,33 +133,94 @@ export function Profile() {
     }
   }
 
+  async function uploadPhoto() {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ["image/*"],
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    if (asset.size && asset.size > 8 * 1024 * 1024) {
+      setMessage("Choose an image smaller than 8 MB.");
+      return;
+    }
+    const extension = asset.name.toLowerCase().split(".").pop();
+    const mimeTypeByExtension: Record<string, string> = {
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      png: "image/png",
+      webp: "image/webp",
+    };
+    const mimeType = asset.mimeType?.startsWith("image/")
+      ? asset.mimeType
+      : extension
+        ? mimeTypeByExtension[extension]
+        : undefined;
+    if (!mimeType || !mimeTypeByExtension[extension ?? ""]) {
+      setMessage("Unsupported image format. Choose a JPG, PNG, or WEBP image.");
+      return;
+    }
+    setUploadingPhoto(true);
+    setMessage("");
+    try {
+      const token = await mobileToken();
+      if (!token) throw new Error("Session expired. Please sign in again.");
+      const uploaded = await uploadToCloudinary(
+        { name: asset.name, mimeType, uri: asset.uri },
+        "students",
+        token,
+      );
+      const updated = await new EduApiClient(API_URL, () => token).put<StudentProfile>(
+        "/auth/profile",
+        {
+          photoUrl: uploaded.url,
+        },
+      );
+      setProfile(updated);
+      await updateUser({ avatarUrl: uploaded.url });
+      setMessage("Profile photo updated");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to update photo");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+
   const displayPhoto = profile?.photoUrl ?? user?.avatarUrl;
 
   return (
     <ScrollView
-      contentContainerStyle={styles.container}
+      contentContainerStyle={[
+        styles.container,
+        { paddingBottom: insets.bottom + 32 },
+      ]}
       showsVerticalScrollIndicator={false}
     >
       {/* Hero header with avatar */}
       <View style={styles.heroCard}>
         <View style={styles.heroBlob} />
         <View style={styles.heroBlobSmall} />
-        <View style={styles.avatarWrap}>
-          {displayPhoto && !imageFailed ? (
-            <Image
-              onError={() => setImageFailed(true)}
-              source={{ uri: displayPhoto }}
-              style={styles.avatar}
-            />
-          ) : (
-            <View style={styles.avatarFallback}>
-              <Text style={styles.initial}>{user?.name?.charAt(0) ?? "U"}</Text>
-            </View>
-          )}
+        <Pressable
+          accessibilityLabel="Change profile photo"
+          accessibilityRole="button"
+          disabled={uploadingPhoto}
+          onPress={() => void uploadPhoto()}
+          style={styles.avatarWrap}
+        >
+          <ProfileAvatar
+            name={user?.name}
+            size={110}
+            style={styles.avatar}
+            uri={displayPhoto}
+          />
           <View style={styles.avatarBadge}>
-            <MaterialCommunityIcons name="camera" color="#fff" size={13} />
+            {uploadingPhoto ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <MaterialCommunityIcons name="camera" color="#fff" size={13} />
+            )}
           </View>
-        </View>
+        </Pressable>
         <Text style={styles.name}>
           {profile?.fullName ?? user?.name ?? "User"}
         </Text>
@@ -541,15 +606,15 @@ const styles = StyleSheet.create({
   // Hero
   heroCard: {
     alignItems: "center",
-    backgroundColor: "#5b21b6",
-    borderRadius: 28,
+    backgroundColor: "#9561e8",
+    borderRadius: 24,
     marginTop: 6,
     overflow: "hidden",
     paddingBottom: 24,
     paddingTop: 26,
     position: "relative",
-    shadowColor: "#5b21b6",
-    shadowOpacity: 0.3,
+    shadowColor: "#9561e8",
+    shadowOpacity: 0.22,
     shadowRadius: 16,
     shadowOffset: { height: 8, width: 0 },
     elevation: 6,

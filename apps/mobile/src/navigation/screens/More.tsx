@@ -1,28 +1,37 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
 import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../auth";
+import { ProfileAvatar } from "../../components/ProfileAvatar";
+import { ActionRow, ConfirmActionDialog } from "../../components";
 
 const palette = {
   primary: "#7c3aed",
   primarySoft: "#f5f3ff",
   primaryBorder: "#ddd6fe",
-  bg: "#faf9ff",
+  bg: "#f8fafc",
   ink: "#1e1b4b",
-  inkSoft: "#475569",
-  muted: "#94a3b8",
-  border: "#f1f0f9",
+  inkSoft: "#334155",
+  muted: "#64748b",
+  border: "#e2e8f0",
   danger: "#e11d48",
   dangerSoft: "#fff1f2",
 };
-
-type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
 
 export function More() {
   const navigation = useNavigation<any>();
   const { user, signOut } = useAuth();
   const insets = useSafeAreaInsets();
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    try { await signOut(); }
+    finally { setSigningOut(false); setConfirmSignOut(false); }
+  }
 
   const canViewFees = Boolean(
     user?.isPlatformAdmin ||
@@ -37,17 +46,23 @@ export function More() {
     user?.studentId &&
       (user?.isPlatformAdmin || user?.permissions?.includes("leave.create")),
   );
+  const canViewCalendar = Boolean(
+    user?.isPlatformAdmin || user?.permissions?.includes("event.view"),
+  );
 
   return (
     <ScrollView
-      contentContainerStyle={[styles.container, { paddingTop: insets.top + 12 }]}
+      contentContainerStyle={[
+        styles.container,
+        { paddingBottom: insets.bottom + 24, paddingTop: insets.top + 12 },
+      ]}
       showsVerticalScrollIndicator={false}
     >
       {/* Header */}
       <Text style={styles.eyebrow}>{user?.orgName ?? "Nucleus"}</Text>
-      <Text style={styles.title}>More</Text>
+      <Text style={styles.title}>Explore</Text>
       <Text style={styles.subtitle}>
-        Your account, results, and school tools.
+        Find school tools, your profile, and help in one place.
       </Text>
 
       {/* Profile hero card */}
@@ -60,11 +75,7 @@ export function More() {
           pressed && styles.pressedProfile,
         ]}
       >
-        <View style={styles.profileAvatar}>
-          <Text style={styles.profileInitial}>
-            {user?.name?.charAt(0) ?? "U"}
-          </Text>
-        </View>
+          <ProfileAvatar name={user?.name} size={48} uri={user?.avatarUrl} style={styles.profileAvatar} />
         <View style={styles.profileCopy}>
           <Text style={styles.profileName}>{user?.name ?? "User"}</Text>
           <Text style={styles.profileMeta}>
@@ -77,62 +88,82 @@ export function More() {
       </Pressable>
 
       {/* School tools */}
-      <SectionLabel>School tools</SectionLabel>
+      <SectionLabel>Learn and plan</SectionLabel>
       <View style={styles.list}>
-        <Action
+        <ActionRow
           icon="bell-outline"
           tint="#7c3aed"
-          bg="#f5f3ff"
+          background="#f5f3ff"
           title="Updates"
-          description="Notices, grades, and live school activity"
+          description="Read messages and news from school"
           onPress={() => navigation.navigate("Updates")}
         />
         {canViewResults ? (
-          <Action
+            <ActionRow
             icon="chart-line"
             tint="#2563eb"
-            bg="#eff6ff"
+              background="#eff6ff"
             title="Results"
-            description="Examinations and published scores"
+              description="See your marks and teacher feedback"
             onPress={() => navigation.navigate("Results")}
           />
         ) : null}
         {canViewFees ? (
-          <Action
+            <ActionRow
             icon="wallet-outline"
             tint="#d97706"
-            bg="#fffbeb"
+            background="#fffbeb"
             title="Fees"
-            description="Invoices and outstanding balances"
+              description="See payments and money still due"
             onPress={() => navigation.navigate("Fees")}
           />
         ) : null}
         {canRequestLeave ? (
-          <Action
+            <ActionRow
             icon="calendar-remove-outline"
             tint="#db2777"
-            bg="#fdf2f8"
+            background="#fdf2f8"
             title="Leave requests"
-            description="Apply for leave and track approvals"
+              description="Ask for time away from school"
             onPress={() => navigation.navigate("Leave")}
           />
         ) : null}
-        <Action
+        {canViewCalendar ? (
+            <ActionRow
+            icon="calendar-month-outline"
+            tint="#2563eb"
+            background="#eff6ff"
+            title="Calendar"
+              description="See holidays, exams, and special days"
+            onPress={() => navigation.navigate("Calendar")}
+          />
+        ) : null}
+        {user?.studentId ? (
+            <ActionRow
+            icon="folder-account-outline"
+            tint="#7c3aed"
+            background="#f5f3ff"
+            title="My documents"
+              description="Open ID cards, reports, and certificates"
+            onPress={() => navigation.navigate("Documents")}
+          />
+        ) : null}
+        <ActionRow
           icon="account-circle-outline"
           tint="#059669"
-          bg="#ecfdf5"
+          background="#ecfdf5"
           title="Profile"
-          description="Personal details and family contacts"
+          description="See your details and family contacts"
           onPress={() =>
             navigation.navigate("Profile", { user: user?.name ?? "user" })
           }
         />
-        <Action
+        <ActionRow
           icon="cog-outline"
           tint="#0891b2"
-          bg="#ecfeff"
+          background="#ecfeff"
           title="Settings"
-          description="Session and app preferences"
+          description="Change language, notifications, and password"
           onPress={() => navigation.navigate("Settings")}
         />
       </View>
@@ -140,61 +171,33 @@ export function More() {
       {/* Account */}
       <SectionLabel>Account</SectionLabel>
       <View style={styles.list}>
-        <Action
+        <ActionRow
           icon="logout"
           tint={palette.danger}
-          bg={palette.dangerSoft}
+          background={palette.dangerSoft}
           title="Sign out"
-          description="End this mobile session"
+          description="Leave your account safely"
           danger
-          onPress={() => void signOut()}
+           onPress={() => setConfirmSignOut(true)}
         />
       </View>
+       <ConfirmActionDialog
+         visible={confirmSignOut}
+         title="Sign out?"
+         message="You’ll need to sign in again to access your classes, assignments, and school updates."
+         consequence="This ends the current mobile session and unregisters this device from account notifications."
+         confirmLabel="Sign out"
+         tone="danger"
+         busy={signingOut}
+         onCancel={() => setConfirmSignOut(false)}
+         onConfirm={() => void handleSignOut()}
+       />
     </ScrollView>
   );
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <Text style={styles.sectionLabel}>{children}</Text>;
-}
-
-function Action({
-  icon,
-  tint = palette.primary,
-  bg = palette.primarySoft,
-  title,
-  description,
-  onPress,
-  danger = false,
-}: {
-  icon: IconName;
-  tint?: string;
-  bg?: string;
-  title: string;
-  description: string;
-  onPress: () => void;
-  danger?: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.action,
-        pressed && (danger ? styles.pressedDanger : styles.pressed),
-      ]}
-    >
-      <View style={[styles.actionIcon, { backgroundColor: bg }]}>
-        <MaterialCommunityIcons name={icon} color={tint} size={22} />
-      </View>
-      <View style={styles.actionCopy}>
-        <Text style={[styles.actionTitle, danger && { color: palette.danger }]}>
-          {title}
-        </Text>
-        <Text style={styles.actionDescription}>{description}</Text>
-      </View>
-      <MaterialCommunityIcons name="chevron-right" color="#cbd5e1" size={20} />
-    </Pressable>
-  );
 }
 
 const styles = StyleSheet.create({
@@ -247,12 +250,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 48,
   },
-  profileInitial: { color: "#fff", fontSize: 20, fontWeight: "800" },
   profileCopy: { flex: 1, marginLeft: 12 },
-  profileName: { color: "#fff", fontSize: 15, fontWeight: "800" },
+  profileName: { color: "#fff", fontSize: 17, fontWeight: "800" },
   profileMeta: {
     color: "#ddd6fe",
-    fontSize: 12,
+    fontSize: 13,
     marginTop: 4,
     fontWeight: "600",
   },
@@ -268,7 +270,7 @@ const styles = StyleSheet.create({
   // Sections
   sectionLabel: {
     color: palette.inkSoft,
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: "800",
     letterSpacing: 0.8,
     marginBottom: 10,
@@ -276,48 +278,4 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   list: { gap: 10 },
-
-  // Action rows
-  action: {
-    alignItems: "center",
-    backgroundColor: "#fff",
-    borderColor: palette.border,
-    borderRadius: 18,
-    borderWidth: 1,
-    flexDirection: "row",
-    minHeight: 62,
-    padding: 14,
-    shadowColor: palette.primary,
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: { height: 3, width: 0 },
-    elevation: 1,
-  },
-  pressed: {
-    backgroundColor: palette.primarySoft,
-    borderColor: palette.primaryBorder,
-    transform: [{ scale: 0.99 }],
-  },
-  pressedDanger: {
-    backgroundColor: palette.dangerSoft,
-    borderColor: "#fecdd3",
-    transform: [{ scale: 0.99 }],
-  },
-  actionIcon: {
-    alignItems: "center",
-    borderRadius: 12,
-    height: 44,
-    justifyContent: "center",
-    width: 44,
-  },
-  actionCopy: { flex: 1, marginLeft: 13 },
-  actionTitle: { color: palette.ink, fontSize: 15, fontWeight: "800" },
-  actionDescription: {
-    color: palette.inkSoft,
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 4,
-    fontWeight: "500",
-  },
-
 });

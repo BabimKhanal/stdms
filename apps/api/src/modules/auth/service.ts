@@ -92,6 +92,7 @@ export async function login(c: Context<AppEnv>, identifier: string, password: st
   // Step 1: the tenant is unknown until we find the account → unscoped READ.
   await setGuc("app.allow_unscoped", "true");
   const userRow = await findUserByIdentifier(db, identifier);
+  await setGuc("app.allow_unscoped", "false");
   if (!userRow) throw unauthorized("Invalid credentials");
   if (!(await verifyPassword(password, userRow.passwordHash))) {
     throw unauthorized("Invalid credentials");
@@ -242,6 +243,7 @@ export async function resetPassword(token: string, newPassword: string) {
   const client = await appPool.connect();
   try {
     await client.query("BEGIN");
+    await client.query("SELECT set_config('app.allow_unscoped', 'true', true)");
     const result = await client.query("UPDATE users SET password_hash = $1, must_change_password = false, updated_at = now() WHERE id = $2 AND status = 'active' RETURNING id", [await hashPassword(newPassword), userId]);
     if (!result.rowCount) throw unauthorized("Account is disabled");
     await client.query("COMMIT");

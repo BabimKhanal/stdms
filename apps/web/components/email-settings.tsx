@@ -69,7 +69,7 @@ const defaults: EmailSettings = {
   providerDomain: null,
   smtpHost: null,
   smtpPort: 587,
-  smtpSecure: true,
+  smtpSecure: false,
   smtpUsername: null,
   lastTestedAt: null,
   lastTestError: null,
@@ -150,28 +150,33 @@ export function EmailSettings() {
     setDeliveries(deliveryList.data);
   }
 
+  function settingsPayload(extra: Record<string, string> = {}) {
+    return {
+      provider: form.provider,
+      enabled: form.enabled,
+      fromName: form.fromName,
+      fromEmail: form.fromEmail,
+      replyTo: form.replyTo || null,
+      footer: form.footer || null,
+      dailyLimit: form.dailyLimit,
+      providerDomain: form.providerDomain || null,
+      smtpHost: form.smtpHost || null,
+      smtpPort: form.smtpPort ?? null,
+      smtpSecure: form.smtpSecure,
+      smtpUsername: form.smtpUsername || null,
+      ...extra,
+    };
+  }
+
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     setError("");
     try {
-      const payload = {
-        provider: form.provider,
-        enabled: form.enabled,
-        fromName: form.fromName,
-        fromEmail: form.fromEmail,
-        replyTo: form.replyTo || null,
-        footer: form.footer || null,
-        dailyLimit: form.dailyLimit,
-        providerDomain: form.providerDomain || null,
-        smtpHost: form.smtpHost || null,
-        smtpPort: form.smtpPort ?? null,
-        smtpSecure: form.smtpSecure,
-        smtpUsername: form.smtpUsername || null,
+      const saved = await api.put<EmailSettings>("/organisation/email-settings", settingsPayload({
         ...(apiKey ? { apiKey } : {}),
         ...(smtpPassword ? { smtpPassword } : {}),
-      };
-      const saved = await api.put<EmailSettings>("/organisation/email-settings", payload);
+      }));
       setForm(saved);
       setApiKey("");
       setSmtpPassword("");
@@ -180,6 +185,26 @@ export function EmailSettings() {
       const message = err instanceof Error ? err.message : "Unable to save email settings";
       setError(message);
       toast.error("Could not save email settings", message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeCredential(kind: "apiKey" | "smtpPassword") {
+    const label = kind === "apiKey" ? "API key" : "SMTP password";
+    if (!window.confirm(`Remove the stored ${label}?`)) return;
+    setSaving(true);
+    setError("");
+    try {
+      const saved = await api.put<EmailSettings>("/organisation/email-settings", settingsPayload({ [kind]: "" }));
+      setForm(saved);
+      if (kind === "apiKey") setApiKey("");
+      else setSmtpPassword("");
+      toast.success(`${label} removed`, "The platform fallback will be used where available.");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : `Unable to remove ${label}`;
+      setError(message);
+      toast.error(`Could not remove ${label}`, message);
     } finally {
       setSaving(false);
     }
@@ -331,7 +356,7 @@ export function EmailSettings() {
                 <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Daily message limit</span><Input type="number" min={1} max={100000} value={form.dailyLimit} onChange={(event) => update("dailyLimit", Number(event.target.value))} required /></label>
 
                 {(form.provider === "resend" || form.provider === "sendgrid" || form.provider === "mailgun") && (
-                  <label className="block md:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">{providerLabel(form.provider)} API key</span><Input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={form.hasApiKey ? "Configured; enter a new key to replace" : "Paste the tenant API key"} autoComplete="new-password" /><span className="mt-1 block text-xs text-slate-500">{form.hasApiKey ? "A tenant key is encrypted and configured." : "No tenant key configured; the platform fallback will be used."}</span></label>
+                  <label className="block md:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">{providerLabel(form.provider)} API key</span><Input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={form.hasApiKey ? "Configured; enter a new key to replace" : "Paste the tenant API key"} autoComplete="new-password" /><span className="mt-1 flex flex-wrap items-center gap-3 text-xs text-slate-500">{form.hasApiKey ? <span>A tenant key is encrypted and configured.</span> : <span>No tenant key configured; the platform fallback will be used.</span>}{form.hasApiKey && <button type="button" className="font-medium text-rose-600 hover:underline" onClick={() => void removeCredential("apiKey")}>Remove stored key</button>}</span></label>
                 )}
                 {form.provider === "mailgun" && (
                   <label className="block md:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Mailgun sending domain</span><Input value={form.providerDomain ?? ""} onChange={(event) => update("providerDomain", event.target.value || null)} placeholder="mg.example.com" /></label>
@@ -340,10 +365,10 @@ export function EmailSettings() {
                 {form.provider === "smtp" && (
                   <>
                     <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">SMTP host</span><Input value={form.smtpHost ?? ""} onChange={(event) => update("smtpHost", event.target.value || null)} placeholder="smtp.example.com" /></label>
-                    <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">SMTP port</span><Input type="number" min={1} max={65535} value={form.smtpPort ?? 587} onChange={(event) => update("smtpPort", Number(event.target.value))} /></label>
+                     <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">SMTP port</span><Input type="number" min={1} max={65535} value={form.smtpPort ?? 587} onChange={(event) => { const port = Number(event.target.value); setForm((current) => ({ ...current, smtpPort: port, smtpSecure: port === 465 })); }} /><span className="mt-1 block text-xs text-slate-500">Use 465 for implicit TLS or 587 for STARTTLS.</span></label>
                     <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">SMTP username</span><Input value={form.smtpUsername ?? ""} onChange={(event) => update("smtpUsername", event.target.value || null)} autoComplete="off" /></label>
-                    <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">SMTP password</span><Input type="password" value={smtpPassword} onChange={(event) => setSmtpPassword(event.target.value)} placeholder={form.hasSmtpPassword ? "Configured; enter a new password to replace" : "SMTP password"} autoComplete="new-password" /></label>
-                    <label className="flex items-center gap-3 md:col-span-2 rounded-xl border border-slate-200 px-3 py-3 text-sm"><input type="checkbox" checked={form.smtpSecure} onChange={(event) => update("smtpSecure", event.target.checked)} /> Use TLS on connect (typically port 465)</label>
+                     <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">SMTP password</span><Input type="password" value={smtpPassword} onChange={(event) => setSmtpPassword(event.target.value)} placeholder={form.hasSmtpPassword ? "Configured; enter a new password to replace" : "SMTP password"} autoComplete="new-password" /><span className="mt-1 block text-xs text-slate-500">Gmail requires a 16-character App Password, not your normal Gmail password.</span>{form.hasSmtpPassword && <span className="mt-1 block text-xs text-slate-500">Stored and encrypted. <button type="button" className="font-medium text-rose-600 hover:underline" onClick={() => void removeCredential("smtpPassword")}>Remove stored password</button></span>}</label>
+                     <label className="flex items-center gap-3 md:col-span-2 rounded-xl border border-slate-200 px-3 py-3 text-sm"><input type="checkbox" checked={form.smtpSecure} onChange={(event) => update("smtpSecure", event.target.checked)} /> Use TLS on connect (port 465 only; port 587 uses STARTTLS)</label>
                   </>
                 )}
 

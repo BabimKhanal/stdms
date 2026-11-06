@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { MiddlewareHandler } from "hono";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import {
@@ -20,13 +21,41 @@ import { writeAudit } from "../../lib/audit";
 import * as svc from "./service";
 import { getCurrentYearId } from "../academics/service";
 import { documentTemplates, organisations } from "../../db/schema";
-import { badRequest, notFound } from "../../lib/errors";
+import { badRequest, forbidden, notFound } from "../../lib/errors";
 import { buildDocumentData } from "../../lib/document-data";
+import { assertStudentAssigned, isUnrestrictedAdmin, learnerStudentIds } from "../../lib/teacher-scope";
 import { renderTemplatePdf } from "../../lib/document-pdf";
+
+const studentProfileUpdateSchema = studentInputSchema.omit({ academicYearId: true, classId: true, sectionId: true, rollNumber: true, status: true }).partial();
+const studentDocumentInput = z.object({ documentType: z.string().trim().min(2).max(60), title: z.string().trim().min(2).max(120), fileUrl: z.string().trim().url().max(2000), fileName: z.string().trim().max(255).nullable().optional(), mimeType: z.string().trim().max(120).nullable().optional() }).strict();
 
 export const studentRoutes = new Hono<AppEnv>();
 
 studentRoutes.use("*", requireAuth, requireOrg);
+
+const canViewOwnDocument: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const user = c.get("user")!;
+  const studentId = c.req.param("id");
+  if (!studentId) throw badRequest("Student ID is required", "validation");
+  if (user.isPlatformAdmin || isUnrestrictedAdmin(user)) {
+    await next();
+    return;
+  }
+  const learnerIds = await learnerStudentIds(c.get("db"), c.get("orgId")!, user);
+  if (learnerIds !== null) {
+    if (learnerIds.includes(studentId)) {
+      await next();
+      return;
+    }
+    throw forbidden("You can only view your own student documents");
+  }
+  if (user.permissions.includes("student.view")) {
+    await assertStudentAssigned(c.get("db"), user, c.get("orgId")!, studentId);
+    await next();
+    return;
+  }
+  throw forbidden("You can only view your own student documents");
+};
 
 /* List + search + filter + server-side pagination (SRS §65) */
 studentRoutes.get("/", requirePermission("student.view"), async (c) => {
@@ -61,12 +90,16 @@ studentRoutes.get(
 
 studentRoutes.get(
   "/:id/document",
-  requirePermission("student.view"),
+  canViewOwnDocument,
   async (c) => {
     const db = c.get("db");
     const orgId = c.get("orgId")!;
     const studentId = c.req.param("id");
     const documentType = c.req.query("type") ?? "identity_card";
+    const templateId = c.req.query("templateId");
+    if (templateId && !z.uuid().safeParse(templateId).success) {
+      throw badRequest("Invalid document template", "validation");
+    }
     if (!DOCUMENT_TYPES.includes(documentType as (typeof DOCUMENT_TYPES)[number])) {
       throw badRequest("Unsupported document type", "validation");
     }
@@ -78,7 +111,7 @@ studentRoutes.get(
         and(
           eq(documentTemplates.organisationId, orgId),
           eq(documentTemplates.documentType, documentType),
-          eq(documentTemplates.isDefault, 1),
+          ...(templateId ? [eq(documentTemplates.id, templateId)] : [eq(documentTemplates.isDefault, 1)]),
         ),
       )
       .limit(1);
@@ -123,8 +156,9 @@ studentRoutes.get("/:id", requirePermission("student.view"), async (c) => {
 studentRoutes.post("/", requirePermission("student.create"), async (c) => {
   const input = parse(studentInputSchema, await c.req.json());
   const orgId = c.get("orgId")!;
-  const yearId =
-    input.academicYearId ?? (await getCurrentYearId(c.get("db"), orgId));
+  const yearId = input.classId
+    ? (input.academicYearId ?? (await getCurrentYearId(c.get("db"), orgId)))
+    : null;
   const row = await svc.createStudent(c.get("db"), orgId, {
     ...input,
     academicYearId: yearId,
@@ -138,8 +172,22 @@ studentRoutes.post("/", requirePermission("student.create"), async (c) => {
   return ok(c, row, 201);
 });
 
+studentRoutes.post("/:id/documents", requirePermission("student.edit"), async (c) => {
+  const studentId = c.req.param("id");
+  const input = parse(studentDocumentInput, await c.req.json());
+  const row = await svc.addStudentDocument(c.get("db"), c.get("orgId")!, studentId, c.get("user")!.id, input);
+  await writeAudit(c, { action: "upload", entity: "student_document", entityId: row.id, newValue: { studentId, documentType: input.documentType, title: input.title } });
+  return ok(c, row, 201);
+});
+
+studentRoutes.delete("/:id/documents/:documentId", requirePermission("student.edit"), async (c) => {
+  await svc.deleteStudentDocument(c.get("db"), c.get("orgId")!, c.req.param("id"), c.req.param("documentId"));
+  await writeAudit(c, { action: "delete", entity: "student_document", entityId: c.req.param("documentId") });
+  return ok(c, { deleted: true });
+});
+
 studentRoutes.put("/:id", requirePermission("student.edit"), async (c) => {
-  const input = parse(studentInputSchema.partial(), await c.req.json());
+  const input = parse(studentProfileUpdateSchema, await c.req.json());
   const before = await svc
     .getStudent(c.get("db"), c.get("orgId")!, c.req.param("id"), c.get("user")!)
     .catch(() => null);
@@ -288,6 +336,7 @@ enrolmentRoutes.use("*", requireAuth, requireOrg);
 const promoteSchema = z.object({
   fromYearId: z.uuid(),
   toYearId: z.uuid(),
+  reason: z.string().trim().min(3).max(500),
   entries: z
     .array(
       z.object({
@@ -301,6 +350,7 @@ const promoteSchema = z.object({
         ]),
         toClassId: z.uuid().nullable().optional(),
         toSectionId: z.uuid().nullable().optional(),
+        rollNumber: z.number().int().min(0).nullable().optional(),
       }),
     )
     .min(1),
@@ -315,11 +365,13 @@ const lifecycleSchema = z.object({
     "transferred",
     "alumni",
   ]),
+  reason: z.string().trim().min(3).max(500),
+  effectiveDate: z.iso.date().optional(),
 });
 
 studentRoutes.post(
   "/:id/lifecycle",
-  requirePermission("student.edit"),
+  requirePermission("enrolment.approve"),
   async (c) => {
     const input = parse(lifecycleSchema, await c.req.json());
     const row = await svc.transitionStudentStatus(
@@ -327,20 +379,24 @@ studentRoutes.post(
       c.get("orgId")!,
       c.req.param("id"),
       input.status,
+      c.get("user")!.id,
+      input.reason,
+      input.effectiveDate,
     );
     await writeAudit(c, {
       action: "status_change",
       entity: "student",
-      entityId: row.id,
+      entityId: row.student.id,
+      oldValue: { status: row.previousStatus },
       newValue: input,
     });
-    return ok(c, row);
+    return ok(c, row.student);
   },
 );
 
 enrolmentRoutes.post(
   "/promote",
-  requirePermission("enrolment.edit"),
+  requirePermission("enrolment.approve"),
   async (c) => {
     const input = parse(promoteSchema, await c.req.json());
     const result = await svc.promoteStudents(
@@ -349,11 +405,13 @@ enrolmentRoutes.post(
       input.fromYearId,
       input.toYearId,
       input.entries,
+      c.get("user")!.id,
+      input.reason,
     );
     await writeAudit(c, {
       action: "promote",
       entity: "enrolment",
-      newValue: { count: result.length },
+      newValue: { fromYearId: input.fromYearId, toYearId: input.toYearId, reason: input.reason, entries: result },
     });
     return ok(c, result);
   },

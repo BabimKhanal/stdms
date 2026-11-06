@@ -1,0 +1,9 @@
+.git
+**/node_modules
+**/.next
+**/dist
+**/.env
+**/.env.*
+apps/mobile/android
+apps/mobile/gradle-*
+apps/mobile/build

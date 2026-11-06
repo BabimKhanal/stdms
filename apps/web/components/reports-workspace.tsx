@@ -20,6 +20,7 @@ import { Input } from "./ui/input";
 import { Alert } from "./ui/alert";
 import { downloadCsv } from "../lib/csv";
 import { formatNpr } from "../lib/utils";
+import { translate } from "../lib/locale";
 
 type Overview = {
   students: number;
@@ -166,20 +167,20 @@ export function ReportsWorkspace() {
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <p className="text-sm font-medium text-blue-600">Institution intelligence</p>
-          <h2 className="mt-2 text-3xl font-semibold tracking-tight">Reports & analytics</h2>
+           <p className="text-sm font-medium text-blue-600">{translate("Institution intelligence")}</p>
+           <h2 className="mt-2 text-3xl font-semibold tracking-tight">{translate("Reports & analytics")}</h2>
           <p className="mt-2 text-sm text-slate-500">
-            A clear read on enrolment, attendance, fees and assessment performance.
+             {translate("A clear read on enrolment, attendance, fees and assessment performance.")}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => void load()} disabled={loading}>
             <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-            Refresh
+             {translate("Refresh")}
           </Button>
           <Button onClick={exportReport} disabled={!overview}>
             <Download size={15} />
-            Export summary
+             {translate("Export summary")}
           </Button>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import type { DB } from "../../lib/types";
-import { discounts, feeAccessSettings, feeCategories, feeStructures, feeStructureItems, invoices, invoiceItems, payments, paymentGatewaySettings, paymentMethods, paymentSubmissions, refunds, students, classes, enrolments, sections, organisations } from "../../db/schema";
+import { auditLogs, discounts, feeAccessSettings, feeCategories, feeStructures, feeStructureItems, invoices, invoiceItems, payments, paymentGatewaySettings, paymentMethods, paymentSubmissions, refunds, students, classes, enrolments, sections, organisations } from "../../db/schema";
 import type { FeeStructureInput, PaymentInput, GenerateInvoicesInput, ManualPaymentSubmissionInput } from "@edu/shared";
 import { z } from "zod";
 import { feeCategoryInputSchema, invoiceInputSchema } from "@edu/shared";
@@ -9,7 +10,7 @@ type InvoiceInput = z.infer<typeof invoiceInputSchema>;
 import { conflict, notFound } from "../../lib/errors";
 import type { AuthUser } from "../../lib/context";
 import { learnerStudentIds } from "../../lib/teacher-scope";
-import { deletePaymentIntent, getPaymentIntent, setPaymentIntent } from "../../lib/redis";
+import { getPaymentIntent, setPaymentIntent } from "../../lib/redis";
 import { createEsewaRequest, env, newTransactionUuid, verifyEsewa } from "./esewa";
 const tenant = (table: { organisationId: any }, orgId: string) => eq(table.organisationId, orgId);
 const defaultFeeAccess = { studentVisible: 1, studentOnlinePayment: 0, guardianVisible: 1, showDiscounts: 1, dueReminders: 1 };
@@ -25,14 +26,15 @@ export async function listStructures(db: DB, orgId: string) { const rows = await
 export async function createStructure(db: DB, orgId: string, input: FeeStructureInput) { return db.transaction(async (tx) => { const [structure] = await tx.insert(feeStructures).values({ organisationId: orgId, name: input.name, academicYearId: input.academicYearId, classId: input.classId }).returning(); await tx.insert(feeStructureItems).values(input.items.map((item) => ({ ...item, organisationId: orgId, feeStructureId: structure.id, amount: String(item.amount) }))); return structure; }); }
 export async function updateStructure(db: DB, orgId: string, id: string, input: Partial<FeeStructureInput>) { return db.transaction(async (tx) => { const [row] = await tx.update(feeStructures).set({ name: input.name, academicYearId: input.academicYearId, classId: input.classId }).where(and(eq(feeStructures.id, id), tenant(feeStructures, orgId))).returning(); if (!row) throw notFound("Fee structure not found"); if (input.items) { await tx.delete(feeStructureItems).where(and(eq(feeStructureItems.feeStructureId, id), tenant(feeStructureItems, orgId))); await tx.insert(feeStructureItems).values(input.items.map((item) => ({ ...item, organisationId: orgId, feeStructureId: id, amount: String(item.amount) }))); } return row; }); }
 export async function deleteStructure(db: DB, orgId: string, id: string) { const rows = await db.delete(feeStructures).where(and(eq(feeStructures.id, id), tenant(feeStructures, orgId))).returning(); if (!rows.length) throw notFound("Fee structure not found"); }
-export async function listInvoices(db: DB, orgId: string, principal?: AuthUser) { const access = await feeAccess(db, orgId); if (isStudent(principal) && !access.studentVisible) return []; if (isGuardian(principal) && !access.guardianVisible) return []; const learnerIds = principal ? await learnerStudentIds(db, orgId, principal) : null; const conditions = [tenant(invoices, orgId)]; if (learnerIds) conditions.push(learnerIds.length ? inArray(invoices.studentId, learnerIds) : sql`false`); return db.select({ ...(invoices as any), studentName: sql<string>`concat(${students.firstName}, ' ', ${students.lastName})`, balance: sql<number>`${invoices.total} - ${invoices.paid}` }).from(invoices).innerJoin(students, eq(invoices.studentId, students.id)).where(and(...conditions)).orderBy(desc(invoices.issueDate)); }
+export async function listInvoices(db: DB, orgId: string, principal?: AuthUser) { const access = await feeAccess(db, orgId); if (isStudent(principal) && !access.studentVisible) return []; if (isGuardian(principal) && !access.guardianVisible) return []; const learnerIds = principal ? await learnerStudentIds(db, orgId, principal) : null; const conditions = [tenant(invoices, orgId)]; if (learnerIds) conditions.push(learnerIds.length ? inArray(invoices.studentId, learnerIds) : sql`false`); return db.select({ ...(invoices as any), studentName: sql<string>`concat(${students.firstName}, ' ', ${students.lastName})`, balance: sql<number>`${invoices.total} - ${invoices.paid}`, displayStatus: sql<string>`case when ${invoices.status} in ('unpaid', 'partial') and ${invoices.dueDate} is not null and ${invoices.dueDate} < current_date then 'overdue' else ${invoices.status} end` }).from(invoices).innerJoin(students, eq(invoices.studentId, students.id)).where(and(...conditions)).orderBy(desc(invoices.issueDate)); }
 export async function getInvoice(db: DB, orgId: string, id: string, principal?: AuthUser) { const access = await feeAccess(db, orgId); if (isStudent(principal) && !access.studentVisible) throw notFound("Invoice not found"); if (isGuardian(principal) && !access.guardianVisible) throw notFound("Invoice not found"); const [invoice] = await db.select().from(invoices).where(and(eq(invoices.id, id), tenant(invoices, orgId))); if (!invoice) throw notFound("Invoice not found"); const learnerIds = principal ? await learnerStudentIds(db, orgId, principal) : null; if (learnerIds && !learnerIds.includes(invoice.studentId)) throw notFound("Invoice not found"); const items = await db.select().from(invoiceItems).where(and(eq(invoiceItems.invoiceId, id), tenant(invoiceItems, orgId))); const paid = await db.select().from(payments).where(and(eq(payments.invoiceId, id), tenant(payments, orgId))); return { ...invoice, items, payments: paid, balance: Number(invoice.total) - Number(invoice.paid), showDiscounts: access.showDiscounts === 1 || !isStudent(principal) }; }
-export async function createInvoice(db: DB, orgId: string, userId: string, input: InvoiceInput) { return db.transaction(async (tx) => { const subtotal = input.items.reduce((n, i) => n + i.amount, 0); const total = subtotal - input.discount + input.fine; const [invoice] = await tx.insert(invoices).values({ organisationId: orgId, invoiceNumber: `INV-${Date.now()}`, studentId: input.studentId, issueDate: input.issueDate, dueDate: input.dueDate ?? null, subtotal: String(subtotal), discount: String(input.discount), fine: String(input.fine), total: String(total), createdBy: userId }).returning(); await tx.insert(invoiceItems).values(input.items.map((i) => ({ ...i, invoiceId: invoice.id, organisationId: orgId, amount: String(i.amount), dueDate: i.dueDate ?? null }))); return invoice; }); }
+export async function createInvoice(db: DB, orgId: string, userId: string, input: InvoiceInput) { return db.transaction(async (tx) => { const [student] = await tx.select({ id: students.id }).from(students).where(and(eq(students.id, input.studentId), tenant(students, orgId))).limit(1); if (!student) throw notFound("Student not found"); const subtotal = input.items.reduce((n, i) => n + i.amount, 0); const total = subtotal - input.discount + input.fine; if (input.discount > subtotal + input.fine) throw conflict("Discount cannot make an invoice total negative"); const [invoice] = await tx.insert(invoices).values({ organisationId: orgId, invoiceNumber: `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${randomUUID().slice(0, 8).toUpperCase()}`, studentId: input.studentId, issueDate: input.issueDate, dueDate: input.dueDate ?? null, subtotal: String(subtotal), discount: String(input.discount), fine: String(input.fine), total: String(total), createdBy: userId }).returning(); await tx.insert(invoiceItems).values(input.items.map((i) => ({ ...i, invoiceId: invoice.id, organisationId: orgId, amount: String(i.amount), dueDate: i.dueDate ?? null }))); return invoice; }); }
 export async function applyDiscount(db: DB, orgId: string, userId: string, invoiceId: string, amount: number, reason?: string | null) {
   if (amount <= 0) throw conflict("Discount must be greater than zero");
   return db.transaction(async (tx) => {
-    const [invoice] = await tx.select().from(invoices).where(and(eq(invoices.id, invoiceId), tenant(invoices, orgId))).limit(1);
+    const [invoice] = await tx.select().from(invoices).where(and(eq(invoices.id, invoiceId), tenant(invoices, orgId))).limit(1).for("update");
     if (!invoice) throw notFound("Invoice not found");
+    if (invoice.status === "cancelled") throw conflict("Cancelled invoices cannot be discounted");
     const remaining = Number(invoice.total) - Number(invoice.paid);
     if (amount > remaining) throw conflict("Discount cannot exceed the invoice balance");
     const [row] = await tx.insert(discounts).values({ organisationId: orgId, invoiceId, amount: String(amount), reason: reason ?? null, createdBy: userId }).returning();
@@ -47,7 +49,7 @@ export async function refundPayment(db: DB, orgId: string, userId: string, payme
   return db.transaction(async (tx) => {
     const [payment] = await tx.select().from(payments).where(and(eq(payments.id, paymentId), tenant(payments, orgId))).limit(1);
     if (!payment) throw notFound("Payment not found");
-    const [invoice] = await tx.select().from(invoices).where(and(eq(invoices.id, payment.invoiceId), tenant(invoices, orgId))).limit(1);
+    const [invoice] = await tx.select().from(invoices).where(and(eq(invoices.id, payment.invoiceId), tenant(invoices, orgId))).limit(1).for("update");
     if (!invoice) throw notFound("Invoice not found");
     const [refunded] = await tx.select({ total: sql<number>`coalesce(sum(${refunds.amount}),0)` }).from(refunds).where(and(eq(refunds.paymentId, paymentId), tenant(refunds, orgId)));
     const remainingPayment = Number(payment.amount) - Number(refunded.total);
@@ -61,7 +63,7 @@ export async function refundPayment(db: DB, orgId: string, userId: string, payme
 
 export async function generateInvoices(db: DB, orgId: string, userId: string, input: GenerateInvoicesInput) {
   return db.transaction(async (tx) => {
-    const [structure] = await tx.select().from(feeStructures).where(and(eq(feeStructures.id, input.feeStructureId), tenant(feeStructures, orgId))).limit(1);
+    const [structure] = await tx.select().from(feeStructures).where(and(eq(feeStructures.id, input.feeStructureId), tenant(feeStructures, orgId))).limit(1).for("update");
     if (!structure) throw notFound("Fee structure not found");
     const items = await tx.select().from(feeStructureItems).where(and(eq(feeStructureItems.feeStructureId, structure.id), tenant(feeStructureItems, orgId)));
     if (!items.length) throw conflict("Fee structure has no items");
@@ -72,7 +74,7 @@ export async function generateInvoices(db: DB, orgId: string, userId: string, in
       eq(enrolments.classId, structure.classId),
     ];
     if (input.sectionId) enrolmentConditions.push(eq(enrolments.sectionId, input.sectionId));
-    const enrolled = await tx.select({ studentId: enrolments.studentId }).from(enrolments).where(and(...enrolmentConditions));
+    const enrolled = await tx.selectDistinct({ studentId: enrolments.studentId }).from(enrolments).where(and(...enrolmentConditions));
     if (!enrolled.length) return { created: 0, skipped: 0, invoiceIds: [] as string[] };
 
     const marker = `fee-structure:${structure.id}:due:${input.dueDate}`;
@@ -84,7 +86,7 @@ export async function generateInvoices(db: DB, orgId: string, userId: string, in
       const subtotal = items.reduce((total, item) => total + Number(item.amount), 0);
       const [invoice] = await tx.insert(invoices).values({
         organisationId: orgId,
-        invoiceNumber: `INV-${Date.now()}-${index + 1}`,
+        invoiceNumber: `INV-${randomUUID()}`,
         studentId: toCreate[index].studentId,
         issueDate: new Date().toISOString().slice(0, 10),
         dueDate: input.dueDate,
@@ -123,7 +125,7 @@ export function buildReceiptHtml(context: Awaited<ReturnType<typeof receiptConte
   const paymentsHtml = (invoice.payments ?? []).map((payment) => `<tr><td>${escapeHtml(payment.paidAt)} · ${escapeHtml(payment.method)}</td><td class="amount">Rs ${Number(payment.amount).toLocaleString()}</td></tr>`).join("");
   return `<!doctype html><html><head><meta charset="utf-8"><title>Receipt ${escapeHtml(invoice.invoiceNumber)}</title><style>body{font:14px Arial,sans-serif;color:#172033;margin:40px auto;max-width:720px}header{border-bottom:2px solid #2563eb;padding-bottom:18px}h1{margin:0 0 6px;font-size:24px}h2{font-size:16px;margin:28px 0 8px}.meta{color:#64748b;line-height:1.6}table{border-collapse:collapse;width:100%}td{border-bottom:1px solid #e2e8f0;padding:10px 0}.amount{text-align:right;font-weight:600}.total{font-size:18px;font-weight:700}.actions{margin-top:30px}@media print{.actions{display:none}body{margin:0}}</style></head><body><header><h1>${escapeHtml(organisation?.name ?? "Institution")}</h1><div class="meta">${escapeHtml(organisation?.address)} · ${escapeHtml(organisation?.phone)} · ${escapeHtml(organisation?.email)}</div></header><h2>Payment Receipt</h2><div class="meta">Receipt for invoice <strong>${escapeHtml(invoice.invoiceNumber)}</strong><br>Student: ${escapeHtml(student?.fullName)} (${escapeHtml(student?.studentId)}) · ${escapeHtml(student?.className)}<br>Issued: ${escapeHtml(invoice.issueDate)} · Due: ${escapeHtml(invoice.dueDate)}</div><h2>Charges</h2><table>${rows}<tr><td>Discount</td><td class="amount">- Rs ${Number(invoice.discount).toLocaleString()}</td></tr><tr><td>Fine</td><td class="amount">Rs ${Number(invoice.fine).toLocaleString()}</td></tr><tr class="total"><td>Total</td><td class="amount">Rs ${Number(invoice.total).toLocaleString()}</td></tr></table><h2>Payments</h2><table>${paymentsHtml || "<tr><td>No payments recorded</td><td></td></tr>"}<tr class="total"><td>Balance</td><td class="amount">Rs ${Number(invoice.balance).toLocaleString()}</td></tr></table><div class="actions"><button onclick="window.print()">Print receipt</button></div></body></html>`;
 }
-export async function addPayment(db: DB, orgId: string, userId: string, input: PaymentInput) { return db.transaction(async (tx) => { const [invoice] = await tx.select().from(invoices).where(and(eq(invoices.id, input.invoiceId), tenant(invoices, orgId))); if (!invoice) throw notFound("Invoice not found"); const [payment] = await tx.insert(payments).values({ ...input, organisationId: orgId, receivedBy: userId, amount: String(input.amount), paidAt: input.paidAt ? new Date(input.paidAt) : undefined }).returning(); const paid = Number(invoice.paid) + input.amount; await tx.update(invoices).set({ paid: String(paid), status: paid >= Number(invoice.total) ? "paid" : "partial" }).where(and(eq(invoices.id, input.invoiceId), tenant(invoices, orgId))); return payment; }); }
+export async function addPayment(db: DB, orgId: string, userId: string, input: PaymentInput) { return db.transaction(async (tx) => { const [invoice] = await tx.select().from(invoices).where(and(eq(invoices.id, input.invoiceId), tenant(invoices, orgId))).limit(1).for("update"); if (!invoice) throw notFound("Invoice not found"); if (invoice.status === "cancelled") throw conflict("Cancelled invoices cannot receive payments"); const balance = Number(invoice.total) - Number(invoice.paid); if (input.amount > balance) throw conflict("Payment exceeds the invoice balance"); const [payment] = await tx.insert(payments).values({ ...input, organisationId: orgId, receivedBy: userId, amount: String(input.amount), paidAt: input.paidAt ? new Date(input.paidAt) : undefined }).returning(); const paid = Number(invoice.paid) + input.amount; await tx.update(invoices).set({ paid: String(paid), status: paid >= Number(invoice.total) ? "paid" : "partial" }).where(and(eq(invoices.id, input.invoiceId), tenant(invoices, orgId))); return payment; }); }
 
 export async function listPaymentMethods(db: DB, orgId: string) { return db.select().from(paymentMethods).where(tenant(paymentMethods, orgId)).orderBy(asc(paymentMethods.sortOrder), asc(paymentMethods.createdAt)); }
 export async function listGatewaySettings(db: DB, orgId: string) { return db.select({ id: paymentGatewaySettings.id, provider: paymentGatewaySettings.provider, enabled: paymentGatewaySettings.enabled, merchantCode: paymentGatewaySettings.merchantCode, publicKey: paymentGatewaySettings.publicKey, apiUrl: paymentGatewaySettings.apiUrl, successUrl: paymentGatewaySettings.successUrl, failureUrl: paymentGatewaySettings.failureUrl, hasSecret: sql<boolean>`${paymentGatewaySettings.secretKey} is not null and ${paymentGatewaySettings.secretKey} <> ''` }).from(paymentGatewaySettings).where(tenant(paymentGatewaySettings, orgId)).orderBy(asc(paymentGatewaySettings.provider)); }
@@ -143,6 +145,7 @@ export async function submitManualPayment(db: DB, orgId: string, principal: Auth
   const access = await feeAccess(db, orgId);
   if (isStudent(principal) && !access.studentOnlinePayment) throw conflict("Online payment is not enabled for students");
   const invoice = await getInvoice(db, orgId, input.invoiceId, principal);
+  if (invoice.status === "cancelled") throw conflict("Cancelled invoices cannot receive payments");
   if (input.amount > Number(invoice.balance)) throw conflict("Payment exceeds the invoice balance");
   const [method] = await db.select().from(paymentMethods).where(and(eq(paymentMethods.id, input.paymentMethodId), tenant(paymentMethods, orgId), eq(paymentMethods.enabled, 1))).limit(1);
   if (!method || method.method === "esewa") throw conflict("Payment method is unavailable for manual submissions");
@@ -162,16 +165,17 @@ export async function listPaymentSubmissions(db: DB, orgId: string, principal?: 
 
 export async function reviewPaymentSubmission(db: DB, orgId: string, reviewerId: string, id: string, input: { status: "approved" | "rejected"; reviewNote?: string | null }) {
   return db.transaction(async (tx) => {
-    const [submission] = await tx.select().from(paymentSubmissions).where(and(eq(paymentSubmissions.id, id), tenant(paymentSubmissions, orgId))).limit(1);
+    const [submission] = await tx.select().from(paymentSubmissions).where(and(eq(paymentSubmissions.id, id), tenant(paymentSubmissions, orgId))).limit(1).for("update");
     if (!submission) throw notFound("Payment submission not found");
     if (submission.status !== "pending") throw conflict("Payment submission has already been reviewed");
     if (input.status === "rejected") {
       const [updated] = await tx.update(paymentSubmissions).set({ status: "rejected", reviewedBy: reviewerId, reviewedAt: new Date(), reviewNote: input.reviewNote ?? null }).where(and(eq(paymentSubmissions.id, id), tenant(paymentSubmissions, orgId))).returning();
       return updated;
     }
-    const [invoice] = await tx.select().from(invoices).where(and(eq(invoices.id, submission.invoiceId), tenant(invoices, orgId))).limit(1);
+    const [invoice] = await tx.select().from(invoices).where(and(eq(invoices.id, submission.invoiceId), tenant(invoices, orgId))).limit(1).for("update");
     const [method] = await tx.select().from(paymentMethods).where(and(eq(paymentMethods.id, submission.paymentMethodId), tenant(paymentMethods, orgId))).limit(1);
     if (!invoice || !method) throw notFound("Invoice or payment method not found");
+    if (invoice.status === "cancelled") throw conflict("Cancelled invoices cannot receive payments");
     if (Number(submission.amount) > Number(invoice.total) - Number(invoice.paid)) throw conflict("Payment exceeds the current invoice balance");
     await tx.insert(payments).values({ organisationId: orgId, invoiceId: invoice.id, amount: submission.amount, method: method.method, reference: submission.reference, notes: submission.reviewNote, receivedBy: reviewerId, verifiedAt: new Date() });
     const paid = Number(invoice.paid) + Number(submission.amount);
@@ -189,6 +193,7 @@ export async function initiateEsewa(db: DB, orgId: string, principal: AuthUser, 
   const [method] = await db.select({ id: paymentMethods.id }).from(paymentMethods).where(and(eq(paymentMethods.organisationId, orgId), eq(paymentMethods.method, "esewa"), eq(paymentMethods.enabled, 1))).limit(1);
   if (!method) throw conflict("eSewa is not enabled for this institution");
   const invoice = await getInvoice(db, orgId, invoiceId, principal);
+  if (invoice.status === "cancelled") throw conflict("Cancelled invoices cannot receive payments");
   const amount = Number(invoice.balance);
   if (amount <= 0) throw conflict("Invoice is already paid");
   const transactionUuid = newTransactionUuid();
@@ -200,18 +205,21 @@ export async function completeEsewa(db: DB, orgId: string, transactionUuid: stri
   const raw = await getPaymentIntent(transactionUuid);
   if (!raw) throw notFound("Payment session expired");
    const intent = JSON.parse(raw) as { orgId: string; invoiceId: string; userId: string; amount: number; gateway?: { merchantCode: string; secretKey: string; formUrl?: string | null; successUrl?: string | null; failureUrl?: string | null } };
+   if (intent.orgId !== orgId) throw notFound("Payment session not found");
    if (!(await verifyEsewa({ transactionUuid, totalAmount: intent.amount, config: intent.gateway }))) throw conflict("Payment could not be verified");
   const result = await db.transaction(async (tx) => {
-    const [invoice] = await tx.select().from(invoices).where(and(eq(invoices.id, intent.invoiceId), tenant(invoices, orgId)));
+    const [invoice] = await tx.select().from(invoices).where(and(eq(invoices.id, intent.invoiceId), tenant(invoices, orgId))).for("update");
     if (!invoice) throw notFound("Invoice not found");
     const [existing] = await tx.select({ id: payments.id }).from(payments).where(and(eq(payments.gatewayRef, transactionUuid), tenant(payments, orgId))).limit(1);
     if (existing) return { invoiceId: invoice.id, duplicate: true };
     const paid = Number(invoice.paid) + intent.amount;
     await tx.insert(payments).values({ organisationId: orgId, invoiceId: invoice.id, amount: String(intent.amount), method: "esewa", gatewayRef: transactionUuid, reference: transactionUuid, verifiedAt: new Date(), receivedBy: intent.userId });
     await tx.update(invoices).set({ paid: String(paid), status: paid >= Number(invoice.total) ? "paid" : "partial" }).where(and(eq(invoices.id, invoice.id), tenant(invoices, orgId)));
+    await tx.insert(auditLogs).values({ organisationId: orgId, userId: intent.userId, action: "payment_verified", entity: "invoice", entityId: invoice.id, newValue: { transactionUuid, amount: intent.amount, provider: "esewa" } });
     return { invoiceId: invoice.id, duplicate: false };
   });
-  await deletePaymentIntent(transactionUuid);
+  // Retain the intent until its original TTL so callback retries can resolve
+  // to the existing payment instead of reporting a successful payment failed.
   return result;
 }
 export async function feeSummary(db: DB, orgId: string, principal?: AuthUser) { const learnerIds = principal ? await learnerStudentIds(db, orgId, principal) : null; const conditions = [tenant(invoices, orgId)]; if (learnerIds) conditions.push(learnerIds.length ? inArray(invoices.studentId, learnerIds) : sql`false`); const [row] = await db.select({ total: sql<number>`coalesce(sum(${invoices.total}),0)`, paid: sql<number>`coalesce(sum(${invoices.paid}),0)`, outstanding: sql<number>`coalesce(sum(${invoices.total} - ${invoices.paid}),0)` }).from(invoices).where(and(...conditions)); return row; }

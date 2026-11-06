@@ -39,16 +39,19 @@ const tenant = (table: { organisationId: any }, orgId: string) =>
   eq(table.organisationId, orgId);
 
 export async function listExams(db: DB, orgId: string, principal?: AuthUser) {
+  // Drizzle removes Column qualification inside single-table SELECT fields.
+  // Explicit identifiers keep correlated subqueries bound to the outer exam.
+  const outerExamId = sql`${sql.identifier("exams")}.${sql.identifier("id")}`;
   const learnerIds = principal
     ? await learnerStudentIds(db, orgId, principal)
     : null;
   const scope =
     principal && isScopedTeacher(principal)
-      ? sql`exists (select 1 from exam_subjects scoped_es join class_subjects scoped_cs on scoped_cs.class_id = scoped_es.class_id and scoped_cs.subject_id = scoped_es.subject_id where scoped_es.exam_id = ${exams.id} and scoped_es.organisation_id = ${orgId} and scoped_cs.teacher_id = ${principal.employeeId})`
+      ? sql`exists (select 1 from exam_subjects scoped_es join class_subjects scoped_cs on scoped_cs.class_id = scoped_es.class_id and scoped_cs.subject_id = scoped_es.subject_id and scoped_cs.organisation_id = ${orgId} where scoped_es.exam_id = ${outerExamId} and scoped_es.organisation_id = ${orgId} and scoped_cs.teacher_id = ${principal.employeeId})`
       : undefined;
   const learnerScope = learnerIds
     ? learnerIds.length
-      ? sql`${exams.status} = 'published' and exists (select 1 from exam_subjects es join enrolments e on e.class_id = es.class_id and e.organisation_id = es.organisation_id where es.exam_id = ${exams.id} and es.organisation_id = ${orgId} and e.student_id in (${idList(learnerIds)}))`
+      ? sql`${exams.status} = 'published' and exists (select 1 from exam_subjects es join enrolments e on e.class_id = es.class_id and e.organisation_id = es.organisation_id where es.exam_id = ${outerExamId} and es.organisation_id = ${orgId} and e.student_id in (${idList(learnerIds)}))`
       : sql`false`
     : undefined;
   const conditions = learnerIds
@@ -57,7 +60,8 @@ export async function listExams(db: DB, orgId: string, principal?: AuthUser) {
   return db
     .select({
       ...(exams as any),
-      subjectCount: sql<number>`(select count(*) from exam_subjects es where es.exam_id = ${exams.id} and es.organisation_id = ${orgId})`,
+      subjectCount: sql<number>`(select count(*) from exam_subjects es where es.exam_id = ${outerExamId} and es.organisation_id = ${orgId})`,
+      classNames: sql<string | null>`(select string_agg(distinct c.name, ', ' order by c.name) from exam_subjects es join classes c on c.id = es.class_id and c.organisation_id = ${orgId} where es.exam_id = ${outerExamId} and es.organisation_id = ${orgId})`,
     })
     .from(exams)
     .where(and(...conditions))
@@ -65,6 +69,10 @@ export async function listExams(db: DB, orgId: string, principal?: AuthUser) {
 }
 
 export async function createExam(db: DB, orgId: string, input: ExamInput) {
+  if (input.status !== "draft")
+    throw conflict("New examinations must start in draft status");
+  if (input.startDate && input.endDate && input.endDate < input.startDate)
+    throw conflict("Exam end date cannot be before the start date");
   const [row] = await db
     .insert(exams)
     .values({
@@ -90,12 +98,8 @@ export async function updateExam(
     .where(and(eq(exams.id, id), tenant(exams, orgId)))
     .limit(1);
   if (!existing) throw notFound("Exam not found");
-  if (
-    existing.status === "published" &&
-    input.status &&
-    input.status !== "published"
-  )
-    throw conflict("Published results cannot be reverted");
+  if (input.status !== undefined && input.status !== existing.status)
+    throw conflict("Use the examination approval and publishing workflow to change status");
   const [row] = await db
     .update(exams)
     .set(input)
@@ -152,6 +156,19 @@ export async function addExamSubject(
   input: ExamSubjectInput,
   principal?: AuthUser,
 ) {
+  const [exam] = await db
+    .select({ status: exams.status })
+    .from(exams)
+    .where(and(eq(exams.id, examId), tenant(exams, orgId)))
+    .limit(1);
+  if (!exam) throw notFound("Examination not found");
+  if (exam.status === "completed" || exam.status === "published")
+    throw conflict("This examination is locked for subject changes");
+  if (input.passMarks > input.fullMarks)
+    throw conflict("Pass marks cannot exceed full marks");
+  const [classRow] = await db.select({ id: classes.id }).from(classes).where(and(eq(classes.id, input.classId), tenant(classes, orgId))).limit(1);
+  const [subjectRow] = await db.select({ id: subjects.id }).from(subjects).where(and(eq(subjects.id, input.subjectId), tenant(subjects, orgId))).limit(1);
+  if (!classRow || !subjectRow) throw notFound("Class or subject not found");
   if (principal) await assertAssigned(db, principal, orgId, input.classId);
   try {
     const [row] = await db
@@ -205,7 +222,7 @@ export async function saveMarks(
   principal?: AuthUser,
 ) {
   const [examState] = await db
-    .select({ status: exams.status })
+    .select({ status: exams.status, academicYearId: exams.academicYearId, classId: examSubjects.classId, fullMarks: examSubjects.fullMarks })
     .from(examSubjects)
     .innerJoin(exams, eq(examSubjects.examId, exams.id))
     .where(
@@ -242,6 +259,15 @@ export async function saveMarks(
       row.subjectId,
     );
   }
+  const invalidMark = input.marks.find((entry) => entry.marksObtained !== null && entry.marksObtained > examState.fullMarks);
+  if (invalidMark) throw conflict(`Marks cannot exceed the full marks of ${examState.fullMarks}`);
+  const studentIds = [...new Set(input.marks.map((entry) => entry.studentId))];
+  if (studentIds.length !== input.marks.length) throw conflict("Each student can appear only once in a mark entry");
+  const enrolled = await db
+    .select({ studentId: enrolments.studentId })
+    .from(enrolments)
+    .where(and(tenant(enrolments, orgId), eq(enrolments.academicYearId, examState.academicYearId), eq(enrolments.classId, examState.classId), inArray(enrolments.studentId, studentIds)));
+  if (enrolled.length !== studentIds.length) throw conflict("Marks can only be entered for students enrolled in this exam class");
   return db.transaction(async (tx) => {
     for (const entry of input.marks) {
       await tx
@@ -285,6 +311,15 @@ export async function approveExam(db: DB, orgId: string, examId: string) {
     .where(and(eq(examSubjects.examId, examId), tenant(examSubjects, orgId)))
     .limit(1);
   if (!subject) throw conflict("Add at least one subject before approving");
+  const [examYear] = await db.select({ academicYearId: exams.academicYearId }).from(exams).where(and(eq(exams.id, examId), tenant(exams, orgId))).limit(1);
+  if (!examYear) throw notFound("Examination not found");
+  const subjectRows = await db.select({ id: examSubjects.id, classId: examSubjects.classId }).from(examSubjects).where(and(eq(examSubjects.examId, examId), tenant(examSubjects, orgId)));
+  for (const examSubject of subjectRows) {
+    const enrolled = await db.select({ studentId: enrolments.studentId }).from(enrolments).where(and(tenant(enrolments, orgId), eq(enrolments.academicYearId, examYear.academicYearId), eq(enrolments.classId, examSubject.classId)));
+    if (!enrolled.length) continue;
+    const entered = await db.select({ studentId: marks.studentId }).from(marks).where(and(tenant(marks, orgId), eq(marks.examSubjectId, examSubject.id), inArray(marks.studentId, enrolled.map((row) => row.studentId))));
+    if (entered.length < enrolled.length) throw conflict("Enter marks or mark students absent before approving the examination");
+  }
   const [updated] = await db
     .update(exams)
     .set({ status: "completed" })

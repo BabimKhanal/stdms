@@ -8,7 +8,7 @@ A multi-tenant school and college MIS foundation built to be easy to read, exten
 - API: Hono, TypeScript, Drizzle ORM
 - Data: PostgreSQL 18 with genuine Row Level Security, Redis
 - Workspace: npm workspaces + Turborepo
-- Mobile: Expo app reserved at `apps/mobile` for the next delivery slice
+- Mobile: role-aware Expo app for students, guardians, teachers, and staff
 
 ## Run Locally
 
@@ -22,7 +22,8 @@ npm run dev
 ```
 
 Web: `http://localhost:3000`  
-API health: `http://localhost:4000/health`
+API liveness: `http://localhost:4000/live`
+API readiness: `http://localhost:4000/ready`
 
 The seed creates Greenwood Academy with students, guardians, staff, classes, attendance, leave, homework, fees, exams, notices, and demo accounts. The seed output prints the credentials.
 
@@ -58,7 +59,7 @@ Run the fast contract and permission tests with:
 npm run test
 ```
 
-The cross-tenant integration test is opt-in. Configure a disposable database
+The cross-tenant integration test runs as a required CI check against disposable PostgreSQL and Redis services. For a local integration run, configure a disposable database
 with two seeded owner accounts, then set `RUN_INTEGRATION_TESTS=1`,
 `TEST_TENANT_A_IDENTIFIER`, `TEST_TENANT_A_PASSWORD`,
 `TEST_TENANT_B_IDENTIFIER`, and `TEST_TENANT_B_PASSWORD` before running the

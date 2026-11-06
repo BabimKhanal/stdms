@@ -35,6 +35,16 @@ body {
 
 html { scroll-behavior: smooth; }
 
+:where(button, a, select, textarea, input):focus-visible {
+  outline: 2px solid var(--tenant-primary, #2563eb);
+  outline-offset: 3px;
+}
+
+@media (max-width: 767px) {
+  /* Keep form controls legible and prevent iOS from zooming the page on focus. */
+  input, select, textarea { font-size: 16px; }
+}
+
 ::selection { background: color-mix(in srgb, var(--tenant-primary, #2563eb) 22%, transparent); }
 
 @keyframes toast-in {
@@ -80,6 +90,24 @@ html { scroll-behavior: smooth; }
 .table-scroll { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
 .table-scroll::-webkit-scrollbar { height: 8px; }
 .table-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+
+.school-calendar {
+  --fc-classic-primary: var(--tenant-primary, #2563eb);
+  --fc-classic-primary-foreground: #ffffff;
+  --fc-classic-border: #e2e8f0;
+  --fc-classic-strong-border: #cbd5e1;
+  --fc-classic-foreground: #0f172a;
+  --fc-classic-muted-foreground: #64748b;
+  --fc-classic-faint-foreground: #94a3b8;
+  --fc-classic-today: color-mix(in srgb, var(--tenant-primary, #2563eb) 10%, white);
+  --fc-classic-highlight: color-mix(in srgb, var(--tenant-primary, #2563eb) 14%, white);
+  min-width: 0;
+  overflow-x: auto;
+  font-family: inherit;
+}
+.school-calendar [class*="fc-"] { font-family: inherit; }
+.school-calendar [class*="fc-"] button { border-radius: 0.65rem; font-weight: 600; }
+.school-calendar [class*="fc-"] a { text-decoration: none; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

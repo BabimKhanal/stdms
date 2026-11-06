@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import type { DB } from "../../lib/types";
 import {
   academicYears,
@@ -6,6 +6,7 @@ import {
   enrolments,
   guardians,
   sections,
+  studentLifecycleEvents,
   studentGuardians,
   students,
   roles,
@@ -13,15 +14,17 @@ import {
   users,
   organisations,
   documentTemplates,
+  studentDocuments,
 } from "../../db/schema";
 import type { StudentInput, GuardianInput } from "@edu/shared";
-import { conflict, notFound } from "../../lib/errors";
+import { badRequest, conflict, notFound } from "../../lib/errors";
 import { hashPassword } from "../../lib/password";
 import { randomBytes } from "node:crypto";
 import type { AuthUser } from "../../lib/context";
-import { assertStudentAssigned, teacherScope } from "../../lib/teacher-scope";
+import { assertStudentAssigned, learnerStudentIds, teacherScope } from "../../lib/teacher-scope";
 import { buildDocumentData } from "../../lib/document-data";
 import { renderTemplateHtml } from "../../lib/document-template-renderer";
+import { canTransitionStudent, lifecycleStatusForPromotion, requiresDestination, type LifecycleStatus } from "./lifecycle-policy";
 
 type StudentRow = typeof students.$inferSelect;
 
@@ -82,12 +85,21 @@ export async function listStudents(
   if (f.sectionId) conds.push(eq(enrolments.sectionId, f.sectionId));
 
   if (f.principal) {
-    const scope = teacherScope(
-      f.principal,
-      sql`${enrolments.classId}`,
-      sql`${enrolments.sectionId}`,
-    );
-    if (scope) conds.push(scope as never);
+    const learnerIds = await learnerStudentIds(db, orgId, f.principal);
+    if (learnerIds !== null) {
+      if (learnerIds.length === 0) {
+        conds.push(sql`false`);
+      } else {
+        conds.push(inArray(students.id, learnerIds));
+      }
+    } else {
+      const scope = teacherScope(
+        f.principal,
+        sql`${enrolments.classId}`,
+        sql`${enrolments.sectionId}`,
+      );
+      if (scope) conds.push(scope as never);
+    }
   }
   const where = and(...conds);
   const sortCol = (SORTABLE[f.sort ?? "createdAt"] ??
@@ -215,6 +227,21 @@ export async function getStudent(
       ),
     );
 
+  const lifecycleEvents = await db.select({ id: studentLifecycleEvents.id, action: studentLifecycleEvents.action, reason: studentLifecycleEvents.reason, effectiveDate: studentLifecycleEvents.effectiveDate, previousStatus: studentLifecycleEvents.previousStatus, newStatus: studentLifecycleEvents.newStatus, sourceAcademicYearId: studentLifecycleEvents.sourceAcademicYearId, sourceClassId: studentLifecycleEvents.sourceClassId, sourceSectionId: studentLifecycleEvents.sourceSectionId, destinationAcademicYearId: studentLifecycleEvents.destinationAcademicYearId, destinationClassId: studentLifecycleEvents.destinationClassId, destinationSectionId: studentLifecycleEvents.destinationSectionId, createdAt: studentLifecycleEvents.createdAt })
+    .from(studentLifecycleEvents)
+    .where(and(eq(studentLifecycleEvents.organisationId, orgId), eq(studentLifecycleEvents.studentId, id)))
+    .orderBy(desc(studentLifecycleEvents.effectiveDate), desc(studentLifecycleEvents.createdAt))
+    .catch((error: unknown) => {
+      if ((error as { code?: string }).code === "42P01") return [];
+      throw error;
+    });
+
+  const documents = await db
+    .select()
+    .from(studentDocuments)
+    .where(and(eq(studentDocuments.studentId, id), eq(studentDocuments.organisationId, orgId)))
+    .orderBy(desc(studentDocuments.createdAt));
+
   const current = history[0] ?? null;
   return {
     ...student,
@@ -226,8 +253,27 @@ export async function getStudent(
     sectionId: current?.sectionId ?? null,
     academicYearId: current?.academicYearId ?? null,
     history,
+    lifecycleEvents: lifecycleEvents.map((event) => ({ ...event, reason: principal?.studentId || principal?.guardianIds?.length ? null : event.reason })),
     guardians: guardianRows,
+    documents,
   };
+}
+
+export async function addStudentDocument(
+  db: DB,
+  orgId: string,
+  studentId: string,
+  uploadedBy: string,
+  input: { documentType: string; title: string; fileUrl: string; fileName?: string | null; mimeType?: string | null },
+) {
+  const [row] = await db.insert(studentDocuments).values({ organisationId: orgId, studentId, documentType: input.documentType, title: input.title, fileUrl: input.fileUrl, fileName: input.fileName ?? null, mimeType: input.mimeType ?? null, uploadedBy }).returning();
+  if (!row) throw notFound("Student not found");
+  return row;
+}
+
+export async function deleteStudentDocument(db: DB, orgId: string, studentId: string, documentId: string) {
+  const rows = await db.delete(studentDocuments).where(and(eq(studentDocuments.id, documentId), eq(studentDocuments.studentId, studentId), eq(studentDocuments.organisationId, orgId))).returning({ id: studentDocuments.id });
+  if (!rows.length) throw notFound("Student document not found");
 }
 
 function cardEscape(value: unknown) {
@@ -333,6 +379,20 @@ export async function createStudent(
 ) {
   try {
     return await db.transaction(async (tx) => {
+      if (Boolean(input.academicYearId) !== Boolean(input.classId)) throw badRequest("Academic year and class must be selected together");
+      if (input.academicYearId && input.classId) {
+        const [[year], [studentClass]] = await Promise.all([
+          tx.select({ id: academicYears.id }).from(academicYears).where(and(eq(academicYears.id, input.academicYearId), eq(academicYears.organisationId, orgId))).limit(1),
+          tx.select({ id: classes.id }).from(classes).where(and(eq(classes.id, input.classId), eq(classes.organisationId, orgId))).limit(1),
+        ]);
+        if (!year || !studentClass) throw badRequest("Select an academic year and class from this institution");
+        if (input.sectionId) {
+          const [section] = await tx.select({ id: sections.id }).from(sections).where(and(eq(sections.id, input.sectionId), eq(sections.classId, input.classId), eq(sections.organisationId, orgId))).limit(1);
+          if (!section) throw badRequest("Section must belong to the selected class");
+        }
+      } else if (input.sectionId) {
+        throw badRequest("Select a class before selecting a section");
+      }
       const [student] = await tx
         .insert(students)
         .values({
@@ -416,8 +476,14 @@ export async function transitionStudentStatus(
     | "withdrawn"
     | "transferred"
     | "alumni",
-) {
+  actorId: string,
+  reason: string,
+  effectiveDate = new Date().toISOString().slice(0, 10),
+): Promise<{ student: StudentRow; previousStatus: string }> {
   return db.transaction(async (tx) => {
+    const [existing] = await tx.select({ status: students.status }).from(students).where(and(eq(students.id, id), eq(students.organisationId, orgId))).limit(1);
+    if (!existing) throw notFound("Student not found");
+    if (!canTransitionStudent(existing.status as LifecycleStatus, status)) throw badRequest(`Cannot change student status from ${existing.status} to ${status}`);
     const [student] = await tx
       .update(students)
       .set({ status })
@@ -435,19 +501,14 @@ export async function transitionStudentStatus(
         ),
       )
       .limit(1);
-    if (currentYear) {
-      await tx
-        .update(enrolments)
-        .set({ promotionStatus: status === "active" ? null : status })
-        .where(
-          and(
-            eq(enrolments.organisationId, orgId),
-            eq(enrolments.studentId, id),
-            eq(enrolments.academicYearId, currentYear.id),
-          ),
-        );
+    if (status === "active") {
+      if (!currentYear) throw badRequest("Configure a current academic year before reactivating a student");
+      const [currentEnrolment] = await tx.select({ id: enrolments.id }).from(enrolments).where(and(eq(enrolments.organisationId, orgId), eq(enrolments.studentId, id), eq(enrolments.academicYearId, currentYear.id))).limit(1);
+      if (!currentEnrolment) throw badRequest("Create a current-year enrolment before reactivating this student");
     }
-    return student;
+    const [placement] = currentYear ? await tx.select().from(enrolments).where(and(eq(enrolments.organisationId, orgId), eq(enrolments.studentId, id), eq(enrolments.academicYearId, currentYear.id))).limit(1) : [];
+    await tx.insert(studentLifecycleEvents).values({ organisationId: orgId, studentId: id, actorId, action: status, reason, effectiveDate, previousStatus: existing.status, newStatus: status, sourceAcademicYearId: placement?.academicYearId ?? null, sourceClassId: placement?.classId ?? null, sourceSectionId: placement?.sectionId ?? null });
+    return { student, previousStatus: existing.status };
   });
 }
 
@@ -463,15 +524,16 @@ export async function updateStudentProfile(
     photoUrl?: string | null;
   },
 ) {
+  const changes: Partial<typeof students.$inferInsert> = {};
+  if (input.phone !== undefined) changes.phone = input.phone;
+  if (input.email !== undefined) changes.email = input.email;
+  if (input.address !== undefined) changes.address = input.address;
+  if (input.nationality !== undefined) changes.nationality = input.nationality;
+  if (input.photoUrl !== undefined) changes.photoUrl = input.photoUrl;
+
   const [row] = await db
     .update(students)
-    .set({
-      phone: input.phone,
-      email: input.email,
-      address: input.address,
-      nationality: input.nationality,
-      photoUrl: input.photoUrl,
-    })
+    .set(changes)
     .where(and(eq(students.id, id), eq(students.organisationId, orgId)))
     .returning();
   if (!row) throw notFound("Student not found");
@@ -722,6 +784,7 @@ export type PromotionEntry = {
   status: "promoted" | "repeated" | "transferred" | "graduated" | "withdrawn";
   toClassId?: string | null;
   toSectionId?: string | null;
+  rollNumber?: number | null;
 };
 
 export async function promoteStudents(
@@ -730,8 +793,17 @@ export async function promoteStudents(
   fromYearId: string,
   toYearId: string,
   entries: PromotionEntry[],
+  actorId: string,
+  reason: string,
 ) {
+  if (fromYearId === toYearId) throw badRequest("Source and destination academic years must be different");
+  if (new Set(entries.map((entry) => entry.studentId)).size !== entries.length) throw badRequest("Each student may appear only once in a promotion batch");
   return db.transaction(async (tx) => {
+    const years = await tx.select({ id: academicYears.id, startDate: academicYears.startDate }).from(academicYears).where(and(eq(academicYears.organisationId, orgId), or(eq(academicYears.id, fromYearId), eq(academicYears.id, toYearId))));
+    if (years.length !== 2) throw badRequest("Select academic years from this institution");
+    const fromYear = years.find((year) => year.id === fromYearId)!;
+    const toYear = years.find((year) => year.id === toYearId)!;
+    if (toYear.startDate <= fromYear.startDate) throw badRequest("Destination academic year must be after the source academic year");
     const results: { studentId: string; status: string }[] = [];
     for (const entry of entries) {
       const [source] = await tx
@@ -745,19 +817,32 @@ export async function promoteStudents(
           ),
         )
         .limit(1);
-      if (!source) continue;
+      if (!source) throw badRequest("Every selected student must be enrolled in the source academic year");
+      if (source.promotionStatus) throw conflict("A selected student's source enrolment already has a lifecycle outcome");
+      const [student] = await tx.select({ status: students.status }).from(students).where(and(eq(students.id, entry.studentId), eq(students.organisationId, orgId))).limit(1);
+      if (!student || student.status !== "active") throw badRequest("Only active students can be promoted, repeated, transferred, withdrawn, or graduated");
 
-      if (entry.status === "transferred" || entry.status === "withdrawn") {
+      const destinationRequired = requiresDestination(entry.status);
+      if (destinationRequired && !entry.toClassId) throw badRequest("A destination class is required for promoted or repeated students");
+      if (!destinationRequired && (entry.toClassId || entry.toSectionId)) throw badRequest("Leaving and graduating students cannot have a destination placement");
+      if (destinationRequired) {
+        const [destinationClass] = await tx.select({ id: classes.id }).from(classes).where(and(eq(classes.id, entry.toClassId!), eq(classes.organisationId, orgId))).limit(1);
+        if (!destinationClass) throw badRequest("Destination class does not belong to this institution");
+        if (entry.toSectionId) {
+          const [destinationSection] = await tx.select({ id: sections.id }).from(sections).where(and(eq(sections.id, entry.toSectionId), eq(sections.classId, entry.toClassId!), eq(sections.organisationId, orgId))).limit(1);
+          if (!destinationSection) throw badRequest("Destination section must belong to the destination class");
+        }
+        const [duplicate] = await tx.select({ id: enrolments.id }).from(enrolments).where(and(eq(enrolments.organisationId, orgId), eq(enrolments.studentId, entry.studentId), eq(enrolments.academicYearId, toYearId))).limit(1);
+        if (duplicate) throw conflict("A selected student is already enrolled in the destination academic year");
+      }
+
+      if (!destinationRequired) {
         await tx
           .update(enrolments)
           .set({ promotionStatus: entry.status })
           .where(eq(enrolments.id, source.id));
-        if (entry.status === "withdrawn") {
-          await tx
-            .update(students)
-            .set({ status: "withdrawn" })
-            .where(eq(students.id, entry.studentId));
-        }
+        const nextStatus = lifecycleStatusForPromotion(entry.status);
+        if (nextStatus) await tx.update(students).set({ status: nextStatus }).where(and(eq(students.id, entry.studentId), eq(students.organisationId, orgId)));
       } else {
         // New year = NEW row; the old year's row is never modified (SRS §60).
         await tx
@@ -766,23 +851,18 @@ export async function promoteStudents(
             organisationId: orgId,
             studentId: entry.studentId,
             academicYearId: toYearId,
-            classId: entry.toClassId ?? source.classId,
-            sectionId: entry.toSectionId ?? source.sectionId,
-            rollNumber: source.rollNumber,
-            promotionStatus: entry.status,
+            classId: entry.toClassId!,
+            sectionId: entry.toSectionId ?? null,
+            rollNumber: entry.rollNumber ?? source.rollNumber,
+            promotionStatus: null,
           })
-          .onConflictDoNothing();
+          .returning();
         await tx
           .update(enrolments)
           .set({ promotionStatus: entry.status })
           .where(eq(enrolments.id, source.id));
-        if (entry.status === "graduated") {
-          await tx
-            .update(students)
-            .set({ status: "graduated" })
-            .where(eq(students.id, entry.studentId));
-        }
       }
+      await tx.insert(studentLifecycleEvents).values({ organisationId: orgId, studentId: entry.studentId, actorId, action: entry.status, reason, effectiveDate: new Date().toISOString().slice(0, 10), previousStatus: student.status, newStatus: lifecycleStatusForPromotion(entry.status) ?? student.status, sourceAcademicYearId: source.academicYearId, sourceClassId: source.classId, sourceSectionId: source.sectionId, destinationAcademicYearId: destinationRequired ? toYearId : null, destinationClassId: destinationRequired ? entry.toClassId! : null, destinationSectionId: destinationRequired ? entry.toSectionId ?? null : null });
       results.push({ studentId: entry.studentId, status: entry.status });
     }
     return results;

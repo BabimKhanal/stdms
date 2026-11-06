@@ -21,7 +21,14 @@ type StoredCredentials = { apiKey?: string; smtpPassword?: string };
 export function readEmailCredentials(value: string | null | undefined): StoredCredentials {
   if (!value) return {};
   try {
-    return JSON.parse(decryptEmailCredential(value)) as StoredCredentials;
+    const plain = decryptEmailCredential(value);
+    try {
+      const parsed = JSON.parse(plain) as StoredCredentials;
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch {
+      return { apiKey: plain };
+    }
+    return {};
   } catch {
     return {};
   }
@@ -41,7 +48,7 @@ export function buildMailConfig(settings: EmailSettingsRow): MailConfig {
     smtp: {
       host: settings.smtpHost ?? null,
       port: settings.smtpPort ?? null,
-      secure: settings.smtpSecure ?? true,
+       secure: settings.smtpSecure ?? settings.smtpPort === 465,
       username: settings.smtpUsername ?? null,
       password: credentials.smtpPassword,
     },

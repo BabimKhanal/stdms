@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   AlignCenter,
   AlignLeft,
@@ -448,7 +449,9 @@ export function TemplateBuilder({
   const canvasShadow = "0 24px 60px rgba(15,23,42,0.18)";
   const filteredPresets = TEMPLATE_PRESETS.filter((preset) => presetCategory === "all" || preset.documentType === presetCategory);
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  return createPortal((
     <div className="fixed inset-0 z-50 flex flex-col bg-slate-100">
       <header className="flex flex-wrap items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
         <button type="button" onClick={onClose} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100" aria-label="Close builder">
@@ -859,7 +862,7 @@ export function TemplateBuilder({
         </div>
       </footer>
     </div>
-  );
+  ), document.body);
 }
 
 function labelFor(element: TemplateElement) {

@@ -1,7 +1,8 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -9,8 +10,10 @@ import {
   Text,
   View,
 } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { API_URL } from "../../config";
 import { mobileToken } from "../../auth";
+import { EmptyState } from "../../components";
 
 type Notification = {
   id: string;
@@ -24,11 +27,11 @@ const palette = {
   primary: "#7c3aed",
   primarySoft: "#f5f3ff",
   primaryBorder: "#ddd6fe",
-  bg: "#faf9ff",
+  bg: "#f8fafc",
   ink: "#1e1b4b",
-  inkSoft: "#475569",
-  muted: "#94a3b8",
-  border: "#f1f0f9",
+  inkSoft: "#334155",
+  muted: "#64748b",
+  border: "#e2e8f0",
   danger: "#e11d48",
   dangerSoft: "#fff1f2",
 };
@@ -56,6 +59,8 @@ export function Updates() {
   const [refreshing, setRefreshing] = useState(false);
   const [marking, setMarking] = useState(false);
   const [error, setError] = useState("");
+  const [filter, setFilter] = useState<"all" | "unread">("all");
+  const [selected, setSelected] = useState<Notification | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -67,8 +72,10 @@ export function Updates() {
       });
       if (!response.ok)
         throw new Error("Unable to load your updates right now.");
-      const payload = (await response.json()) as { data?: Notification[] };
-      setItems(payload.data ?? []);
+      const payload = (await response.json()) as {
+        data?: { data?: Notification[] };
+      };
+      setItems(payload.data?.data ?? []);
       setError("");
     } catch (err) {
       setError(
@@ -82,13 +89,22 @@ export function Updates() {
     }
   }, []);
 
+  const hasLoaded = useRef(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (hasLoaded.current) return;
+      hasLoaded.current = true;
+      void load();
+    }, [load]),
+  );
+
   useEffect(() => {
     let socket: WebSocket | undefined;
     let active = true;
     void (async () => {
       const token = await mobileToken();
       if (!active) return;
-      await load();
       if (!token || !active) return;
       socket = new WebSocket(
         `${API_URL.replace(/^http/, "ws").replace(/\/api\/v1$/, "")}/ws/notifications?token=${encodeURIComponent(token)}`,
@@ -182,141 +198,250 @@ export function Updates() {
   }
 
   const unreadCount = items.filter((item) => !item.readAt).length;
+  const visibleItems =
+    filter === "unread" ? items.filter((item) => !item.readAt) : items;
+  const selectedItem = selected
+    ? (items.find((item) => item.id === selected.id) ?? selected)
+    : null;
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.container}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => {
-            setRefreshing(true);
-            void load();
-          }}
-          colors={[palette.primary]}
-          tintColor={palette.primary}
-        />
-      }
-    >
-      <View style={styles.header}>
-        <View style={styles.headerCopy}>
-          <Text style={styles.eyebrow}>INBOX</Text>
-          <Text style={styles.title}>Updates</Text>
-          <Text style={styles.subtitle}>
-            {unreadCount
-              ? `You have ${unreadCount} unread ${unreadCount === 1 ? "update" : "updates"}.`
-              : "You are all caught up! New notices will appear here."}
-          </Text>
+    <View style={styles.screen}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              void load();
+            }}
+            colors={[palette.primary]}
+            tintColor={palette.primary}
+          />
+        }
+      >
+        <View style={styles.header}>
+          <View style={styles.headerCopy}>
+            <Text style={styles.eyebrow}>INBOX</Text>
+            <Text style={styles.title}>Updates</Text>
+            <Text style={styles.subtitle}>
+              {unreadCount
+                ? `You have ${unreadCount} unread ${unreadCount === 1 ? "update" : "updates"}.`
+                : "You are all caught up! New notices will appear here."}
+            </Text>
+          </View>
+          {unreadCount ? (
+            <Pressable
+              accessibilityRole="button"
+              disabled={marking}
+              onPress={() => void markAllRead()}
+              style={({ pressed }) => [
+                styles.markAll,
+                pressed && styles.pressedMarkAll,
+              ]}
+            >
+              {marking ? (
+                <ActivityIndicator color={palette.primary} size="small" />
+              ) : (
+                <>
+                  <MaterialCommunityIcons
+                    name="check-all"
+                    color={palette.primary}
+                    size={16}
+                  />
+                  <Text style={styles.markAllText}>Read all</Text>
+                </>
+              )}
+            </Pressable>
+          ) : null}
         </View>
-        {unreadCount ? (
+
+        {error ? (
           <Pressable
-            accessibilityRole="button"
-            disabled={marking}
-            onPress={() => void markAllRead()}
-            style={({ pressed }) => [
-              styles.markAll,
-              pressed && styles.pressedMarkAll,
-            ]}
+            onPress={() => {
+              setLoading(true);
+              void load();
+            }}
+            style={styles.errorBox}
           >
-            {marking ? (
-              <ActivityIndicator color={palette.primary} size="small" />
-            ) : (
-              <>
-                <MaterialCommunityIcons
-                  name="check-all"
-                  color={palette.primary}
-                  size={16}
-                />
-                <Text style={styles.markAllText}>Read all</Text>
-              </>
-            )}
+            <MaterialCommunityIcons
+              name="cloud-alert-outline"
+              color={palette.danger}
+              size={18}
+            />
+            <Text style={styles.errorText}>{error}</Text>
           </Pressable>
         ) : null}
-      </View>
 
-      {error ? (
-        <Pressable
-          onPress={() => {
-            setLoading(true);
-            void load();
-          }}
-          style={styles.errorBox}
-        >
-          <MaterialCommunityIcons
-            name="cloud-alert-outline"
-            color={palette.danger}
-            size={18}
-          />
-          <Text style={styles.errorText}>{error}</Text>
-        </Pressable>
-      ) : null}
-
-      {loading ? (
-        <ActivityIndicator color={palette.primary} style={styles.loader} />
-      ) : items.length ? (
-        items.map((item) => (
-          <Pressable
-            key={item.id}
-            onPress={() => void read(item.id)}
-            style={({ pressed }) => [
-              styles.card,
-              !item.readAt && styles.unread,
-              pressed && styles.pressedCard,
-            ]}
-          >
-            <View style={styles.cardTop}>
-              <View style={styles.cardTitleRow}>
-                {!item.readAt ? <View style={styles.unreadDot} /> : null}
-                <Text
-                  style={[
-                    styles.cardTitle,
-                    !item.readAt && styles.cardTitleUnread,
+        {loading ? (
+          <ActivityIndicator color={palette.primary} style={styles.loader} />
+        ) : (
+          <>
+            <View style={styles.filters} accessibilityRole="radiogroup">
+              <FilterButton
+                label={`All · ${items.length}`}
+                selected={filter === "all"}
+                onPress={() => setFilter("all")}
+              />
+              <FilterButton
+                label={`Unread · ${unreadCount}`}
+                selected={filter === "unread"}
+                onPress={() => setFilter("unread")}
+              />
+            </View>
+            {visibleItems.length ? (
+              visibleItems.map((item) => (
+                <Pressable
+                  key={item.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${item.title}${item.readAt ? ", read" : ", unread"}`}
+                  onPress={() => {
+                    setSelected(item);
+                    void read(item.id);
+                  }}
+                  style={({ pressed }) => [
+                    styles.card,
+                    !item.readAt && styles.unread,
+                    pressed && styles.pressedCard,
                   ]}
                 >
-                  {item.title}
+                  <View style={styles.cardTop}>
+                    <View style={styles.cardTitleRow}>
+                      {!item.readAt ? <View style={styles.unreadDot} /> : null}
+                      <Text
+                        style={[
+                          styles.cardTitle,
+                          !item.readAt && styles.cardTitleUnread,
+                        ]}
+                      >
+                        {item.title}
+                      </Text>
+                    </View>
+                    <Text style={styles.date}>{timeAgo(item.createdAt)}</Text>
+                  </View>
+                  {item.body ? (
+                    <Text
+                      style={[styles.body, !item.readAt && styles.bodyUnread]}
+                    >
+                      {item.body}
+                    </Text>
+                  ) : null}
+                  {!item.readAt ? (
+                    <View style={styles.tapHintRow}>
+                      <MaterialCommunityIcons
+                        name="gesture-tap"
+                        color={palette.primary}
+                        size={13}
+                      />
+                      <Text style={styles.tapHint}>Tap to open details</Text>
+                    </View>
+                  ) : null}
+                </Pressable>
+              ))
+            ) : (
+              <EmptyState
+                icon="bell-sleep-outline"
+                title={filter === "unread" ? "You’re all caught up!" : "No new updates"}
+                description={filter === "unread" ? "You read everything. Tap “All” to look at older updates." : "New notices, results, and school messages will show up here."}
+                actionLabel={filter === "unread" ? "Show all updates" : undefined}
+                onAction={filter === "unread" ? () => setFilter("all") : undefined}
+              />
+            )}
+          </>
+        )}
+      </ScrollView>
+      <Modal
+        visible={Boolean(selectedItem)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSelected(null)}
+      >
+        <View style={styles.modalRoot}>
+          <Pressable
+            accessibilityLabel="Close update details"
+            onPress={() => setSelected(null)}
+            style={styles.modalBackdrop}
+          />
+          {selectedItem ? (
+            <View style={styles.sheet}>
+              <View style={styles.sheetHandle} />
+              <View style={styles.sheetMeta}>
+                <View
+                  style={[
+                    styles.statusPill,
+                    selectedItem.readAt ? styles.readPill : styles.unreadPill,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.statusText,
+                      selectedItem.readAt ? styles.readText : styles.unreadText,
+                    ]}
+                  >
+                    {selectedItem.readAt ? "Read" : "Unread"}
+                  </Text>
+                </View>
+                <Text style={styles.sheetDate}>
+                  {timeAgo(selectedItem.createdAt)}
                 </Text>
               </View>
-              <Text style={styles.date}>{timeAgo(item.createdAt)}</Text>
+              <Text style={styles.sheetTitle}>{selectedItem.title}</Text>
+              <ScrollView
+                style={styles.sheetBodyScroll}
+                showsVerticalScrollIndicator={false}
+              >
+                <Text style={styles.sheetBody}>
+                  {selectedItem.body || "No additional details."}
+                </Text>
+              </ScrollView>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setSelected(null)}
+                style={({ pressed }) => [
+                  styles.sheetButton,
+                  pressed && styles.pressedMarkAll,
+                ]}
+              >
+                <Text style={styles.sheetButtonText}>Done</Text>
+              </Pressable>
             </View>
-            {item.body ? (
-              <Text style={[styles.body, !item.readAt && styles.bodyUnread]}>
-                {item.body}
-              </Text>
-            ) : null}
-            {!item.readAt ? (
-              <View style={styles.tapHintRow}>
-                <MaterialCommunityIcons
-                  name="gesture-tap"
-                  color={palette.primary}
-                  size={13}
-                />
-                <Text style={styles.tapHint}>Tap to mark as read</Text>
-              </View>
-            ) : null}
-          </Pressable>
-        ))
-      ) : (
-        <View style={styles.empty}>
-          <View style={styles.emptyIcon}>
-            <MaterialCommunityIcons
-              name="bell-sleep-outline"
-              color={palette.primary}
-              size={28}
-            />
-          </View>
-          <Text style={styles.emptyTitle}>Nothing new right now</Text>
-          <Text style={styles.emptyText}>
-            We&apos;ll let you know when there are new notices, grades, or school
-            announcements.
-          </Text>
+          ) : null}
         </View>
-      )}
-    </ScrollView>
+      </Modal>
+    </View>
+  );
+}
+
+function FilterButton({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.filterButton,
+        selected && styles.filterSelected,
+        pressed && styles.pressedMarkAll,
+      ]}
+    >
+      <Text style={[styles.filterText, selected && styles.filterTextSelected]}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: { backgroundColor: palette.bg, flex: 1 },
   container: {
     backgroundColor: palette.bg,
     flexGrow: 1,
@@ -359,8 +484,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 6,
     marginTop: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    minHeight: 48,
+    paddingHorizontal: 14,
   },
   pressedMarkAll: { opacity: 0.7, transform: [{ scale: 0.97 }] },
   markAllText: {
@@ -368,6 +493,32 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
   },
+  filters: {
+    alignSelf: "flex-start",
+    backgroundColor: "#f1f5f9",
+    borderRadius: 14,
+    flexDirection: "row",
+    gap: 4,
+    marginBottom: 14,
+    padding: 4,
+  },
+  filterButton: {
+    alignItems: "center",
+    borderRadius: 11,
+    justifyContent: "center",
+    minHeight: 48,
+    paddingHorizontal: 14,
+  },
+  filterSelected: {
+    backgroundColor: "#ffffff",
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.08,
+    shadowRadius: 5,
+    shadowOffset: { height: 1, width: 0 },
+    elevation: 1,
+  },
+  filterText: { color: palette.inkSoft, fontSize: 14, fontWeight: "700" },
+  filterTextSelected: { color: palette.primary },
   errorBox: {
     alignItems: "center",
     backgroundColor: palette.dangerSoft,
@@ -382,7 +533,7 @@ const styles = StyleSheet.create({
   errorText: {
     color: palette.danger,
     flex: 1,
-    fontSize: 12,
+    fontSize: 14,
     lineHeight: 18,
     fontWeight: "600",
   },
@@ -441,7 +592,7 @@ const styles = StyleSheet.create({
   },
   date: {
     color: palette.muted,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "600",
     marginTop: 3,
   },
@@ -462,7 +613,7 @@ const styles = StyleSheet.create({
   },
   tapHint: {
     color: palette.primary,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "700",
   },
 
@@ -501,4 +652,61 @@ const styles = StyleSheet.create({
     marginTop: 6,
     textAlign: "center",
   },
+  modalRoot: { flex: 1, justifyContent: "flex-end" },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: "rgba(15, 23, 42, 0.42)",
+  },
+  sheet: {
+    backgroundColor: "#ffffff",
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    maxHeight: "82%",
+    paddingBottom: 28,
+    paddingHorizontal: 22,
+    paddingTop: 10,
+  },
+  sheetHandle: {
+    alignSelf: "center",
+    backgroundColor: "#94a3b8",
+    borderRadius: 3,
+    height: 5,
+    marginBottom: 18,
+    width: 42,
+  },
+  sheetMeta: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  statusPill: { borderRadius: 9, paddingHorizontal: 10, paddingVertical: 5 },
+  readPill: { backgroundColor: "#f1f5f9" },
+  unreadPill: { backgroundColor: palette.primarySoft },
+  statusText: { fontSize: 11, fontWeight: "800" },
+  readText: { color: palette.inkSoft },
+  unreadText: { color: palette.primary },
+  sheetDate: { color: palette.muted, fontSize: 12, fontWeight: "600" },
+  sheetTitle: {
+    color: palette.ink,
+    fontSize: 22,
+    fontWeight: "800",
+    lineHeight: 29,
+    marginTop: 16,
+  },
+  sheetBodyScroll: { flexGrow: 0, marginTop: 12 },
+  sheetBody: {
+    color: palette.inkSoft,
+    fontSize: 15,
+    lineHeight: 23,
+    paddingBottom: 16,
+  },
+  sheetButton: {
+    alignItems: "center",
+    backgroundColor: palette.primary,
+    borderRadius: 14,
+    justifyContent: "center",
+    minHeight: 50,
+    marginTop: 14,
+  },
+  sheetButtonText: { color: "#ffffff", fontSize: 14, fontWeight: "800" },
 });

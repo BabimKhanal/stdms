@@ -23,7 +23,12 @@ const UNSCOPED = `current_setting('app.allow_unscoped', true) = 'true'`;
 const ORG = `NULLIF(current_setting('app.current_org_id', true), '')::uuid`;
 
 /** Tables that are deliberately NOT tenant-RLS'd. */
-const EXCLUDED = new Set(["organisations", "permissions"]);
+const EXCLUDED = new Set([
+  "organisations",
+  "permissions",
+  "platform_audit_logs",
+  "backup_jobs",
+]);
 
 /** Tables without an organisation_id column — policy goes through a lookup. */
 const SUBQUERY_POLICIES: Record<string, { using: string; check: string }> = {
@@ -42,17 +47,22 @@ function q(ident: string): string {
 }
 
 export async function enableRowLevelSecurity(pool: Pool): Promise<void> {
-  const { rows } = await pool.query<{ table_name: string }>(`
-    SELECT DISTINCT table_name
+  const { rows } = await pool.query<{ table_name: string; has_organisation_id: boolean }>(`
+    SELECT table_name, bool_or(column_name = 'organisation_id') AS has_organisation_id
     FROM information_schema.columns
     WHERE table_schema = 'public' AND table_name <> 'sqlx_migrations'
+    GROUP BY table_name
     ORDER BY table_name;
   `);
 
-  for (const { table_name: table } of rows) {
+  for (const { table_name: table, has_organisation_id: hasOrganisationId } of rows) {
     if (EXCLUDED.has(table)) continue;
 
     const special = SUBQUERY_POLICIES[table];
+    // Global tables have no tenant column and must not receive a policy that
+    // references organisation_id. They are protected by their own service
+    // permissions instead.
+    if (!hasOrganisationId && !special) continue;
     const using = special
       ? `(${special.using} OR ${BYPASS} OR ${UNSCOPED})`
       : `(organisation_id = ${ORG} OR ${BYPASS} OR ${UNSCOPED})`;

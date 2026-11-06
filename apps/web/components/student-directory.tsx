@@ -2,8 +2,8 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useState } from "react";
-import { Download, KeyRound, Search, UserPlus, Users, X } from "lucide-react";
-import { EduApiClient } from "@edu/api-client";
+import { ArrowRightLeft, Download, KeyRound, Search, UserPlus, Users, X } from "lucide-react";
+import { EduApiClient, getApiBaseUrl } from "@edu/api-client";
 import { Badge } from "./ui/badge";
 import { Alert } from "./ui/alert";
 import { Button } from "./ui/button";
@@ -22,6 +22,9 @@ import {
   TableRow,
 } from "./ui/table";
 import { downloadCsv } from "../lib/csv";
+import { translate } from "../lib/locale";
+import { Modal } from "./ui/modal";
+import { ConfirmationDialog } from "./ui/confirmation-dialog";
 
 type Option = {
   id: string;
@@ -69,7 +72,11 @@ type StudentDetail = StudentRow & {
     phone: string | null;
     isPrimary: boolean;
   }>;
+  lifecycleEvents?: Array<{ id: string; action: string; reason: string | null; effectiveDate: string; previousStatus: string | null; newStatus: string | null }>;
+  documents?: Array<{ id: string; documentType: string; title: string; fileUrl: string; fileName: string | null; mimeType: string | null; createdAt: string }>;
 };
+type DocumentTemplateOption = { id: string; name: string; documentType: string; isDefault: number };
+type StudentDocument = NonNullable<StudentDetail["documents"]>[number];
 
 const emptyForm = {
   studentId: "",
@@ -95,8 +102,14 @@ const emptyForm = {
 
 function StudentDirectoryContent({
   initialStudents,
+  canCreate,
+  canEdit,
+  canManageLifecycle,
 }: {
   initialStudents: Student[];
+  canCreate: boolean;
+  canEdit: boolean;
+  canManageLifecycle: boolean;
 }) {
   const api = new EduApiClient(undefined, () =>
     localStorage.getItem("edu_access_token"),
@@ -110,6 +123,13 @@ function StudentDirectoryContent({
   const [years, setYears] = useState<Option[]>([]);
   const [exams, setExams] = useState<ExamOption[]>([]);
   const [examId, setExamId] = useState("");
+  const [templates, setTemplates] = useState<DocumentTemplateOption[]>([]);
+  const [identityTemplateId, setIdentityTemplateId] = useState("");
+  const [documentType, setDocumentType] = useState("certificate");
+  const [documentTitle, setDocumentTitle] = useState("");
+  const [documentUrl, setDocumentUrl] = useState("");
+  const [documentSaving, setDocumentSaving] = useState(false);
+  const [documentRemoveTarget, setDocumentRemoveTarget] = useState<StudentDocument | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [classFilter, setClassFilter] = useState("");
@@ -120,6 +140,13 @@ function StudentDirectoryContent({
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [lifecycleOpen, setLifecycleOpen] = useState(false);
+  const [lifecycleAction, setLifecycleAction] = useState("promoted");
+  const [lifecycleReason, setLifecycleReason] = useState("");
+  const [toYearId, setToYearId] = useState("");
+  const [toClassId, setToClassId] = useState("");
+  const [toSectionId, setToSectionId] = useState("");
+  const [nextRollNumber, setNextRollNumber] = useState("");
   useEffect(() => {
     void Promise.all([
       api.get<{ data: Option[] }>("/academics/classes"),
@@ -132,6 +159,12 @@ function StudentDirectoryContent({
         setSections(sectionResult.data);
         setYears(yearResult.data);
         setExams(examResult.data);
+      })
+      .catch(() => undefined);
+    void api.get<{ data: DocumentTemplateOption[] }>("/organisation/document-templates")
+      .then((result) => {
+        setTemplates(result.data);
+        setIdentityTemplateId(result.data.find((template) => template.documentType === "identity_card" && template.isDefault)?.id ?? result.data.find((template) => template.documentType === "identity_card")?.id ?? "");
       })
       .catch(() => undefined);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -174,8 +207,10 @@ function StudentDirectoryContent({
     if (!selected) return;
     try {
       const token = localStorage.getItem("edu_access_token");
-      const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
-      const response = await fetch(`${base}/students/${selected.id}/document?type=identity_card`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const base = getApiBaseUrl();
+       const query = new URLSearchParams({ type: "identity_card" });
+       if (identityTemplateId) query.set("templateId", identityTemplateId);
+       const response = await fetch(`${base}/students/${selected.id}/document?${query}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (!response.ok) { const body = await response.json().catch(() => null) as { error?: string } | null; throw new Error(body?.error ?? "Unable to generate identity card"); }
       const url = URL.createObjectURL(await response.blob());
       const link = document.createElement("a");
@@ -185,11 +220,34 @@ function StudentDirectoryContent({
       URL.revokeObjectURL(url);
     } catch (err) { setError(err instanceof Error ? err.message : "Unable to generate identity card"); }
   }
+  async function saveStudentDocument() {
+    if (!selected || !documentUrl || !documentTitle.trim()) return;
+    setDocumentSaving(true);
+    try {
+      const row = await api.post<StudentDetail["documents"] extends Array<infer T> ? T : never>(`/students/${selected.id}/documents`, { documentType, title: documentTitle.trim(), fileUrl: documentUrl });
+      setSelected((current) => current ? { ...current, documents: [row, ...(current.documents ?? [])] } : current);
+      setDocumentTitle("");
+      setDocumentUrl("");
+      toast.success("Document saved", "The file is now attached to this student profile.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to save student document");
+    } finally {
+      setDocumentSaving(false);
+    }
+  }
+  async function removeStudentDocument() {
+    if (!selected || !documentRemoveTarget) return;
+    try {
+      await api.delete(`/students/${selected.id}/documents/${documentRemoveTarget.id}`);
+      setSelected((current) => current ? { ...current, documents: current.documents?.filter((document) => document.id !== documentRemoveTarget.id) } : current);
+      setDocumentRemoveTarget(null);
+    } catch (err) { setError(err instanceof Error ? err.message : "Unable to remove student document"); }
+  }
   async function downloadTranscript() {
     if (!selected) return;
     try {
       const token = localStorage.getItem("edu_access_token");
-      const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
+      const base = getApiBaseUrl();
       const response = await fetch(`${base}/exams/transcript/${selected.id}/export`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (!response.ok) throw new Error("Unable to export transcript");
       const url = URL.createObjectURL(await response.blob());
@@ -200,7 +258,7 @@ function StudentDirectoryContent({
     if (!selected || !examId) return;
     try {
       const token = localStorage.getItem("edu_access_token");
-      const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
+      const base = getApiBaseUrl();
       const response = await fetch(`${base}/exams/${examId}/report-card/${selected.id}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (!response.ok) throw new Error("Unable to generate marksheet");
       const windowRef = window.open("", "_blank");
@@ -257,11 +315,15 @@ function StudentDirectoryContent({
       phone: form.phone || null,
       email: form.email || null,
       admissionDate: form.admissionDate || null,
-      academicYearId: form.academicYearId || null,
-      classId: form.classId || null,
-      sectionId: form.sectionId || null,
-      rollNumber: form.rollNumber ? Number(form.rollNumber) : null,
+      ...(!selected ? { academicYearId: form.academicYearId || null, classId: form.classId || null, sectionId: form.sectionId || null, rollNumber: form.rollNumber ? Number(form.rollNumber) : null } : {}),
     };
+    if (selected) {
+      delete (payload as Partial<typeof payload>).status;
+      delete (payload as Partial<typeof payload>).academicYearId;
+      delete (payload as Partial<typeof payload>).classId;
+      delete (payload as Partial<typeof payload>).sectionId;
+      delete (payload as Partial<typeof payload>).rollNumber;
+    }
     try {
       if (selected) await api.put(`/students/${selected.id}`, payload);
       else await api.post("/students", payload);
@@ -277,40 +339,70 @@ function StudentDirectoryContent({
       setSaving(false);
     }
   }
+  async function applyLifecycle(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selected) return;
+    setSaving(true);
+    setError("");
+    try {
+      if (lifecycleAction === "promoted" || lifecycleAction === "repeated") {
+        if (!selected.academicYearId) throw new Error("The student has no current source-year enrolment.");
+        await api.post("/enrolments/promote", { fromYearId: selected.academicYearId, toYearId, reason: lifecycleReason, entries: [{ studentId: selected.id, status: lifecycleAction, toClassId, toSectionId: toSectionId || null, rollNumber: nextRollNumber ? Number(nextRollNumber) : null }] });
+      } else {
+        await api.post(`/students/${selected.id}/lifecycle`, { status: lifecycleAction, reason: lifecycleReason, effectiveDate: new Date().toISOString().slice(0, 10) });
+      }
+      toast.success("Student lifecycle updated", `${selected.fullName ?? "Student"}: ${lifecycleAction}.`);
+      setLifecycleOpen(false);
+      await openStudent(selected.id);
+      await loadStudents(1);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to update student lifecycle";
+      setError(message);
+      toast.error("Lifecycle update failed", message);
+    } finally {
+      setSaving(false);
+    }
+  }
   const field = (
     name: keyof typeof emptyForm,
     placeholder: string,
     type = "text",
   ) => (
-    <Input
-      name={name}
-      value={form[name]}
-      onChange={(event) => update(name, event.target.value)}
-      placeholder={placeholder}
-      type={type}
-      required={
-        name === "studentId" || name === "firstName" || name === "lastName"
-      }
-    />
+    <label className="block">
+      <span className="mb-2 block text-sm font-medium text-slate-700">
+        {placeholder}
+        {(name === "studentId" || name === "firstName" || name === "lastName") && <span className="ml-1 text-rose-600">*</span>}
+      </span>
+      <Input
+        name={name}
+        value={form[name]}
+        onChange={(event) => update(name, event.target.value)}
+        placeholder={placeholder}
+        type={type}
+        required={
+          name === "studentId" || name === "firstName" || name === "lastName"
+        }
+      />
+    </label>
   );
   return (
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <p className="text-sm font-medium text-blue-600">
-            Student information system
+             {translate("Student information system")}
           </p>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight">
-            Students
+             {translate("Students")}
           </h2>
           <p className="mt-2 text-sm text-slate-500">
-            Complete learner profiles, enrolment history, and guardians.
+             {translate("Complete learner profiles, enrolment history, and guardians.")}
           </p>
         </div>
-        <Button onClick={beginCreate}>
+        {canCreate && <Button onClick={beginCreate}>
           <UserPlus size={16} />
-          Add student
-        </Button>
+           {translate("Add student")}
+        </Button>}
       </div>
       {error && (
         <Alert tone="error" title="Student directory" onDismiss={() => setError("")}>
@@ -320,7 +412,7 @@ function StudentDirectoryContent({
       {showForm && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>{selected ? "Edit student" : "Add student"}</CardTitle>
+             <CardTitle>{selected ? translate("Edit student") : translate("Add student")}</CardTitle>
             <Button
               size="sm"
               variant="ghost"
@@ -349,48 +441,48 @@ function StudentDirectoryContent({
               {field("nationality", "Nationality")}
               {field("phone", "Phone")}
               {field("email", "Email", "email")}
-              {field("rollNumber", "Roll number", "number")}
-              <select
-                value={form.gender}
-                onChange={(event) => update("gender", event.target.value)}
-                className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
-              >
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="other">Other</option>
-              </select>
-              <select
+              {!selected && field("rollNumber", "Roll number", "number")}
+               <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Gender</span><select
+                 value={form.gender}
+                 onChange={(event) => update("gender", event.target.value)}
+                 className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
+               >
+                 <option value="male">Male</option>
+                 <option value="female">Female</option>
+                 <option value="other">Other</option>
+               </select></label>
+               {!selected && <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Academic year</span><select
                 value={form.academicYearId}
                 onChange={(event) =>
                   update("academicYearId", event.target.value)
                 }
                 className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
               >
-                <option value="">Academic year</option>
+                 <option value="">Select academic year</option>
                 {years.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>
                 ))}
-              </select>
-              <select
+               </select></label>}
+               {!selected && <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Class</span><select
                 value={form.classId}
                 onChange={(event) => update("classId", event.target.value)}
                 className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
               >
-                <option value="">Class</option>
+                 <option value="">Select class</option>
                 {classes.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>
                 ))}
-              </select>
-              <select
+               </select></label>}
+               {!selected && <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Section</span><select
                 value={form.sectionId}
                 onChange={(event) => update("sectionId", event.target.value)}
                 className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm"
               >
-                <option value="">Section</option>
+                 <option value="">Select section</option>
                 {sections
                   .filter(
                     (item) => !form.classId || item.classId === form.classId,
@@ -401,13 +493,13 @@ function StudentDirectoryContent({
                       {item.name}
                     </option>
                   ))}
-              </select>
-              <textarea
-                value={form.address}
-                onChange={(event) => update("address", event.target.value)}
-                placeholder="Address"
-                className="min-h-24 rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm sm:col-span-2"
-              />
+               </select></label>}
+               <label className="block sm:col-span-2"><span className="mb-2 block text-sm font-medium text-slate-700">Address</span><textarea
+                 value={form.address}
+                 onChange={(event) => update("address", event.target.value)}
+                 placeholder="Address"
+                 className="min-h-24 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm"
+               /></label>
               <Button disabled={saving}>
                 {saving
                   ? "Saving..."
@@ -567,9 +659,9 @@ function StudentDirectoryContent({
         </CardContent>
       </Card>
       {selected && !showForm && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/30 p-4 backdrop-blur-sm sm:p-8"><div className="mx-auto max-w-5xl">
-        <Card>
-          <CardHeader className="flex flex-row items-start justify-between">
+         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/30 p-3 backdrop-blur-sm sm:p-5"><div className="mx-auto max-w-4xl">
+         <Card className="max-h-[calc(100vh-1.5rem)] overflow-hidden sm:max-h-[calc(100vh-2.5rem)]">
+           <CardHeader className="flex flex-row items-start justify-between gap-4 p-4 sm:p-5">
             <div className="flex items-center gap-4">
               {selected.photoUrl ? (
                 <img
@@ -592,9 +684,10 @@ function StudentDirectoryContent({
               </div>
             </div>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={beginEdit}>
+              {canEdit && <Button size="sm" variant="outline" onClick={beginEdit}>
                 Edit
-              </Button>
+              </Button>}
+              {canManageLifecycle && <Button size="sm" variant="outline" onClick={() => { setLifecycleAction("promoted"); setLifecycleReason(""); setToYearId(""); setToClassId(""); setToSectionId(""); setNextRollNumber(""); setLifecycleOpen(true); }}><ArrowRightLeft size={14} />Lifecycle</Button>}
               <Button
                 size="sm"
                 variant="ghost"
@@ -604,14 +697,16 @@ function StudentDirectoryContent({
               </Button>
             </div>
           </CardHeader>
-          <CardContent className="grid gap-6 lg:grid-cols-3">
-            <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 lg:col-span-3">
-              <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">Student documents</p>
-              <p className="mt-1 text-sm text-slate-600">Generate official documents from this student profile.</p>
-              <div className="mt-3 flex flex-wrap gap-2"><Button size="sm" onClick={() => void downloadIdentityCard()}>Download identity card</Button><Button size="sm" variant="outline" onClick={() => void downloadTranscript()}>Download transcript</Button><select value={examId} onChange={(event) => setExamId(event.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs"><option value="">Select marksheet</option>{exams.filter((exam) => exam.status === "published").map((exam) => <option key={exam.id} value={exam.id}>{exam.name}</option>)}</select><Button size="sm" variant="ghost" disabled={!examId} onClick={() => void openMarksheet()}>Print marksheet</Button></div>
-            </div>
-            <div>
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+           <CardContent className="max-h-[calc(100vh-9rem)] overflow-y-auto p-4 sm:p-5">
+             <div className="grid gap-4 lg:grid-cols-3">
+             <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-3 lg:col-span-3">
+               <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1"><p className="text-xs font-semibold uppercase tracking-wider text-blue-700">Student documents</p><p className="text-xs text-slate-500">Generate or attach files</p></div>
+               <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] lg:grid-cols-[minmax(170px,1fr)_auto_auto_minmax(150px,1fr)_auto]"><select value={identityTemplateId} onChange={(event) => setIdentityTemplateId(event.target.value)} className="h-9 min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-xs"><option value="">Default identity card template</option>{templates.filter((template) => template.documentType === "identity_card").map((template) => <option key={template.id} value={template.id}>{template.name}{template.isDefault ? " (default)" : ""}</option>)}</select><Button size="sm" onClick={() => void downloadIdentityCard()}>Download ID card</Button><Button size="sm" variant="outline" onClick={() => void downloadTranscript()}>Transcript</Button><select value={examId} onChange={(event) => setExamId(event.target.value)} className="h-9 min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-xs"><option value="">Select marksheet</option>{exams.filter((exam) => exam.status === "published").map((exam) => <option key={exam.id} value={exam.id}>{exam.name}</option>)}</select><Button size="sm" variant="ghost" disabled={!examId} onClick={() => void openMarksheet()}>Print marksheet</Button></div>
+               {canEdit && <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3"><p className="text-sm font-semibold text-slate-800">Attach a document</p><div className="mt-2 grid gap-2 sm:grid-cols-[130px_minmax(0,1fr)_auto] sm:items-end"><label className="text-xs font-medium text-slate-600">Type<select value={documentType} onChange={(event) => setDocumentType(event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs"><option value="certificate">Certificate</option><option value="transcript">Transcript</option><option value="marksheet">Marksheet</option><option value="admission">Admission document</option><option value="other">Other</option></select></label><label className="text-xs font-medium text-slate-600">Title<Input value={documentTitle} onChange={(event) => setDocumentTitle(event.target.value)} placeholder="e.g. Previous school certificate" className="mt-1 h-9" /></label><Button type="button" size="sm" disabled={documentSaving || !documentTitle.trim() || !documentUrl} onClick={() => void saveStudentDocument()}>{documentSaving ? "Saving..." : "Save"}</Button></div><div className="mt-2"><CloudinaryUpload value={documentUrl} onChange={setDocumentUrl} folder="documents" accept="application/pdf,image/*" label="Upload file" /></div></div>}
+               {selected.documents?.length ? <div className="mt-3 space-y-2"><p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Attached documents</p>{selected.documents.map((document) => <div key={document.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-2.5"><div className="min-w-0 flex-1"><a href={document.fileUrl} target="_blank" rel="noreferrer" className="block truncate text-sm font-medium text-blue-700 hover:underline">{document.title}</a><p className="text-xs text-slate-500">{document.documentType} · {document.fileName ?? "Uploaded file"}</p></div>{canEdit && <button type="button" className="text-xs font-semibold text-rose-600" onClick={() => setDocumentRemoveTarget(document)}>Remove</button>}</div>)}</div> : null}
+             </div>
+             <div className="rounded-xl border border-slate-100 bg-white p-3 lg:col-span-1">
+               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Personal details
               </p>
               <Detail label="Date of birth" value={selected.dateOfBirth} />
@@ -619,8 +714,8 @@ function StudentDirectoryContent({
               <Detail label="Blood group" value={selected.bloodGroup} />
               <Detail label="Nationality" value={selected.nationality} />
             </div>
-            <div>
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+             <div className="rounded-xl border border-slate-100 bg-white p-3">
+               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Contact and admission
               </p>
               <Detail label="Phone" value={selected.phone} />
@@ -628,8 +723,8 @@ function StudentDirectoryContent({
               <Detail label="Admission date" value={selected.admissionDate} />
               <Detail label="Address" value={selected.address} />
             </div>
-            <div>
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+             <div className="rounded-xl border border-slate-100 bg-white p-3">
+               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Academic history
               </p>
               {selected.history?.map((item) => (
@@ -646,8 +741,8 @@ function StudentDirectoryContent({
                 </div>
               ))}
             </div>
-            <div className="lg:col-span-3">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+             <div className="rounded-xl border border-slate-100 bg-white p-3 lg:col-span-3">
+               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Guardians
               </p>
               {selected.guardians?.length ? (
@@ -671,9 +766,22 @@ function StudentDirectoryContent({
                 <p className="text-sm text-slate-500">No guardians linked.</p>
               )}
             </div>
-          </CardContent>
+             <div className="rounded-xl border border-slate-100 bg-white p-3 lg:col-span-3">
+               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Lifecycle timeline</p>
+               {selected.lifecycleEvents?.length ? <div className="space-y-2">{selected.lifecycleEvents.map((event) => <div key={event.id} className="rounded-xl border border-slate-100 p-3 text-sm"><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold capitalize text-slate-900">{event.action}</span><span className="text-xs text-slate-400">{event.effectiveDate}</span></div>{event.reason && <p className="mt-1 text-slate-600">{event.reason}</p>}{event.previousStatus !== event.newStatus && <p className="mt-1 text-xs text-slate-400">{event.previousStatus ?? "-"} → {event.newStatus ?? "-"}</p>}</div>)}</div> : <p className="text-sm text-slate-500">No lifecycle actions have been recorded.</p>}
+             </div>
+             </div>
+           </CardContent>
         </Card></div></div>
       )}
+      <ConfirmationDialog open={Boolean(documentRemoveTarget)} title="Remove student document?" description={documentRemoveTarget?.title} consequence="This removes the document from the student profile. Staff and the student will no longer be able to access it here." details={documentRemoveTarget ? <p className="text-sm text-slate-700"><strong>File:</strong> {documentRemoveTarget.fileName ?? documentRemoveTarget.documentType}</p> : undefined} confirmLabel="Remove document" tone="danger" onClose={() => setDocumentRemoveTarget(null)} onConfirm={() => void removeStudentDocument()} />
+      <Modal open={lifecycleOpen} title="Student lifecycle action" description={selected ? `Apply a history-preserving action to ${selected.fullName}.` : undefined} onClose={() => setLifecycleOpen(false)} footer={<div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setLifecycleOpen(false)}>Cancel</Button><Button type="submit" form="student-lifecycle-form" disabled={saving}>{saving ? "Applying..." : "Apply action"}</Button></div>}>
+        <form id="student-lifecycle-form" onSubmit={applyLifecycle} className="space-y-4">
+          <Alert tone="warning" title="This updates the permanent academic history">Use profile editing for spelling and contact corrections. Use this action only for a real placement or status change.</Alert>
+          <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Action</span><select value={lifecycleAction} onChange={(event) => setLifecycleAction(event.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="promoted">Promote to next year</option><option value="repeated">Repeat in next year</option><option value="suspended">Suspend</option><option value="withdrawn">Withdraw</option><option value="transferred">Transfer out</option><option value="graduated">Graduate</option>{selected?.status === "graduated" && <option value="alumni">Move to alumni</option>}{["suspended", "withdrawn", "transferred"].includes(selected?.status ?? "") && <option value="active">Reactivate</option>}</select></label>
+          {(lifecycleAction === "promoted" || lifecycleAction === "repeated") ? <><div className="grid gap-4 sm:grid-cols-2"><label><span className="mb-2 block text-sm font-medium text-slate-700">Destination year</span><select required value={toYearId} onChange={(event) => setToYearId(event.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">Select year</option>{years.filter((year) => year.id !== selected?.academicYearId).map((year) => <option key={year.id} value={year.id}>{year.name}</option>)}</select></label><label><span className="mb-2 block text-sm font-medium text-slate-700">Destination class</span><select required value={toClassId} onChange={(event) => { setToClassId(event.target.value); setToSectionId(""); }} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">Select class</option>{classes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label><span className="mb-2 block text-sm font-medium text-slate-700">Destination section</span><select value={toSectionId} onChange={(event) => setToSectionId(event.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">No section</option>{sections.filter((item) => item.classId === toClassId).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label><span className="mb-2 block text-sm font-medium text-slate-700">New roll number</span><Input type="number" min={0} value={nextRollNumber} onChange={(event) => setNextRollNumber(event.target.value)} /></label></div><label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Reason</span><textarea required minLength={3} maxLength={500} value={lifecycleReason} onChange={(event) => setLifecycleReason(event.target.value)} className="min-h-20 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm" placeholder="Record the promotion or repetition decision" /></label></> : <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700">Reason</span><textarea required minLength={3} maxLength={500} value={lifecycleReason} onChange={(event) => setLifecycleReason(event.target.value)} className="min-h-24 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm" placeholder="Record the administrative reason for this action" /></label>}
+        </form>
+      </Modal>
     </div>
   );
 }
@@ -688,8 +796,14 @@ function Detail({ label, value }: { label: string; value?: string | null }) {
 }
 export function StudentDirectory({
   initialStudents,
+  canCreate = false,
+  canEdit = false,
+  canManageLifecycle = false,
 }: {
   initialStudents: Student[];
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canManageLifecycle?: boolean;
 }) {
   return (
     <Tabs defaultValue="directory" className="space-y-6">
@@ -719,7 +833,7 @@ export function StudentDirectory({
         </Button>
       </div>
       <TabsContent value="directory" className="mt-0">
-        <StudentDirectoryContent initialStudents={initialStudents} />
+        <StudentDirectoryContent initialStudents={initialStudents} canCreate={canCreate} canEdit={canEdit} canManageLifecycle={canManageLifecycle} />
       </TabsContent>
       <TabsContent value="credentials" className="mt-0">
         <CredentialProvisioner students={initialStudents} />

@@ -7,7 +7,7 @@ import { Button } from "./ui/button";
 import { FilePreview } from "./file-preview";
 
 type UploadFolder = "students" | "users" | "assignments" | "content" | "documents" | "branding" | "payments";
-type UploadProps = { value: string; onChange: (url: string) => void; folder: UploadFolder; accept?: string; label?: string };
+type UploadProps = { value: string; onChange: (url: string) => void; folder: UploadFolder; accept?: string; label?: string; onUploadingChange?: (uploading: boolean) => void };
 type MultiUploadProps = { values: string[]; onChange: (urls: string[]) => void; folder: UploadFolder; accept?: string; label?: string };
 
 async function uploadToCloudinary(file: File, folder: MultiUploadProps["folder"]) {
@@ -21,10 +21,10 @@ async function uploadToCloudinary(file: File, folder: MultiUploadProps["folder"]
   return result.secure_url;
 }
 
-export function CloudinaryUpload({ value, onChange, folder, accept, label = "Upload file" }: UploadProps) {
+export function CloudinaryUpload({ value, onChange, folder, accept, label = "Upload file", onUploadingChange }: UploadProps) {
   const inputRef = useRef<HTMLInputElement>(null); const [uploading, setUploading] = useState(false); const [error, setError] = useState("");
   async function upload(file: File) {
-    setUploading(true); setError("");
+    setUploading(true); onUploadingChange?.(true); setError("");
     try {
       const api = new EduApiClient(undefined, () => localStorage.getItem("edu_access_token"));
       const resourceType = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : "raw";
@@ -33,7 +33,7 @@ export function CloudinaryUpload({ value, onChange, folder, accept, label = "Upl
       const response = await fetch(`https://api.cloudinary.com/v1_1/${signed.cloudName}/${resourceType}/upload`, { method: "POST", body }); const result = await response.json() as { secure_url?: string; error?: { message?: string } };
       if (!response.ok || !result.secure_url) throw new Error(result.error?.message ?? "Cloudinary upload failed");
       onChange(result.secure_url);
-    } catch (err) { setError(err instanceof Error ? err.message : "Upload failed"); } finally { setUploading(false); }
+    } catch (err) { setError(err instanceof Error ? err.message : "Upload failed"); } finally { setUploading(false); onUploadingChange?.(false); }
   }
   return <div className="space-y-2"><input ref={inputRef} type="file" accept={accept} className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); event.currentTarget.value = ""; }} /><Button type="button" variant="outline" disabled={uploading} onClick={() => inputRef.current?.click()}><Upload size={15} />{uploading ? "Uploading..." : label}</Button>{value && <FilePreview url={value} label="Uploaded file" compact />}{error && <p className="text-xs text-rose-600">{error}</p>}</div>;
 }

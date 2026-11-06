@@ -9,6 +9,8 @@ import { Alert } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
+import { translate } from "../lib/locale";
+import { ConfirmationDialog } from "./ui/confirmation-dialog";
 import {
   Table,
   TableBody,
@@ -62,7 +64,7 @@ const statuses: Status[] = [
 ];
 const today = new Date().toISOString().slice(0, 10);
 
-export function AttendanceWorkspace() {
+export function AttendanceWorkspace({ canMark = true }: { canMark?: boolean } = {}) {
   const api = new EduApiClient(undefined, () =>
     localStorage.getItem("edu_access_token"),
   );
@@ -90,6 +92,7 @@ export function AttendanceWorkspace() {
   const [attendanceSetting, setAttendanceSetting] = useState<AttendanceSetting>({ minimumPercentage: 75, countLateAsPresent: 1, excludeLeave: 1, excludeExcused: 1, excludeSick: 1 });
   const [lowAttendance, setLowAttendance] = useState<LowAttendance[]>([]);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [confirmAttendance, setConfirmAttendance] = useState(false);
   useEffect(() => {
     Promise.all([
       api.get<{ data: Attendance[] }>("/attendance"),
@@ -213,6 +216,7 @@ export function AttendanceWorkspace() {
         })),
       });
       setMessage("Attendance saved successfully.");
+      setConfirmAttendance(false);
       const refreshed = await api.get<{ data: Attendance[] }>("/attendance");
       setRecords(refreshed.data);
     } catch (err) {
@@ -256,12 +260,12 @@ export function AttendanceWorkspace() {
     <div className="space-y-6">
       <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <p className="text-sm font-medium text-blue-600">Daily operations</p>
+          <p className="text-sm font-medium text-blue-600">{translate("Daily operations")}</p>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight">
-            Attendance
+            {translate("Attendance")}
           </h2>
           <p className="mt-2 text-sm text-slate-500">
-            Mark today’s register, review history, and export records.
+            {translate("Mark today’s register, review history, and export records.")}
           </p>
         </div>
         <Button
@@ -270,7 +274,7 @@ export function AttendanceWorkspace() {
           disabled={!visible.length}
         >
           <Download size={15} />
-          Export records
+          {translate("Export records")}
         </Button>
       </header>
       {error && (
@@ -300,14 +304,16 @@ export function AttendanceWorkspace() {
           </Card>
         ))}
       </div>
-      <Card className="border-blue-200 shadow-sm">
+      {canMark && (
+        <>
+          <Card className="border-blue-200 shadow-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Check size={18} className="text-blue-600" />
-            Mark class attendance
+             {translate("Mark class attendance")}
           </CardTitle>
           <p className="text-sm text-slate-500">
-            Select a class, load its students, and save the complete register.
+             {translate("Select a class, load its students, and save the complete register.")}
           </p>
         </CardHeader>
         <CardContent>
@@ -451,7 +457,7 @@ export function AttendanceWorkspace() {
                   </Button>
                   <Button
                     disabled={saving}
-                    onClick={() => void saveAttendance()}
+                    onClick={() => setConfirmAttendance(true)}
                   >
                     {saving ? "Saving..." : "Save attendance"}
                   </Button>
@@ -478,6 +484,8 @@ export function AttendanceWorkspace() {
           <CardContent>{lowAttendance.length ? <div className="divide-y divide-slate-100">{lowAttendance.map((row) => <div key={row.studentId} className="flex items-center justify-between gap-3 py-3"><div><p className="font-medium">{row.studentName ?? "Student"}</p><p className="text-xs text-slate-500">{row.total} attendance records</p></div><Badge tone="rose">{row.percentage}%</Badge></div>)}</div> : <p className="text-sm text-slate-500">No students are currently below the threshold.</p>}</CardContent>
         </Card>
       </div>
+    </>
+  )}
       <Card>
         <CardHeader>
           <CardTitle>Attendance history</CardTitle>
@@ -590,6 +598,17 @@ export function AttendanceWorkspace() {
           </div>
         </CardContent>
       </Card>
+      <ConfirmationDialog
+        open={confirmAttendance}
+        title="Save this attendance register?"
+        description={`${sections.find((item) => item.id === markSectionId)?.name ?? "Selected section"} · ${markDate}`}
+        consequence="This writes the complete register and may replace existing attendance for the same date, subject, and period. Verify every student status before continuing."
+        details={<p className="text-sm text-slate-700"><strong>{students.length} students:</strong> {statuses.map((item) => `${students.filter((student) => (marks[student.id] ?? "present") === item).length} ${item}`).join(", ")}</p>}
+        confirmLabel="Save attendance"
+        busy={saving}
+        onClose={() => setConfirmAttendance(false)}
+        onConfirm={() => void saveAttendance()}
+      />
     </div>
   );
 }
