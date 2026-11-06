@@ -13,13 +13,14 @@ import {
   students,
   users,
 } from "../../db/schema";
-import { badRequest, conflict, notFound } from "../../lib/errors";
+import { badRequest, conflict, forbidden, notFound, unauthorized } from "../../lib/errors";
 import { ensureDefaultEmailTemplates } from "../organisation/service";
 import { env } from "../../env";
 import { encryptEmailCredential } from "../../lib/email-credentials";
 import { buildMailConfig, readEmailCredentials } from "../../lib/mail-config";
 import { sendMail } from "../../lib/mailer";
 import { DEFAULT_EMAIL_TEMPLATES, renderEmailHtml, renderEmailSubject, renderEmailText } from "../../lib/email-template";
+import { hashPassword, verifyPassword } from "../../lib/password";
 export async function listOrganisations(db: DB) {
   const [rows, userCounts, studentCounts] = await Promise.all([
     db.select().from(organisations).orderBy(organisations.createdAt),
@@ -425,4 +426,59 @@ export async function retryPlatformEmailDelivery(db: DB, id: string, userId: str
     const [row] = await db.update(platformEmailDeliveries).set({ status: "failed", error: error instanceof Error ? error.message : "Email delivery failed", createdBy: userId }).where(eq(platformEmailDeliveries.id, id)).returning();
     return row;
   }
+}
+
+export async function changePlatformEmail(
+  db: DB,
+  userId: string,
+  currentEmail: string,
+  newEmail: string,
+) {
+  const [row] = await db
+    .select({ id: users.id, email: users.email, isPlatformAdmin: users.isPlatformAdmin })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!row) throw unauthorized("Account not found");
+  if (!row.isPlatformAdmin) throw forbidden("Platform admin access required");
+  if ((row.email ?? "").toLowerCase() !== currentEmail.toLowerCase()) {
+    throw badRequest("Current email does not match your account");
+  }
+  const [existing] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, newEmail))
+    .limit(1);
+  if (existing && existing.id !== userId) {
+    throw conflict("Email is already in use by another account");
+  }
+  const [updated] = await db
+    .update(users)
+    .set({ email: newEmail, updatedAt: new Date() })
+    .where(eq(users.id, userId))
+    .returning({ id: users.id, email: users.email });
+  if (!updated) throw notFound("Account not found");
+  return updated;
+}
+
+export async function changePlatformPassword(
+  db: DB,
+  userId: string,
+  currentPassword: string,
+  newPassword: string,
+) {
+  const [row] = await db
+    .select({ id: users.id, passwordHash: users.passwordHash, isPlatformAdmin: users.isPlatformAdmin })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!row) throw unauthorized("Account not found");
+  if (!row.isPlatformAdmin) throw forbidden("Platform admin access required");
+  if (!(await verifyPassword(currentPassword, row.passwordHash))) {
+    throw badRequest("Current password is incorrect");
+  }
+  await db
+    .update(users)
+    .set({ passwordHash: await hashPassword(newPassword), mustChangePassword: false, updatedAt: new Date() })
+    .where(eq(users.id, userId));
 }

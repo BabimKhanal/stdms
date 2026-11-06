@@ -25,6 +25,7 @@ import {
   Server,
   ShieldCheck,
   SlidersHorizontal,
+  UserCog,
   Users,
   X,
 } from "lucide-react";
@@ -126,7 +127,8 @@ type Panel =
   | "monitoring"
   | "backups"
   | "provisioning"
-  | "email-config";
+  | "email-config"
+  | "account";
 
 const featureCatalog = [
   "students",
@@ -237,6 +239,13 @@ export function SuperAdminPortal({
   const [operationEntity, setOperationEntity] = useState("all");
   const [operationStatus, setOperationStatus] = useState("all");
   const [operationPage, setOperationPage] = useState(1);
+  const [accountEmail, setAccountEmail] = useState("");
+  const [accountNewEmail, setAccountNewEmail] = useState("");
+  const [accountCurrentPassword, setAccountCurrentPassword] = useState("");
+  const [accountNewPassword, setAccountNewPassword] = useState("");
+  const [accountConfirmPassword, setAccountConfirmPassword] = useState("");
+  const [accountError, setAccountError] = useState("");
+  const [accountSaving, setAccountSaving] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -493,6 +502,52 @@ export function SuperAdminPortal({
     }
   }
 
+  async function changeAccountEmail(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAccountError("");
+    try {
+      await client().post<{ changed: boolean; email: string }>(
+        "/super/change-email",
+        { currentEmail: accountEmail.trim(), newEmail: accountNewEmail.trim() },
+      );
+      setAccountEmail("");
+      setAccountNewEmail("");
+      setError("");
+    } catch (cause) {
+      setAccountError(
+        cause instanceof Error ? cause.message : "Unable to change email",
+      );
+    }
+  }
+
+  async function changeAccountPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (accountNewPassword.length < 8) {
+      return setAccountError("New password must be at least 8 characters.");
+    }
+    if (accountNewPassword !== accountConfirmPassword) {
+      return setAccountError("New passwords do not match.");
+    }
+    setAccountError("");
+    setAccountSaving(true);
+    try {
+      await client().post<{ changed: boolean }>("/super/change-password", {
+        currentPassword: accountCurrentPassword,
+        newPassword: accountNewPassword,
+      });
+      setAccountCurrentPassword("");
+      setAccountNewPassword("");
+      setAccountConfirmPassword("");
+      setError("");
+    } catch (cause) {
+      setAccountError(
+        cause instanceof Error ? cause.message : "Unable to change password",
+      );
+    } finally {
+      setAccountSaving(false);
+    }
+  }
+
   const navigation: { key: Panel; label: string; icon: typeof Activity }[] = [
     { key: "overview", label: "Overview", icon: Activity },
     { key: "tenants", label: "Tenants", icon: Building2 },
@@ -500,6 +555,7 @@ export function SuperAdminPortal({
     { key: "backups", label: "Backups", icon: Archive },
     { key: "provisioning", label: "Provisioning", icon: SlidersHorizontal },
     { key: "email-config", label: "Alert email", icon: Mail },
+    { key: "account", label: "Account", icon: UserCog },
   ];
   const heading =
     panel === "tenant-profile"
@@ -1394,6 +1450,136 @@ export function SuperAdminPortal({
             </section>
           )}
           {panel === "email-config" && <div className="space-y-8"><PlatformEmailSettings /><PlatformEmailCenter /></div>}
+
+          {panel === "account" && (
+            <section className="space-y-6">
+              <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+                <div>
+                  <p className="text-sm font-medium text-emerald-800">
+                    Platform account
+                  </p>
+                  <h2 className="mt-1 text-3xl font-semibold tracking-tight">
+                    Account settings
+                  </h2>
+                  <p className="mt-2 text-sm text-slate-600">
+                    Update your super administrator email and password.
+                  </p>
+                </div>
+              </div>
+
+              {accountError && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-3 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"
+                >
+                  <AlertTriangle size={17} className="mt-0.5 shrink-0" />
+                  <div className="min-w-0 flex-1">{accountError}</div>
+                  <button onClick={() => setAccountError("")} aria-label="Dismiss error">
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
+
+              <div className="grid gap-6 md:grid-cols-2">
+                <Card>
+                  <CardContent className="p-0">
+                    <div className="border-b border-slate-200 p-4">
+                      <h3 className="text-base font-semibold">Change email</h3>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Confirm your current email and enter the new one.
+                      </p>
+                    </div>
+                    <form onSubmit={changeAccountEmail} className="p-4 space-y-4">
+                      <label className="space-y-1.5 text-sm font-medium">
+                        Current email
+                        <input
+                          type="email"
+                          className={inputClass()}
+                          value={accountEmail}
+                          onChange={(event) => setAccountEmail(event.target.value)}
+                          required
+                          autoComplete="email"
+                        />
+                      </label>
+                      <label className="space-y-1.5 text-sm font-medium">
+                        New email
+                        <input
+                          type="email"
+                          className={inputClass()}
+                          value={accountNewEmail}
+                          onChange={(event) => setAccountNewEmail(event.target.value)}
+                          required
+                          autoComplete="new-email"
+                        />
+                      </label>
+                      <Button
+                        type="submit"
+                        disabled={accountSaving}
+                        className="w-full"
+                      >
+                        {accountSaving ? "Updating…" : "Change email"}
+                      </Button>
+                    </form>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="p-0">
+                    <div className="border-b border-slate-200 p-4">
+                      <h3 className="text-base font-semibold">Change password</h3>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Enter your current password and a new one.
+                      </p>
+                    </div>
+                    <form onSubmit={changeAccountPassword} className="p-4 space-y-4">
+                      <label className="space-y-1.5 text-sm font-medium">
+                        Current password
+                        <input
+                          type="password"
+                          className={inputClass()}
+                          value={accountCurrentPassword}
+                          onChange={(event) => setAccountCurrentPassword(event.target.value)}
+                          required
+                          autoComplete="current-password"
+                        />
+                      </label>
+                      <label className="space-y-1.5 text-sm font-medium">
+                        New password
+                        <input
+                          type="password"
+                          className={inputClass()}
+                          value={accountNewPassword}
+                          onChange={(event) => setAccountNewPassword(event.target.value)}
+                          required
+                          minLength={8}
+                          autoComplete="new-password"
+                        />
+                      </label>
+                      <label className="space-y-1.5 text-sm font-medium">
+                        Confirm new password
+                        <input
+                          type="password"
+                          className={inputClass()}
+                          value={accountConfirmPassword}
+                          onChange={(event) => setAccountConfirmPassword(event.target.value)}
+                          required
+                          minLength={8}
+                          autoComplete="new-password"
+                        />
+                      </label>
+                      <Button
+                        type="submit"
+                        disabled={accountSaving}
+                        className="w-full"
+                      >
+                        {accountSaving ? "Updating…" : "Change password"}
+                      </Button>
+                    </form>
+                  </CardContent>
+                </Card>
+              </div>
+            </section>
+          )}
         </main>
       </div>
 

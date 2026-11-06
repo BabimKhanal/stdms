@@ -231,6 +231,48 @@ superAdminRoutes.post("/email-deliveries/:id/retry", async (c) => {
 superAdminRoutes.get("/audit", async (c) =>
   ok(c, await svc.listPlatformAudit(c.get("db"))),
 );
+
+const changeEmailInput = z.object({
+  currentEmail: z.string().email(),
+  newEmail: z.string().email(),
+});
+const changePasswordInput = z.object({
+  currentPassword: z.string().min(6),
+  newPassword: z.string().min(8).max(200),
+});
+
+/** POST /super/change-email — update the platform admin's own email. */
+superAdminRoutes.post("/change-email", async (c) => {
+  const user = c.get("user");
+  if (!user) throw unauthorized();
+  const body = parse(changeEmailInput, await c.req.json());
+  const updated = await svc.changePlatformEmail(
+    c.get("db"),
+    user.id,
+    body.currentEmail,
+    body.newEmail,
+  );
+  await auditPlatformAction(
+    c,
+    "platform_email_changed",
+    "user",
+    user.id,
+    { email: body.currentEmail },
+    { email: body.newEmail },
+  );
+  return ok(c, { changed: true, email: updated.email });
+});
+
+/** POST /super/change-password — update the platform admin's own password. */
+superAdminRoutes.post("/change-password", async (c) => {
+  const user = c.get("user");
+  if (!user) throw unauthorized();
+  const body = parse(changePasswordInput, await c.req.json());
+  await svc.changePlatformPassword(c.get("db"), user.id, body.currentPassword, body.newPassword);
+  await auditPlatformAction(c, "platform_password_changed", "user", user.id, null, null);
+  return ok(c, { changed: true });
+});
+
 superAdminRoutes.get("/backups", async (c) =>
   ok(c, {
     schedule: env.BACKUP_SCHEDULE,
